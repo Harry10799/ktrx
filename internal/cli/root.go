@@ -12,8 +12,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Harry10799/kubetrace/internal/analyzer"
-	"github.com/Harry10799/kubetrace/internal/kube"
+	"github.com/Harry10799/ktrx/internal/analyzer"
+	"github.com/Harry10799/ktrx/internal/kube"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ func NewRootCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output string
 	var noColor, includeLogs, verbose, all bool
 	root := &cobra.Command{
-		Use: "kubetrace [POD|deploy/NAME]",
+		Use: "ktrx [POD|deploy/NAME]",
 		Short: "Evidence-based Kubernetes troubleshooting",
 		SilenceUsage: true,
 		Args: cobra.MaximumNArgs(1),
@@ -120,7 +120,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 	verdict := func(v analyzer.Verdict) string { switch v { case analyzer.Healthy: return style("42",true,string(v)); case analyzer.Failed: return style("196",true,string(v)); case analyzer.Warning: return style("214",true,string(v)); default: return style("245",true,string(v)) } }
 	boolean := func(v bool) string { if v { return style("42",true,"true") }; return style("196",true,"false") }
 	section := func(s string) string { return style("99",true,s) }
-	fmt.Printf("%s  %s/%s\n",style("39",true,"kubetrace"),r.Namespace,r.Name)
+	fmt.Printf("%s  %s/%s\n",style("39",true,"ktrx"),r.Namespace,r.Name)
 	fmt.Printf("Verdict: %s (%d warnings, %d not checked, %d failed)\n",verdict(r.Verdict),r.WarningCount,r.UnknownCount,r.FailedCount)
 	fmt.Println("\n"+section("Issues:")); n:=0
 	for _,e:=range r.Evidence { if e.Verdict==analyzer.Failed || e.Verdict==analyzer.Warning { n++; fmt.Printf("  • [%s] %s: %s\n",verdict(e.Verdict),e.Check,e.Summary); if e.Suggestion!="" { fmt.Printf("      Suggestion: %s\n",e.Suggestion) } } }
@@ -209,7 +209,7 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 		if !colorEnabled { return value }
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Printf("%s %s  %s\n", style("39", "◆ KUBETRACE"), style("99", "DEPLOYMENT"), name)
+	fmt.Printf("%s %s  %s\n", style("39", "◆ KTRX"), style("99", "DEPLOYMENT"), name)
 	fmt.Printf("%s %d replicas inspected\n", style("245", "↳"), len(reports))
 
 	common := map[string]bool{}
@@ -249,7 +249,7 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 		fmt.Printf("  %s  phase=%s  restarts=%d\n", deploymentVerdictStyle(style, readyVerdict)+" "+readyLabel, r.Phase, r.Restarts)
 		fmt.Printf("  Node: %s  IP: %s\n", value(r.Node), value(r.PodIP))
 	}
-	fmt.Println("\n" + style("245", "Tip: kubetrace POD_NAME -n NAMESPACE --logs shows full per-Pod logs."))
+	fmt.Println("\n" + style("245", "Tip: ktrx POD_NAME -n NAMESPACE --logs shows full per-Pod logs."))
 	return nil
 }
 
