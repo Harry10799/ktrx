@@ -25,7 +25,7 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 
 - Go **1.23+** to build or install from source.
 - A Kubernetes cluster and a working kubeconfig (kubectl should connect to the intended cluster).
-- Kubernetes permissions for the checks you want to run. See [RBAC permissions](#rbac-permissions).
+- Kubernetes permissions for the checks you want to run. See [RBAC permissions](#safety-and-rbac-permissions).
 
 ### Install with Go
 
