@@ -72,6 +72,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled bool) error {
 		switch v {
 		case analyzer.Healthy: return style("42", true, string(v))
 		case analyzer.Failed: return style("196", true, string(v))
+		case analyzer.Warning: return style("214", true, string(v))
 		default: return style("214", true, string(v))
 		}
 	}
@@ -186,6 +187,8 @@ func printLogLines(label, content, errText string) {
 		if i == 0 { fmt.Printf("%s%s\n", label, line) } else { fmt.Printf("%s\n", strings.Repeat(" ", len(label))+line) }
 	}
 }
+
+func boolLabel(v *bool) string { if v == nil { return "unknown" }; if *v { return "true" }; return "false" }
 
 func endpointReadyLabel(svc analyzer.ServiceTrace) string {
 	if !svc.EndpointReadyKnown { return "unknown" }
