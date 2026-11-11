@@ -144,7 +144,36 @@ spec:
     - name: http
       port: 80
       targetPort: http
----
+EOF
+
+run_required "Create demo Deployment and Service" kubectl apply -f "$TMP_DIR/demo.yaml"
+run_required "Wait for Deployment rollout" kubectl rollout status deployment/ktrx-demo-nginx -n "$NAMESPACE" --timeout=120s
+if command -v minikube >/dev/null 2>&1; then
+  run_section "Minikube status" minikube status || true
+  run_section "Minikube node IP" minikube ip || true
+  run_section "Minikube addon status (including ingress)" minikube addons list || true
+else
+  run_section "Minikube environment" bash -c 'echo "minikube CLI not found; skipping Minikube status, node IP and addon inventory."'
+fi
+run_section "IngressClasses available in the cluster" kubectl get ingressclass -o wide || true
+run_section "Ingress controller Pods across namespaces" kubectl get pods -A -l app.kubernetes.io/name=ingress-nginx -o wide || true
+run_section "Ingress controller Deployments across namespaces" kubectl get deployments -A -l app.kubernetes.io/name=ingress-nginx -o wide || true
+run_section "Ingress controller Services across namespaces" kubectl get services -A -l app.kubernetes.io/name=ingress-nginx -o wide || true
+run_section "Ingress admission webhook Service" kubectl get service ingress-nginx-controller-admission -n ingress-nginx -o wide || true
+run_section "Ingress admission webhook Endpoints" kubectl get endpoints ingress-nginx-controller-admission -n ingress-nginx -o wide || true
+run_section "Ingress validating webhook configurations" bash -c 'kubectl get validatingwebhookconfigurations -o name | grep -i ingress || true' || true
+
+CONTROLLER_DEPLOYMENTS="$(kubectl get deployments -A -l app.kubernetes.io/name=ingress-nginx -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
+if [[ -n "$CONTROLLER_DEPLOYMENTS" ]]; then
+  while read -r controller_namespace controller_deployment; do
+    [[ -z "$controller_namespace" || -z "$controller_deployment" ]] && continue
+    run_section "Wait for Ingress controller $controller_namespace/$controller_deployment" kubectl rollout status "deployment/$controller_deployment" -n "$controller_namespace" --timeout=90s || true
+  done <<< "$CONTROLLER_DEPLOYMENTS"
+else
+  run_section "Ingress controller readiness" bash -c 'echo "No ingress-nginx Deployment found by app.kubernetes.io/name=ingress-nginx; Ingress creation will still be attempted and any admission failure will be recorded."'
+fi
+
+cat > "$TMP_DIR/ingress.yaml" <<EOF
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -166,19 +195,7 @@ spec:
                 port:
                   number: 80
 EOF
-
-run_required "Create demo Deployment, Service and Ingress" kubectl apply -f "$TMP_DIR/demo.yaml"
-run_required "Wait for Deployment rollout" kubectl rollout status deployment/ktrx-demo-nginx -n "$NAMESPACE" --timeout=120s
-if command -v minikube >/dev/null 2>&1; then
-  run_section "Minikube status" minikube status || true
-  run_section "Minikube node IP" minikube ip || true
-  run_section "Minikube addon status (including ingress)" minikube addons list || true
-else
-  run_section "Minikube environment" bash -c 'echo "minikube CLI not found; skipping Minikube status, node IP and addon inventory."'
-fi
-run_section "IngressClasses available in the cluster" kubectl get ingressclass -o wide || true
-run_section "Ingress controller Pods across namespaces" kubectl get pods -A -l app.kubernetes.io/name=ingress-nginx -o wide || true
-run_section "Ingress controller Services across namespaces" kubectl get services -A -l app.kubernetes.io/name=ingress-nginx -o wide || true
+run_section "Create demo Ingress (non-fatal if admission webhook is unavailable)" kubectl apply -f "$TMP_DIR/ingress.yaml" || true
 run_section "Demo Ingress resource" kubectl get ingress ktrx-demo-nginx -n "$NAMESPACE" -o yaml || true
 run_section "Demo Ingress details and events" kubectl describe ingress ktrx-demo-nginx -n "$NAMESPACE" || true
 run_section "Clear transient scheduling Events after successful rollout" kubectl delete events -n "$NAMESPACE" --field-selector reason=FailedScheduling --ignore-not-found || true
