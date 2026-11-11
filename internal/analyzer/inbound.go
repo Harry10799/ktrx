@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,9 +43,26 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 	var traces []ServiceTrace
 	var evidence []Evidence
 	podLabels := labels.Set(pod.Labels)
+	var nearMatches []string
 	for i := range services.Items {
 		svc := &services.Items[i]
-		if len(svc.Spec.Selector) == 0 || !labels.Set(svc.Spec.Selector).AsSelector().Matches(podLabels) {
+		if len(svc.Spec.Selector) == 0 {
+			continue
+		}
+		selector := labels.Set(svc.Spec.Selector)
+		if !selector.AsSelector().Matches(podLabels) {
+			// Flag only plausible selector mistakes: at least one selector key
+			// exists on the Pod, but its value differs.
+			mismatches := make([]string, 0)
+			for key, expected := range svc.Spec.Selector {
+				if actual, exists := pod.Labels[key]; exists && actual != expected {
+					mismatches = append(mismatches, fmt.Sprintf("%s=%s (pod has %s)", key, expected, actual))
+				}
+			}
+			if len(mismatches) > 0 {
+				sort.Strings(mismatches)
+				nearMatches = append(nearMatches, fmt.Sprintf("Service %s selector mismatch: %s", svc.Name, strings.Join(mismatches, ", ")))
+			}
 			continue
 		}
 
@@ -109,10 +127,19 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 		traces = append(traces, trace)
 	}
 
-	if len(traces) == 0 {
+	if len(nearMatches) > 0 {
+		sort.Strings(nearMatches)
 		evidence = append(evidence, Evidence{
-			Check: "inbound-services", Verdict: Healthy,
-			Summary: "No selector-based Services in this namespace select the pod",
+			Check: "inbound-service-selector", Verdict: Warning,
+			Summary: "One or more Services have selectors that nearly match this Pod but use different label values",
+			Details: nearMatches,
+			Suggestion: "Compare each Service spec.selector with the Pod labels; correct the selector or Pod labels if this Service is intended to route to this Pod.",
+		})
+	}
+	if len(traces) == 0 && len(nearMatches) == 0 {
+		evidence = append(evidence, Evidence{
+			Check: "inbound-services", Verdict: Info,
+			Summary: "No selector-based Services in this namespace select the pod; no inbound Service relationship was established",
 		})
 	}
 	sort.Slice(traces, func(i, j int) bool { return traces[i].Name < traces[j].Name })
