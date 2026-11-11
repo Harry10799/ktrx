@@ -37,6 +37,12 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	ingressRoutes, ingressEvidence := traceIngress(ctx, a.Client, pod.Namespace, inboundServices)
 	report.IngressRoutes = ingressRoutes
 	report.Evidence = append(report.Evidence, ingressEvidence...)
+	events, eventEvidence := collectPodEvents(ctx, a.Client, pod)
+	report.Events = events
+	if eventEvidence != nil { report.Evidence = append(report.Evidence, *eventEvidence) }
+	logs, logEvidence := collectContainerLogs(ctx, a.Client, pod)
+	report.Logs = logs
+	report.Evidence = append(report.Evidence, logEvidence...)
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
 			report.Ready = true
