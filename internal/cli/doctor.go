@@ -21,6 +21,7 @@ type accessCheck struct {
 	Verb      string `json:"verb"`
 	Group     string `json:"group,omitempty"`
 	Resource  string `json:"resource"`
+	Subresource string `json:"subresource,omitempty"`
 	Namespace string `json:"namespace,omitempty"`
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
@@ -49,7 +50,8 @@ func newDoctorCommand() *cobra.Command {
 		Long:  "Run a read-only preflight against the selected Kubernetes context. The command checks the permissions used by KTRX diagnostics and never changes cluster resources.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := kube.NewClient(kubeconfig, contextName)
+			if timeout <= 0 { return fmt.Errorf("timeout must be greater than zero") }
+			client, err := kube.NewClientWithTimeout(kubeconfig, contextName, timeout)
 			if err != nil {
 				return err
 			}
@@ -63,7 +65,7 @@ func newDoctorCommand() *cobra.Command {
 				report.Checks = append(report.Checks, accessCheck{Name: "Kubernetes API connectivity", Resource: "discovery", Verb: "get", Status: "UNKNOWN", Reason: versionErr.Error()})
 				report.Unknown++
 				for _, req := range ktrxAccessRequirements(namespace) {
-					report.Checks = append(report.Checks, accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Namespace: req.namespace, Status: "UNKNOWN", Reason: "Skipped because Kubernetes API connectivity could not be verified"})
+					report.Checks = append(report.Checks, accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace, Status: "UNKNOWN", Reason: "Skipped because Kubernetes API connectivity could not be verified"})
 					report.Unknown++
 				}
 			} else {
@@ -126,7 +128,7 @@ func ktrxAccessRequirements(namespace string) []accessRequirement {
 }
 
 func checkAccess(ctx context.Context, client kubernetes.Interface, req accessRequirement) accessCheck {
-	result := accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Namespace: req.namespace}
+	result := accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace}
 	attrs := &authv1.ResourceAttributes{Verb: req.verb, Group: req.group, Resource: req.resource, Namespace: req.namespace}
 	attrs.Subresource = req.subresource
 	review, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, &authv1.SelfSubjectAccessReview{
@@ -172,7 +174,7 @@ func printDoctorTerminal(cmd *cobra.Command, report doctorReport, colorEnabled b
 		case "DENIED": color, symbol = "196", "✖"
 		}
 		target := check.Resource
-		if check.Name == "Read container logs" { target += "/log" }
+		if check.Subresource != "" { target += "/" + check.Subresource }
 		if check.Group != "" { target = check.Group + "/" + target }
 		if check.Namespace != "" { target += " (namespace " + check.Namespace + ")" } else if check.Resource == "pods" { target += " (all namespaces)" }
 		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-8s %-48s %s\n", style(color, symbol), check.Status, check.Name, target)
