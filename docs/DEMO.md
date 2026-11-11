@@ -14,7 +14,7 @@ It captures the commands and their actual output for:
 Run the generator from the repository root:
 
 ```bash
-./scripts/generate-demo.sh
+bash scripts/generate-demo.sh
 ```
 
 Requirements: Go, Bash, kubectl, and access to a Kubernetes cluster. The script creates an isolated `ktrx-demo` namespace and deletes it when finished. Use `KEEP_DEMO=1` to retain the namespace.
