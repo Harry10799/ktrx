@@ -110,3 +110,58 @@ func TestIsIngressControllerPodRequiresIngressNginxIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestTraceIngressMarksUnsupportedControllerAsInfo(t *testing.T) {
+	className := "edge"
+	path := networkingv1.HTTPIngressPath{
+		Path: "/",
+		Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: "web"}},
+	}
+	ing := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
+		Spec: networkingv1.IngressSpec{
+			IngressClassName: &className,
+			Rules: []networkingv1.IngressRule{{IngressRuleValue: networkingv1.IngressRuleValue{
+				HTTP: &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{path}},
+			}}},
+		},
+		Status: networkingv1.IngressStatus{LoadBalancer: networkingv1.IngressLoadBalancerStatus{Ingress: []networkingv1.IngressLoadBalancerIngress{{IP: "192.0.2.10"}}}},
+	}
+	class := &networkingv1.IngressClass{
+		ObjectMeta: metav1.ObjectMeta{Name: className},
+		Spec: networkingv1.IngressClassSpec{Controller: "traefik.io/ingress-controller"},
+	}
+	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"}}
+	client := fake.NewSimpleClientset(ing, class, svc)
+	routes, evidence := traceIngress(context.Background(), client,
+		&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web-abc", Namespace: "default"}},
+		[]ServiceTrace{{Name: "web"}},
+	)
+	if len(routes) != 1 {
+		t.Fatalf("expected one route, got %d", len(routes))
+	}
+	foundInfo, foundUnknown := false, false
+	for _, item := range evidence {
+		if item.Check == "ingress-controller/web" {
+			foundInfo = item.Verdict == Info
+			foundUnknown = item.Verdict == Unknown
+		}
+	}
+	if !foundInfo || foundUnknown {
+		t.Fatalf("unsupported controller should be INFO, not UNKNOWN: %+v", evidence)
+	}
+	if got := aggregate(evidence); got == Unknown {
+		t.Fatalf("unsupported controller must not force UNKNOWN headline: %+v", evidence)
+	}
+}
+
+func TestSupportsIngressControllerDiscovery(t *testing.T) {
+	if !supportsIngressControllerDiscovery("k8s.io/ingress-nginx") {
+		t.Fatal("ingress-nginx should support controller discovery")
+	}
+	for _, controller := range []string{"traefik.io/ingress-controller", "projectcontour.io/contour", "haproxy.org/ingress-controller", "ingress.k8s.aws/alb", "k8s.io/gce-ingress"} {
+		if supportsIngressControllerDiscovery(controller) {
+			t.Errorf("controller %q should be reported as unsupported", controller)
+		}
+	}
+}
