@@ -36,12 +36,22 @@ type ingressBackend struct {
 }
 
 func traceIngress(ctx context.Context, client kubernetes.Interface, namespace string, services []ServiceTrace) ([]IngressTrace, []Evidence) {
-	if len(services) == 0 {
-		return nil, nil
-	}
 	serviceNames := make(map[string]struct{}, len(services))
 	for _, svc := range services {
 		serviceNames[svc.Name] = struct{}{}
+	}
+
+	namespaceServices, serviceErr := client.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+	if serviceErr != nil {
+		return nil, []Evidence{{
+			Check: "ingress-backends", Verdict: Unknown,
+			Summary: "Could not verify whether Ingress backend Services exist",
+			Details: []string{serviceErr.Error()},
+		}}
+	}
+	existingServices := make(map[string]struct{}, len(namespaceServices.Items))
+	for i := range namespaceServices.Items {
+		existingServices[namespaceServices.Items[i].Name] = struct{}{}
 	}
 
 	ingresses, err := client.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
@@ -55,6 +65,16 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 	}
 
 	var routes []IngressTrace
+	var evidence []Evidence
+	missingBackends := make(map[string]struct{})
+	checkBackend := func(ingressName, serviceName string) bool {
+		if _, exists := existingServices[serviceName]; !exists {
+			key := ingressName + "/" + serviceName
+			missingBackends[key] = struct{}{}
+			return false
+		}
+		return true
+	}
 	for i := range ingresses.Items {
 		ing := &ingresses.Items[i]
 		className := ""
@@ -63,12 +83,14 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 		}
 		if ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
 			backend := ingressServiceBackend(ing.Spec.DefaultBackend.Service)
-			if _, ok := serviceNames[backend.service]; ok {
-				routes = append(routes, IngressTrace{
+			if checkBackend(ing.Name, backend.service) {
+				if _, ok := serviceNames[backend.service]; ok {
+					routes = append(routes, IngressTrace{
 					Name: ing.Name, Class: className, Host: "*",
 					Path: "/", PathType: "DefaultBackend",
 					Service: backend.service, ServicePort: backend.port,
-				})
+					})
+				}
 			}
 		}
 		for _, rule := range ing.Spec.Rules {
@@ -84,6 +106,9 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 					continue
 				}
 				backend := ingressServiceBackend(path.Backend.Service)
+				if !checkBackend(ing.Name, backend.service) {
+					continue
+				}
 				if _, ok := serviceNames[backend.service]; !ok {
 					continue
 				}
@@ -107,13 +132,24 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 		if routes[i].Host != routes[j].Host { return routes[i].Host < routes[j].Host }
 		return routes[i].Path < routes[j].Path
 	})
-	if len(routes) == 0 {
-		return nil, []Evidence{{
-			Check: "ingress-routes", Verdict: Healthy,
-			Summary: "No Ingress routes reference Services selecting this pod",
-		}}
+	for key := range missingBackends {
+		evidence = append(evidence, Evidence{
+			Check: "ingress-backend/" + key, Verdict: Failed,
+			Summary: "Ingress references a backend Service that does not exist in namespace " + namespace,
+			Details: []string{key},
+			Suggestion: "Create the referenced Service or correct the Ingress backend service name.",
+		})
 	}
-	evidence := make([]Evidence, 0, len(routes)*3)
+	if len(routes) == 0 {
+		if len(missingBackends) == 0 {
+			evidence = append(evidence, Evidence{
+				Check: "ingress-routes", Verdict: Info,
+				Summary: "No Ingress routes reference Services selecting this pod; no route relationship was established",
+			})
+		}
+		return nil, evidence
+	}
+	evidence = append(evidence, make([]Evidence, 0, len(routes)*3)...)
 	checked := map[string]bool{}
 	for i := range routes {
 		route := &routes[i]
