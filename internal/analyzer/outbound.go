@@ -132,10 +132,13 @@ func traceOutbound(ctx context.Context, client kubernetes.Interface, pod *corev1
 }
 
 func policyAppliesToEgress(policy *networkingv1.NetworkPolicy) bool {
-	for _, policyType := range policy.Spec.PolicyTypes {
-		if policyType == networkingv1.PolicyTypeEgress { return true }
+	if len(policy.Spec.PolicyTypes) > 0 {
+		for _, policyType := range policy.Spec.PolicyTypes {
+			if policyType == networkingv1.PolicyTypeEgress { return true }
+		}
+		return false
 	}
-	// API defaulting adds Egress when egress rules are present.
+	// When PolicyTypes is omitted, Kubernetes defaults Egress when rules exist.
 	return len(policy.Spec.Egress) > 0
 }
 
