@@ -55,7 +55,7 @@ go build -o kubetrace ./cmd/kubetrace
 go install ./cmd/kubetrace
 
 # Or use the Makefile
-go install github.com/Harry10799/kubetrace/cmd/kubetrace@latest
+make install
 ```
 
 ## Usage
