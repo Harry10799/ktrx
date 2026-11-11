@@ -233,7 +233,17 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 			if matched {
 				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Healthy, Summary: fmt.Sprintf("Service %s targetPort %q resolves to declared containerPort %d", svc.Name, target, targetPort)})
 			} else {
-				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Unknown, Summary: fmt.Sprintf("Service %s targetPort %q has no matching declared containerPort; the application may still listen on it, but Kubernetes spec does not confirm it", svc.Name, target)})
+				declared := false
+				for _, container := range pod.Spec.Containers {
+					if len(container.Ports) > 0 { declared = true; break }
+				}
+				verdict := Unknown
+				summary := fmt.Sprintf("Service %s targetPort %q has no matching declared containerPort; the application may still listen on it", svc.Name, target)
+				if declared {
+					verdict = Warning
+					summary = fmt.Sprintf("Service %s targetPort %q does not match any declared containerPort; verify the application listener and Service mapping", svc.Name, target)
+				}
+				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: verdict, Summary: summary, Suggestion: "Verify Service targetPort against the port the application actually listens on."})
 			}
 		}
 	}
