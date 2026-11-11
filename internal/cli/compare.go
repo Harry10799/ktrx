@@ -108,7 +108,7 @@ func comparePods(reference, candidate *analyzer.PodReport) podComparison {
 	add("Inbound", "Ingress routes", ingressSignature(reference), ingressSignature(candidate))
 	add("Outbound", "DNS configuration", dnsSignature(reference), dnsSignature(candidate))
 	add("Outbound", "NetworkPolicies", policySignature(reference), policySignature(candidate))
-	add("Diagnostics", "Evidence", evidenceSignature(reference), evidenceSignature(candidate))
+	addEvidenceDifferences(&result, reference.Evidence, candidate.Evidence)
 
 	if len(result.Differences) == 0 {
 		result.Summary = "No differences found in the compared fields."
@@ -145,10 +145,45 @@ func policySignature(r *analyzer.PodReport) string {
 	for _, p := range r.Outbound.Policies { items = append(items, fmt.Sprintf("%s|%s|%t|%d|%s|%s", p.Name, p.PodSelector, p.EgressIsolating, p.RuleCount, strings.Join(p.Destinations, ","), strings.Join(p.Ports, ","))) }
 	sort.Strings(items); return strings.Join(items, "; ")
 }
-func evidenceSignature(r *analyzer.PodReport) string {
-	items := make([]string, 0, len(r.Evidence))
-	for _, e := range r.Evidence { items = append(items, fmt.Sprintf("%s|%s|%s", e.Check, e.Verdict, e.Summary)) }
-	sort.Strings(items); return strings.Join(items, "; ")
+// addEvidenceDifferences compares stable, per-check diagnostic findings.
+// Log analysis is intentionally excluded: log contents are runtime observations
+// and commonly differ between otherwise identical replicas.
+func addEvidenceDifferences(result *podComparison, reference, candidate []analyzer.Evidence) {
+	index := func(items []analyzer.Evidence) map[string]analyzer.Evidence {
+		out := make(map[string]analyzer.Evidence, len(items))
+		for _, item := range items {
+			if strings.HasPrefix(item.Check, "log-analysis/") ||
+				strings.HasPrefix(item.Check, "container-logs/") ||
+				strings.HasPrefix(item.Check, "previous-container-logs/") {
+				continue
+			}
+			out[item.Check] = item
+		}
+		return out
+	}
+	left, right := index(reference), index(candidate)
+	checks := make(map[string]bool, len(left)+len(right))
+	for check := range left { checks[check] = true }
+	for check := range right { checks[check] = true }
+	ordered := make([]string, 0, len(checks))
+	for check := range checks { ordered = append(ordered, check) }
+	sort.Strings(ordered)
+	for _, check := range ordered {
+		l, lok := left[check]
+		r, rok := right[check]
+		if !lok {
+			result.Differences = append(result.Differences, podDifference{Area: "Diagnostics", Field: check, Reference: "<absent>", Candidate: string(r.Verdict) + ": " + r.Summary})
+			continue
+		}
+		if !rok {
+			result.Differences = append(result.Differences, podDifference{Area: "Diagnostics", Field: check, Reference: string(l.Verdict) + ": " + l.Summary, Candidate: "<absent>"})
+			continue
+		}
+		leftValue, rightValue := string(l.Verdict)+": "+l.Summary, string(r.Verdict)+": "+r.Summary
+		if leftValue != rightValue {
+			result.Differences = append(result.Differences, podDifference{Area: "Diagnostics", Field: check, Reference: leftValue, Candidate: rightValue})
+		}
+	}
 }
 
 func printComparisonTerminal(r podComparison, colorEnabled bool) error {
@@ -169,12 +204,19 @@ func printComparisonTerminal(r podComparison, colorEnabled bool) error {
 	return nil
 }
 
+func markdownCell(value string) string {
+	value = strings.ReplaceAll(value, "|", "\\|")
+	value = strings.ReplaceAll(value, "\r\n", "<br>")
+	value = strings.ReplaceAll(value, "\n", "<br>")
+	return strings.ReplaceAll(value, "\r", "<br>")
+}
+
 func printComparisonMarkdown(r podComparison) error {
 	fmt.Printf("# Pod comparison: %s vs %s\n\nNamespace: %s\n\n", r.Reference, r.Candidate, r.Namespace)
 	fmt.Println("| Area | Field | Reference | Candidate |")
 	fmt.Println("|---|---|---|---|")
 	for _, d := range r.Differences {
-		fmt.Printf("| %s | %s | %s | %s |\n", d.Area, d.Field, strings.ReplaceAll(d.Reference, "|", "\\|"), strings.ReplaceAll(d.Candidate, "|", "\\|"))
+		fmt.Printf("| %s | %s | %s | %s |\n", markdownCell(d.Area), markdownCell(d.Field), markdownCell(d.Reference), markdownCell(d.Candidate))
 	}
 	fmt.Printf("\n**%s**\n\n> Differences are diagnostic clues, not proof of causation.\n", r.Summary)
 	return nil
