@@ -54,7 +54,7 @@ kubetrace trace POD_NAME -n NAMESPACE --output markdown
 kubetrace trace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
-The caller needs permission to read the target pod and its ReplicaSet owner when applicable. Additional v0.1 analyzers will require read access to their respective Kubernetes resources.
+The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`) and legacy Endpoints in the namespace. Inbound tracing reports UNKNOWN when the required endpoint APIs cannot be inspected.
 
 ## Project layout
 
