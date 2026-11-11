@@ -169,11 +169,12 @@ EOF
 
 run_required "Create demo Deployment, Service and Ingress" kubectl apply -f "$TMP_DIR/demo.yaml"
 run_required "Wait for Deployment rollout" kubectl rollout status deployment/ktrx-demo-nginx -n "$NAMESPACE" --timeout=120s
-run_section "Minikube status" minikube status || true
 if command -v minikube >/dev/null 2>&1; then
+  run_section "Minikube status" minikube status || true
+  run_section "Minikube node IP" minikube ip || true
   run_section "Minikube addon status (including ingress)" minikube addons list || true
 else
-  run_section "Minikube addon status" bash -c 'echo "minikube CLI not found; skipping addon inventory."'
+  run_section "Minikube environment" bash -c 'echo "minikube CLI not found; skipping Minikube status, node IP and addon inventory."'
 fi
 run_section "IngressClasses available in the cluster" kubectl get ingressclass -o wide || true
 run_section "Ingress controller Pods across namespaces" kubectl get pods -A -l app.kubernetes.io/name=ingress-nginx -o wide || true
