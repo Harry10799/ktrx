@@ -42,6 +42,7 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	ingressRoutes, ingressEvidence := traceIngress(ctx, a.Client, pod, inboundServices)
 	report.IngressRoutes = ingressRoutes
 	report.Evidence = append(report.Evidence, ingressEvidence...)
+	promoteRoutedSelectorMismatches(ctx, a.Client, pod, report.Evidence)
 	events, eventEvidence := collectPodEvents(ctx, a.Client, pod, a.VerboseEvents)
 	report.Events = events
 	if eventEvidence != nil { report.Evidence = append(report.Evidence, *eventEvidence) }
