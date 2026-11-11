@@ -190,8 +190,8 @@ func value(s string) string {
 func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEnabled bool) error {
 	style := func(color, value string) string { if !colorEnabled { return value }; return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value) }
 	fmt.Printf("%s %s (%d pods)\n", style("39", "Deployment"), name, len(reports))
-	common := map[string]int{}
-	for _, e := range reports[0].Evidence { common[evidenceKey(e)] = 1 }
+	common := map[string]bool{}
+	for _, e := range reports[0].Evidence { common[evidenceKey(e)] = true }
 	for _, r := range reports[1:] {
 		present := map[string]bool{}
 		for _, e := range r.Evidence { present[evidenceKey(e)] = true }
