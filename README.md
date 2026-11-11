@@ -28,7 +28,6 @@
 ## Outbound diagnostics scope\n\nKubeTrace reports NetworkPolicies that select the Pod and whether those policies apply egress isolation. It summarizes declared destination selectors, CIDRs and ports. Kubernetes NetworkPolicy allows are additive across matching policies; the report therefore does not claim a destination is blocked based on one policy alone. Actual enforcement depends on the cluster CNI. DNS policy, nameservers, search domains and options are displayed, but name resolution is not executed inside the container.\n\n## v0.1 roadmap
 
 - Environment and ConfigMap reference discovery (names only; never Secret values).
-- Pod DNS configuration.
 - Mounted ConfigMap, Secret and PVC status.
 - NetworkPolicies selecting the pod (inventory only, not policy evaluation).
 - Evidence and suggested fix for every check.
