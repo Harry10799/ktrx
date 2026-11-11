@@ -52,13 +52,9 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 		pods, listErr := client.CoreV1().Pods(namespace).List(cmd.Context(), metav1.ListOptions{LabelSelector: selector.String()})
 		if listErr != nil { return fmt.Errorf("list deployment pods: %w", listErr) }
 		if len(pods.Items) == 0 { return fmt.Errorf("deployment %s/%s has no matching pods", namespace, parts[1]) }
-		sort.Slice(pods.Items, func(i, j int) bool {
-			ready := func(p appsv1.Deployment) bool { return p.Name != "" }
-			_ = ready
-			return pods.Items[i].Name < pods.Items[j].Name
-		})
+		sort.Slice(pods.Items, func(i, j int) bool { return pods.Items[i].Name < pods.Items[j].Name })
 		podName = pods.Items[0].Name
-		fmt.Fprintf(cmd.ErrOrStderr(), "Resolved %s to Pod %s (selected 1 of %d replicas)\\n", target, podName, len(pods.Items))
+		fmt.Fprintf(cmd.ErrOrStderr(), "Resolved %s to Pod %s (selected 1 of %d replicas)\n", target, podName, len(pods.Items))
 	}
 	report, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(cmd.Context(), namespace, podName)
 	if err != nil { return err }
