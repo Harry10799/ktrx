@@ -44,6 +44,7 @@ func newNetcheckCommand() *cobra.Command {
 	var namespace, container, kubeconfig, contextName, output string
 	var dnsTarget, tcpTarget, httpTarget string
 	var timeout time.Duration
+	var noColor bool
 	cmd := &cobra.Command{
 		Use:   "netcheck POD",
 		Short: "Run explicit DNS, TCP and HTTP checks from a selected Pod",
@@ -132,7 +133,7 @@ func newNetcheckCommand() *cobra.Command {
 				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  ")
 				if err := enc.Encode(report); err != nil { return err }
 			} else if strings.EqualFold(output, "terminal") || strings.EqualFold(output, "text") {
-				printNetcheck(report, os.Getenv("NO_COLOR") == "")
+				printNetcheck(report, !noColor && os.Getenv("NO_COLOR") == "")
 			} else {
 				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
 			}
@@ -149,6 +150,7 @@ func newNetcheckCommand() *cobra.Command {
 	cmd.Flags().StringVar(&tcpTarget, "tcp", "", "TCP destination in host:port format")
 	cmd.Flags().StringVar(&httpTarget, "http", "", "HTTP(S) URL to request")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Timeout per probe (maximum 2m)")
+	cmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
 	return cmd
 }
 
