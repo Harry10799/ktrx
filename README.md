@@ -172,6 +172,18 @@ ktrx trace POD_NAME -n NAMESPACE
 
 For full per-Pod logs when inspecting a Deployment, run the direct Pod command with `--logs`.
 
+## Live command output demo
+
+Want to see what KTRX actually prints before installing it? The [KTRX live demo report](docs/DEMO.md) captures real command output in Markdown, including Pod inspection, JSON/Markdown output, Deployment inspection, RBAC preflight, runtime DNS/TCP checks and Pod comparison.
+
+Generate or refresh the report from your own Kubernetes cluster:
+
+```bash
+./scripts/generate-demo.sh
+```
+
+The script builds KTRX, creates an isolated `ktrx-demo` namespace with sample workloads, runs the commands, and writes their commands and output to `docs/DEMO.md`. It deletes the demo namespace automatically. Set `KEEP_DEMO=1` to retain the resources for inspection. Requirements: Bash, Go, kubectl and a reachable cluster.
+
 ## Kubernetes permissions
 
 KTRX uses the current kubeconfig, or an explicitly supplied kubeconfig/context. The caller needs read access to the resources used by the checks:
