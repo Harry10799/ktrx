@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"regexp"
 
@@ -29,6 +30,7 @@ func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod 
 			})
 		} else {
 			entry.Current = filterLogLines(strings.TrimSpace(string(current)), includeAll)
+			evidence = append(evidence, analyzeLogContent(container.Name, string(current))...)
 		}
 
 		var status *corev1.ContainerStatus
@@ -52,6 +54,7 @@ func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod 
 				})
 			} else {
 				entry.Previous = filterLogLines(strings.TrimSpace(string(previous)), includeAll)
+				evidence = append(evidence, analyzeLogContent(container.Name+" (previous)", string(previous))...)
 			}
 		}
 		results = append(results, entry)
@@ -70,4 +73,18 @@ func filterLogLines(raw string, includeAll bool) string {
 	}
 	if len(selected) == 0 { return "" }
 	return strings.Join(selected, "\n")
+}
+
+var serverErrorPattern = regexp.MustCompile(`(?i)(\b5[0-9]{2}\b|status[=: ]+5[0-9]{2})`)
+
+func analyzeLogContent(container, raw string) []Evidence {
+	var matches []string
+	for _, line := range strings.Split(raw, "\n") {
+		if noisyLogPattern.MatchString(line) { matches = append(matches, strings.TrimSpace(line)) }
+	}
+	if len(matches) == 0 { return []Evidence{{Check: "log-analysis/" + container, Verdict: Healthy, Summary: "No recognized error or HTTP 4xx/5xx patterns found in collected logs"}} }
+	msg := fmt.Sprintf("Detected %d suspicious log line(s)", len(matches))
+	if serverErrorPattern.MatchString(strings.Join(matches, "\n")) { msg += ", including HTTP 5xx/server-error patterns" }
+	if len(matches) > 5 { matches = matches[len(matches)-5:] }
+	return []Evidence{{Check: "log-analysis/" + container, Verdict: Warning, Summary: msg, Details: matches, Suggestion: "Inspect the application error context and correlate timestamps with Kubernetes Events and dependency health."}}
 }
