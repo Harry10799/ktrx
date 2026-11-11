@@ -296,6 +296,10 @@ func isOptionalUnknown(check string) bool {
 	optionalPrefixes := []string{
 		"probe/liveness/",
 		"probe/startup/",
+		"probe-port/",
+		"ingress-class/",
+		"ingress-status/",
+		"previous-container-logs/",
 		"outbound-",
 		"dependency-discovery",
 		"dns",
