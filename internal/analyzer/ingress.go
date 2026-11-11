@@ -204,18 +204,20 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 				} else {
 					evidence = append(evidence, Evidence{Check: "ingress-address/" + route.Name, Verdict: Healthy, Summary: "Ingress has an assigned load-balancer address", Details: route.Addresses})
 				}
-				controllers, listErr := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+				controllers, listErr := listIngressControllerPods(ctx, client)
 				if listErr != nil {
 					evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "Could not inspect Ingress controller pods", Details: []string{listErr.Error()}})
 				} else {
-					route.ControllerPods = len(controllers.Items)
-					for _, controller := range controllers.Items {
+					// Count only discovered controller Pods, never every Pod in the cluster.
+					route.ControllerPods = 0
+					route.ControllerReady = 0
+					for _, controller := range controllers {
 						if !isIngressControllerPod(controller) { continue }
 						route.ControllerPods++
 						if controller.Status.Phase == corev1.PodRunning && podReady(controller) { route.ControllerReady++ }
 					}
 					if route.ControllerPods == 0 {
-						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "No controller pods found with the standard controller label; controller discovery may be implementation-specific"})
+						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "No controller pods found with the supported controller labels; controller discovery may be implementation-specific"})
 					} else if route.ControllerReady == 0 {
 						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Failed, Summary: "Ingress controller pods were found but none are Ready"})
 					} else {
@@ -269,6 +271,41 @@ func promoteRoutedSelectorMismatches(ctx context.Context, client kubernetes.Inte
 
 func boolPointer(v bool) *bool { return &v }
 
+
+// listIngressControllerPods uses narrow label queries rather than listing every
+// Pod in every namespace. Multiple selectors cover common ingress controller
+// charts; results are de-duplicated because a Pod may carry both labels.
+func listIngressControllerPods(ctx context.Context, client kubernetes.Interface) ([]corev1.Pod, error) {
+	selectors := []string{
+		"app.kubernetes.io/component=controller",
+		"component=controller",
+		"app=ingress-nginx",
+	}
+	seen := make(map[string]struct{})
+	var pods []corev1.Pod
+	var errs []string
+	successes := 0
+	for _, selector := range selectors {
+		list, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{LabelSelector: selector})
+		if err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		successes++
+		for i := range list.Items {
+			pod := list.Items[i]
+			key := pod.Namespace + "/" + pod.Name
+			if _, ok := seen[key]; ok { continue }
+			if !isIngressControllerPod(pod) { continue }
+			seen[key] = struct{}{}
+			pods = append(pods, pod)
+		}
+	}
+	if successes == 0 {
+		return nil, fmt.Errorf("all ingress controller label queries failed: %s", strings.Join(errs, "; "))
+	}
+	return pods, nil
+}
 
 func isIngressControllerPod(pod corev1.Pod) bool {
 	labels := pod.Labels
