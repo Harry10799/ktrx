@@ -125,13 +125,27 @@ Check Kubernetes API connectivity and the read permissions KTRX uses before inve
 ktrx doctor -n production
 ktrx doctor -n production --output json
 ktrx doctor -n production --timeout 20s
+ktrx doctor -n production --include-netcheck
 ```
 
-The command checks Pod, Service, EndpointSlice/Endpoints, Ingress/IngressClass, NetworkPolicy, Event, log, ReplicaSet and Ingress-controller discovery permissions. It is read-only and returns a non-zero exit status if any required permission is denied or cannot be verified.
+The command checks Pod, Service, EndpointSlice/Endpoints, Ingress/IngressClass, NetworkPolicy, Event, log, ReplicaSet and Ingress-controller discovery permissions. Use `--include-netcheck` to additionally verify the `create` permission on `pods/exec` needed by runtime probes. It is read-only and returns a non-zero exit status if any required permission is denied or cannot be verified.
 
 KTRX uses Kubernetes SelfSubjectAccessReview for RBAC checks. If the identity cannot create SelfSubjectAccessReview resources, the permission results are reported as `UNKNOWN`; ask the cluster administrator to permit that self-review API or verify the listed permissions through the organization's approved process. A passing preflight confirms authorization checks only—it does not validate application health, network reachability or NetworkPolicy enforcement.
 
-### Runtime network checks\n\nRun only the probes you explicitly request, from a selected container in one existing Running Pod. KTRX does not create diagnostic Pods or modify workloads:\n\n```bash\nktrx netcheck nginx-pod -n production --dns kubernetes.default.svc\nktrx netcheck nginx-pod -n production --tcp postgres.production.svc:5432\nktrx netcheck nginx-pod -n production --http https://api.example.com/health\nktrx netcheck nginx-pod -n production --dns api.example.com --tcp api.example.com:443 --http https://api.example.com/health --output json\n```\n\nThe container must contain `/bin/sh` and the required utility: `getent` or `nslookup` for DNS, `nc` for TCP, and `curl` or `wget` for HTTP. Specify `--container` for multi-container Pods. Each probe has a 10-second default timeout; configure it with `--timeout` (maximum 2 minutes). Missing utilities are reported as `UNAVAILABLE`, not as network failures. Probes execute inside the selected container and may generate DNS queries or outbound traffic; use only approved destinations.\n\n### Compare Pods
+### Runtime network checks
+
+Run only the probes you explicitly request, from a selected container in one existing Running Pod. KTRX does not create diagnostic Pods or modify workloads:
+
+```bash
+ktrx netcheck nginx-pod -n production --dns kubernetes.default.svc
+ktrx netcheck nginx-pod -n production --tcp postgres.production.svc:5432
+ktrx netcheck nginx-pod -n production --http https://api.example.com/health
+ktrx netcheck nginx-pod -n production --dns api.example.com --tcp api.example.com:443 --http https://api.example.com/health --output json
+```
+
+The container must contain `/bin/sh` and the required utility: `getent` or `nslookup` for DNS, `nc` for TCP, and `curl` or `wget` for HTTP. Specify `--container` for multi-container Pods. Each probe has a 10-second default timeout; configure it with `--timeout` (maximum 2 minutes). Missing utilities are reported as `UNAVAILABLE`, not as network failures. Probes execute inside the selected container and may generate DNS queries or outbound traffic; use only approved destinations.
+
+### Compare Pods
 
 Compare a known-good reference Pod with a candidate Pod to surface differences in health, container settings, resources, Services, Ingress routes, DNS, NetworkPolicies and diagnostic evidence:
 
@@ -166,7 +180,8 @@ KTRX uses the current kubeconfig, or an explicitly supplied kubeconfig/context. 
 - Services, EndpointSlices (`discovery.k8s.io`) and legacy Endpoints.
 - Ingresses and IngressClasses (`networking.k8s.io`).
 - NetworkPolicies (`networking.k8s.io`) in the Pod namespace.
-- Events and Pod logs (`pods/log`).\n- For `ktrx netcheck`, create access to `pods/exec` in the selected namespace.
+- Events and Pod logs (`pods/log`).
+- For `ktrx netcheck`, create access to `pods/exec` in the selected namespace.
 - Pods across namespaces for Ingress controller discovery.
 
 Some checks may return `UNKNOWN` if the caller lacks the required permissions or the cluster does not expose the information. KTRX does not read or print Secret values.
@@ -190,7 +205,6 @@ internal/analyzer/   Pod inspection and evidence/verdict rules
 
 ## Current limitations
 
-- Cross-service dependency-failure correlation is not implemented.
 - Cross-service dependency-failure correlation is not implemented.
 - NetworkPolicy inspection is declarative; runtime checks provide path-specific evidence but cannot attribute a failure to NetworkPolicy alone.
 - Gateway API HTTPRoute support and Hubble integration are future enhancements.
