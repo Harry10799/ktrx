@@ -28,9 +28,9 @@
 - Pod DNS policy and configured nameservers, search domains and options.
 - Namespace NetworkPolicies that select the Pod.
 - Egress isolation status, declared destination selectors/CIDRs and ports.
-- Live DNS resolution and outbound TCP/HTTP connectivity are **not** tested yet and remain `UNKNOWN`.
+- Explicit, user-selected DNS, TCP and HTTP(S) probes can run inside an existing Pod container with `ktrx netcheck`.
 
-NetworkPolicy allow rules are additive across all policies selecting a Pod. KTRX reports the declared policy configuration; it does not infer that a destination is blocked from one policy in isolation. Actual enforcement also depends on the cluster's networking plugin (CNI).
+NetworkPolicy allow rules are additive across all policies selecting a Pod. KTRX reports the declared policy configuration; it does not infer that a destination is blocked from one policy in isolation. Run `ktrx netcheck` from the workload Pod to gather runtime evidence. A failed probe alone does not prove NetworkPolicy is the cause; routing, DNS, firewalls, TLS and application health can also affect the result.
 
 ### Events and logs
 
@@ -38,7 +38,7 @@ NetworkPolicy allow rules are additive across all policies selecting a Pod. KTRX
 - Warning Events by default; use `--verbose` to include Normal Events.
 - Log analysis for common error/fatal/exception patterns and HTTP 4xx/5xx responses.
 - Use `--logs` to display full current and previous container logs.
-- Cross-service dependency-failure correlation is not implemented yet.
+- Cross-service dependency-failure correlation remains a future enhancement; KTRX does not infer upstream root causes from unrelated workloads.
 
 ### Output and Deployment inspection
 
@@ -131,7 +131,7 @@ The command checks Pod, Service, EndpointSlice/Endpoints, Ingress/IngressClass, 
 
 KTRX uses Kubernetes SelfSubjectAccessReview for RBAC checks. If the identity cannot create SelfSubjectAccessReview resources, the permission results are reported as `UNKNOWN`; ask the cluster administrator to permit that self-review API or verify the listed permissions through the organization's approved process. A passing preflight confirms authorization checks only—it does not validate application health, network reachability or NetworkPolicy enforcement.
 
-### Compare Pods
+### Runtime network checks\n\nRun only the probes you explicitly request, from a selected container in one existing Running Pod. KTRX does not create diagnostic Pods or modify workloads:\n\n```bash\nktrx netcheck nginx-pod -n production --dns kubernetes.default.svc\nktrx netcheck nginx-pod -n production --tcp postgres.production.svc:5432\nktrx netcheck nginx-pod -n production --http https://api.example.com/health\nktrx netcheck nginx-pod -n production --dns api.example.com --tcp api.example.com:443 --http https://api.example.com/health --output json\n```\n\nThe container must contain `/bin/sh` and the required utility: `getent` or `nslookup` for DNS, `nc` for TCP, and `curl` or `wget` for HTTP. Specify `--container` for multi-container Pods. Each probe has a 10-second default timeout; configure it with `--timeout` (maximum 2 minutes). Missing utilities are reported as `UNAVAILABLE`, not as network failures. Probes execute inside the selected container and may generate DNS queries or outbound traffic; use only approved destinations.\n\n### Compare Pods
 
 Compare a known-good reference Pod with a candidate Pod to surface differences in health, container settings, resources, Services, Ingress routes, DNS, NetworkPolicies and diagnostic evidence:
 
@@ -166,7 +166,7 @@ KTRX uses the current kubeconfig, or an explicitly supplied kubeconfig/context. 
 - Services, EndpointSlices (`discovery.k8s.io`) and legacy Endpoints.
 - Ingresses and IngressClasses (`networking.k8s.io`).
 - NetworkPolicies (`networking.k8s.io`) in the Pod namespace.
-- Events and Pod logs (`pods/log`).
+- Events and Pod logs (`pods/log`).\n- For `ktrx netcheck`, create access to `pods/exec` in the selected namespace.
 - Pods across namespaces for Ingress controller discovery.
 
 Some checks may return `UNKNOWN` if the caller lacks the required permissions or the cluster does not expose the information. KTRX does not read or print Secret values.
@@ -192,5 +192,5 @@ internal/analyzer/   Pod inspection and evidence/verdict rules
 
 - Live DNS resolution and outbound TCP/HTTP probes are not implemented.
 - Cross-service dependency-failure correlation is not implemented.
-- NetworkPolicy inspection is declarative; runtime enforcement is not verified.
+- NetworkPolicy inspection is declarative; runtime checks provide path-specific evidence but cannot attribute a failure to NetworkPolicy alone.
 - Gateway API HTTPRoute support and Hubble integration are future enhancements.
