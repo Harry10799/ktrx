@@ -117,6 +117,20 @@ ktrx POD_NAME -n NAMESPACE --no-color
 ktrx POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
+### Cluster preflight
+
+Check Kubernetes API connectivity and the read permissions KTRX uses before investigating a production workload:
+
+```bash
+ktrx doctor -n production
+ktrx doctor -n production --output json
+ktrx doctor -n production --timeout 20s
+```
+
+The command checks Pod, Service, EndpointSlice/Endpoints, Ingress/IngressClass, NetworkPolicy, Event, log, ReplicaSet and Ingress-controller discovery permissions. It is read-only and returns a non-zero exit status if any required permission is denied or cannot be verified.
+
+KTRX uses Kubernetes SelfSubjectAccessReview for RBAC checks. If the identity cannot create SelfSubjectAccessReview resources, the permission results are reported as `UNKNOWN`; ask the cluster administrator to permit that self-review API or verify the listed permissions through the organization's approved process. A passing preflight confirms authorization checks only—it does not validate application health, network reachability or NetworkPolicy enforcement.
+
 ### Compare Pods
 
 Compare a known-good reference Pod with a candidate Pod to surface differences in health, container settings, resources, Services, Ingress routes, DNS, NetworkPolicies and diagnostic evidence:
