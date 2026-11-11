@@ -40,3 +40,33 @@ func TestContainerFailureEvidenceCurrentOOMFailsAndSkipsEmptyMessage(t *testing.
 		}
 	}
 }
+
+func TestAggregateIgnoresNonCriticalUnknownChecks(t *testing.T) {
+	items := []Evidence{
+		{Check: "pod-phase", Verdict: Healthy},
+		{Check: "probe/liveness/app", Verdict: Unknown},
+	}
+	if got := aggregate(items); got != Healthy {
+		t.Fatalf("aggregate() = %s, want HEALTHY when only optional checks are unknown", got)
+	}
+}
+
+func TestAggregateKeepsCriticalUnknownChecksUnknown(t *testing.T) {
+	items := []Evidence{
+		{Check: "pod-phase", Verdict: Healthy},
+		{Check: "pod-events", Verdict: Unknown},
+	}
+	if got := aggregate(items); got != Unknown {
+		t.Fatalf("aggregate() = %s, want UNKNOWN when event collection failed", got)
+	}
+}
+
+func TestAggregateWarningsOutrankNonCriticalUnknown(t *testing.T) {
+	items := []Evidence{
+		{Check: "probe/liveness/app", Verdict: Unknown},
+		{Check: "image-tag/app", Verdict: Warning},
+	}
+	if got := aggregate(items); got != Warning {
+		t.Fatalf("aggregate() = %s, want WARN", got)
+	}
+}
