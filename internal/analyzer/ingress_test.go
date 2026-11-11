@@ -89,3 +89,24 @@ func TestListIngressControllerPodsExcludesUnrelatedPods(t *testing.T) {
 		t.Fatalf("unexpected controller Pod: %s", controllers[0].Name)
 	}
 }
+
+func TestIsIngressControllerPodRequiresIngressNginxIdentity(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels map[string]string
+		want   bool
+	}{
+		{name: "ingress nginx chart labels", labels: map[string]string{"app.kubernetes.io/name": "ingress-nginx", "app.kubernetes.io/component": "controller"}, want: true},
+		{name: "legacy ingress nginx app label", labels: map[string]string{"app": "ingress-nginx"}, want: true},
+		{name: "cert manager controller label", labels: map[string]string{"app.kubernetes.io/name": "cert-manager", "app.kubernetes.io/component": "controller"}, want: false},
+		{name: "generic controller label", labels: map[string]string{"component": "controller"}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := corev1.Pod{ObjectMeta: metav1.ObjectMeta{Labels: tt.labels}}
+			if got := isIngressControllerPod(pod); got != tt.want {
+				t.Fatalf("isIngressControllerPod() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
