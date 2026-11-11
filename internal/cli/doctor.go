@@ -44,7 +44,7 @@ type accessRequirement struct {
 func newDoctorCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output string
 	var timeout time.Duration
-	var noColor bool
+	var noColor, includeNetcheck bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check cluster connectivity and the RBAC permissions KTRX needs",
@@ -61,12 +61,13 @@ func newDoctorCommand() *cobra.Command {
 			defer cancel()
 
 			report := doctorReport{Namespace: namespace, Ready: true, Checks: make([]accessCheck, 0)}
+			requirements := ktrxAccessRequirements(namespace, includeNetcheck)
 			version, versionErr := client.Discovery().ServerVersion()
 			if versionErr != nil {
 				report.Ready = false
 				report.Checks = append(report.Checks, accessCheck{Name: "Kubernetes API connectivity", Resource: "discovery", Verb: "get", Status: "UNKNOWN", Reason: versionErr.Error()})
 				report.Unknown++
-				for _, req := range ktrxAccessRequirements(namespace) {
+				for _, req := range requirements {
 					report.Checks = append(report.Checks, accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace, Status: "UNKNOWN", Reason: "Skipped because Kubernetes API connectivity could not be verified"})
 					report.Unknown++
 				}
@@ -111,11 +112,12 @@ func newDoctorCommand() *cobra.Command {
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal or json")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Overall timeout for the preflight")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
+	cmd.Flags().BoolVar(&includeNetcheck, "include-netcheck", false, "Also check pods/exec permission required by netcheck")
 	return cmd
 }
 
-func ktrxAccessRequirements(namespace string) []accessRequirement {
-	return []accessRequirement{
+func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequirement {
+	requirements := []accessRequirement{
 		{name: "Read Pods", verb: "get", resource: "pods", namespace: namespace},
 		{name: "List Pods for Deployment inspection", verb: "list", resource: "pods", namespace: namespace},
 		{name: "List Services", verb: "list", resource: "services", namespace: namespace},
@@ -126,10 +128,13 @@ func ktrxAccessRequirements(namespace string) []accessRequirement {
 		{name: "List NetworkPolicies", verb: "list", group: "networking.k8s.io", resource: "networkpolicies", namespace: namespace},
 		{name: "List Events", verb: "list", resource: "events", namespace: namespace},
 		{name: "Read container logs", verb: "get", resource: "pods", subresource: "log", namespace: namespace},
-		{name: "Execute explicit in-Pod network probes", verb: "create", resource: "pods", subresource: "exec", namespace: namespace},
 		{name: "Read ReplicaSets", verb: "get", group: "apps", resource: "replicasets", namespace: namespace},
 		{name: "Discover Ingress controller Pods across namespaces", verb: "list", resource: "pods"},
 	}
+	if includeNetcheck {
+		requirements = append(requirements, accessRequirement{name: "Execute explicit in-Pod network probes", verb: "create", resource: "pods", subresource: "exec", namespace: namespace})
+	}
+	return requirements
 }
 
 func checkAccess(ctx context.Context, client kubernetes.Interface, req accessRequirement) accessCheck {
