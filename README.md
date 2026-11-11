@@ -11,12 +11,12 @@
 - Pod overview: phase, readiness, restarts, node, IP, QoS, age, ServiceAccount and labels.
 - Container overview: image, state, readiness, restart count, resource requests and limits.
 - Controller owner chain: Pod → ReplicaSet → Deployment.
+- Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
 - Evidence-based HEALTHY / FAILED / UNKNOWN verdict.
 - Terminal, JSON and Markdown output formats.
 
 ## v0.1 roadmap
 
-- Inbound trace: Service → EndpointSlices/Endpoints → Pod, selector evidence and port mapping.
 - Ingress → Service path.
 - Environment and ConfigMap reference discovery (names only; never Secret values).
 - Pod DNS configuration.
