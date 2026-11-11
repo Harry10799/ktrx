@@ -190,7 +190,7 @@ internal/analyzer/   Pod inspection and evidence/verdict rules
 
 ## Current limitations
 
-- Live DNS resolution and outbound TCP/HTTP probes are not implemented.
+- Cross-service dependency-failure correlation is not implemented.
 - Cross-service dependency-failure correlation is not implemented.
 - NetworkPolicy inspection is declarative; runtime checks provide path-specific evidence but cannot attribute a failure to NetworkPolicy alone.
 - Gateway API HTTPRoute support and Hubble integration are future enhancements.
