@@ -262,7 +262,7 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Unknown, Summary: fmt.Sprintf("%s probe port %q has no matching declared containerPort; the process may still listen on it", item.name, label)})
 			}
 		}
-	}}
+	}
 }
 
 func probePort(probe *corev1.Probe) (int32, string, bool) {
