@@ -83,7 +83,7 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 		enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  ")
 		if all && len(reports) > 1 { return enc.Encode(reports) }; return enc.Encode(reports[0])
 	case "markdown":
-		for i, r := range reports { if i > 0 { fmt.Println("\n---\n") }; if e := printMarkdown(r, includeLogs); e != nil { return e } }; return nil
+		for i, r := range reports { if i > 0 { fmt.Print("\n---\n") }; if e := printMarkdown(r, includeLogs); e != nil { return e } }; return nil
 	case "terminal", "text":
 		if all && len(reports) > 1 && (strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/")) {
 			return printDeploymentTerminal(strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == "")
