@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"strconv"
 	"fmt"
 	"os"
 	"strings"
