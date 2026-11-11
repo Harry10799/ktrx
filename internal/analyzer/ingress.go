@@ -35,7 +35,8 @@ type ingressBackend struct {
 	port    string
 }
 
-func traceIngress(ctx context.Context, client kubernetes.Interface, namespace string, services []ServiceTrace) ([]IngressTrace, []Evidence) {
+func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod, services []ServiceTrace) ([]IngressTrace, []Evidence) {
+	namespace := pod.Namespace
 	serviceNames := make(map[string]struct{}, len(services))
 	for _, svc := range services {
 		serviceNames[svc.Name] = struct{}{}
@@ -67,10 +68,19 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 	var routes []IngressTrace
 	var evidence []Evidence
 	missingBackends := make(map[string]struct{})
+	namespaceNotes := make(map[string]struct{})
+	relatedNames := []string{pod.Name}
+	for _, owner := range pod.OwnerReferences {
+		relatedNames = append(relatedNames, owner.Name)
+	}
 	checkBackend := func(ingressName, serviceName string) bool {
 		if _, exists := existingServices[serviceName]; !exists {
 			key := ingressName + "/" + serviceName
-			missingBackends[key] = struct{}{}
+			related := false
+			for _, name := range relatedNames {
+				if serviceNameRelated(serviceName, name) { related = true; break }
+			}
+			if related { missingBackends[key] = struct{}{} } else { namespaceNotes[key] = struct{}{} }
 			return false
 		}
 		return true
@@ -132,12 +142,25 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 		if routes[i].Host != routes[j].Host { return routes[i].Host < routes[j].Host }
 		return routes[i].Path < routes[j].Path
 	})
-	for key := range missingBackends {
+	missingKeys := make([]string, 0, len(missingBackends))
+	for key := range missingBackends { missingKeys = append(missingKeys, key) }
+	sort.Strings(missingKeys)
+	for _, key := range missingKeys {
 		evidence = append(evidence, Evidence{
 			Check: "ingress-backend/" + key, Verdict: Failed,
 			Summary: "Ingress references a backend Service that does not exist in namespace " + namespace,
 			Details: []string{key},
 			Suggestion: "Create the referenced Service or correct the Ingress backend service name.",
+		})
+	}
+	if len(namespaceNotes) > 0 {
+		noteKeys := make([]string, 0, len(namespaceNotes))
+		for key := range namespaceNotes { noteKeys = append(noteKeys, key) }
+		sort.Strings(noteKeys)
+		evidence = append(evidence, Evidence{
+			Check: "ingress-namespace-note", Verdict: Info,
+			Summary: "Unrelated Ingress resources reference missing backend Services; they were not counted against this Pod",
+			Details: noteKeys,
 		})
 	}
 	if len(routes) == 0 {
