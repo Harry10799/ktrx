@@ -79,40 +79,8 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 		}
 		report.Containers = append(report.Containers, info)
 
-		// Surface actionable container failure reasons directly in verdict evidence.
-		if status.State.Waiting != nil {
-			switch status.State.Waiting.Reason {
-			case "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "RunContainerError":
-				report.Evidence = append(report.Evidence, Evidence{
-					Check: "container-state/" + container.Name, Verdict: Failed,
-					Summary: fmt.Sprintf("Container %s is waiting: %s", container.Name, status.State.Waiting.Reason),
-					Details: []string{status.State.Waiting.Message},
-					Suggestion: "Inspect pod events, image reference, pull credentials and container configuration.",
-				})
-			}
-		}
-		termination := status.State.Terminated
-		if termination == nil && status.LastTerminationState.Terminated != nil {
-			termination = status.LastTerminationState.Terminated
-		}
-		if termination != nil {
-			switch {
-			case termination.Reason == "OOMKilled":
-				report.Evidence = append(report.Evidence, Evidence{
-					Check: "container-termination/" + container.Name, Verdict: Failed,
-					Summary: fmt.Sprintf("Container %s was OOMKilled", container.Name),
-					Details: []string{fmt.Sprintf("exitCode=%d", termination.ExitCode)},
-					Suggestion: "Inspect memory usage and limits; increase the memory limit or reduce application memory consumption.",
-				})
-			case termination.ExitCode != 0:
-				report.Evidence = append(report.Evidence, Evidence{
-					Check: "container-termination/" + container.Name, Verdict: Failed,
-					Summary: fmt.Sprintf("Container %s terminated with exit code %d", container.Name, termination.ExitCode),
-					Details: []string{"reason=" + termination.Reason, "message=" + termination.Message},
-					Suggestion: "Inspect previous container logs and application startup/runtime configuration.",
-				})
-			}
-		}
+		report.Evidence = append(report.Evidence, containerFailureEvidence(container.Name, status)...)
+
 	}
 
 	switch {
@@ -164,6 +132,77 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	report.WarningCount, report.UnknownCount, report.FailedCount = countVerdicts(report.Evidence)
 	report.Verdict = aggregate(report.Evidence)
 	return report, nil
+}
+
+func containerFailureEvidence(name string, status corev1.ContainerStatus) []Evidence {
+	var evidence []Evidence
+	if status.State.Waiting != nil {
+		reason := status.State.Waiting.Reason
+		switch reason {
+		case "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "RunContainerError":
+			details := []string{}
+			if message := strings.TrimSpace(status.State.Waiting.Message); message != "" {
+				details = append(details, "message="+message)
+			}
+			evidence = append(evidence, Evidence{
+				Check: "container-state/" + name, Verdict: Failed,
+				Summary: fmt.Sprintf("Container %s is waiting: %s", name, reason),
+				Details: details,
+				Suggestion: "Inspect pod events, image reference, pull credentials and container configuration.",
+			})
+		}
+	}
+
+	current := status.State.Terminated
+	previous := status.LastTerminationState.Terminated
+	if current != nil {
+		if current.Reason == "OOMKilled" || current.ExitCode != 0 {
+			details := []string{fmt.Sprintf("exitCode=%d", current.ExitCode)}
+			if reason := strings.TrimSpace(current.Reason); reason != "" {
+				details = append(details, "reason="+reason)
+			}
+			if message := strings.TrimSpace(current.Message); message != "" {
+				details = append(details, "message="+message)
+			}
+			summary := fmt.Sprintf("Container %s terminated with exit code %d", name, current.ExitCode)
+			if current.Reason == "OOMKilled" {
+				summary = fmt.Sprintf("Container %s was OOMKilled", name)
+			}
+			evidence = append(evidence, Evidence{
+				Check: "container-termination/" + name, Verdict: Failed,
+				Summary: summary, Details: details,
+				Suggestion: "Inspect previous container logs and application memory/runtime configuration.",
+			})
+		}
+		return evidence
+	}
+
+	if previous != nil && (previous.Reason == "OOMKilled" || previous.ExitCode != 0) {
+		details := []string{fmt.Sprintf("exitCode=%d", previous.ExitCode), fmt.Sprintf("restarts=%d", status.RestartCount)}
+		if reason := strings.TrimSpace(previous.Reason); reason != "" {
+			details = append(details, "reason="+reason)
+		}
+		if message := strings.TrimSpace(previous.Message); message != "" {
+			details = append(details, "message="+message)
+		}
+		readyNow := status.State.Running != nil && status.Ready
+		verdict := Failed
+		state := "previously terminated"
+		if readyNow {
+			verdict = Warning
+			state = "previously terminated but is Running and Ready now"
+		}
+		summary := fmt.Sprintf("Container %s %s with exit code %d", name, state, previous.ExitCode)
+		if previous.Reason == "OOMKilled" {
+			summary = fmt.Sprintf("Container %s was previously OOMKilled; current state is %s", name, state)
+		}
+		evidence = append(evidence, Evidence{
+			Check: "container-last-termination/" + name, Verdict: verdict,
+			Summary: summary, Details: details,
+			Suggestion: "Review restart history and previous container logs; investigate memory pressure if OOMKilled.",
+		})
+	}
+	return evidence
 }
 
 func (a *PodAnalyzer) ownerChain(ctx context.Context, pod *corev1.Pod) []string {
