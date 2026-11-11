@@ -3,14 +3,15 @@ package analyzer
 import (
 	"context"
 	"strings"
+	"regexp"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-const containerLogTailLines int64 = 20
+const containerLogTailLines int64 = 100
 
-func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod) ([]ContainerLogs, []Evidence) {
+func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod, includeAll bool) ([]ContainerLogs, []Evidence) {
 	var results []ContainerLogs
 	var evidence []Evidence
 	for _, container := range pod.Spec.Containers {
@@ -28,7 +29,7 @@ func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod 
 				Suggestion: "Check pod log access permissions and whether the container has started.",
 			})
 		} else {
-			entry.Current = strings.TrimSpace(string(current))
+			entry.Current = filterLogLines(strings.TrimSpace(string(current)), includeAll)
 		}
 
 		var status *corev1.ContainerStatus
@@ -51,10 +52,23 @@ func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod 
 					Suggestion: "Check whether a previous container instance exists and whether pod log access is allowed.",
 				})
 			} else {
-				entry.Previous = strings.TrimSpace(string(previous))
+				entry.Previous = filterLogLines(strings.TrimSpace(string(previous)), includeAll)
 			}
 		}
 		results = append(results, entry)
 	}
 	return results, evidence
+}
+
+var noisyLogPattern = regexp.MustCompile(`(?i)(\b(error|fatal|panic|exception|fail(ed|ure)?|critical)\b|\b[45][0-9]{2}\b|status[=: ]+[45][0-9]{2})`)
+
+func filterLogLines(raw string, includeAll bool) string {
+	if includeAll || strings.TrimSpace(raw) == "" { return raw }
+	lines := strings.Split(raw, "\n")
+	var selected []string
+	for _, line := range lines {
+		if noisyLogPattern.MatchString(line) { selected = append(selected, line) }
+	}
+	if len(selected) == 0 { return "" }
+	return strings.Join(selected, "\n")
 }
