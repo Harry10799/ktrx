@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
@@ -207,6 +206,3 @@ func uniqueSorted(values []string) []string {
 	return result
 }
 
-// Keep a compile-time reference to API error helpers used by callers when
-// deciding whether a missing Endpoints object is an expected fallback.
-var _ = apierrors.IsNotFound
