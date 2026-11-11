@@ -141,7 +141,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 	if len(r.Outbound.Nameservers) > 0 { fmt.Printf("  Nameservers: %s\n", strings.Join(r.Outbound.Nameservers, ", ")) }
 	if len(r.Outbound.Searches) > 0 { fmt.Printf("  Search domains: %s\n", strings.Join(r.Outbound.Searches, ", ")) }
 	if len(r.Outbound.Options) > 0 { fmt.Printf("  Options: %s\n", strings.Join(r.Outbound.Options, ", ")) }
-	if len(r.Outbound.Policies) == 0 { fmt.Println("  • No matching egress NetworkPolicies") }
+	if len(r.Outbound.Policies) == 0 { fmt.Println("  • No matching NetworkPolicies") }
 	for _, p := range r.Outbound.Policies {
 		state := "not egress-isolating"
 		if p.EgressIsolating { state = "egress-isolating" }
