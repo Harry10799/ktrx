@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"strconv"
 	"fmt"
 	"os"
 	"strings"
@@ -201,7 +202,7 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 	printed := 0
 	for _, e := range reports[0].Evidence {
 		if !common[evidenceKey(e)] { continue }
-		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info {
+		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info || e.Verdict == analyzer.Unknown {
 			fmt.Printf("  • [%s] %s: %s\n", e.Verdict, e.Check, e.Summary)
 			if e.Suggestion != "" { fmt.Printf("    Suggestion: %s\n", e.Suggestion) }
 			printed++
@@ -226,12 +227,12 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 	return nil
 }
 
-func evidenceKey(e analyzer.Evidence) string {
+func deploymentVerdictStyle(style func(string,string) string, v analyzer.Verdict) string { color := "245"; symbol := "○"; switch v { case analyzer.Healthy: color, symbol = "42", "✓"; case analyzer.Failed: color, symbol = "196", "✖"; case analyzer.Warning: color, symbol = "214", "▲"; case analyzer.Info: color, symbol = "39", "ℹ"; case analyzer.Unknown: color, symbol = "245", "?" }; return style(color, symbol+" ["+string(v)+"]") }\n\nfunc evidenceKey(e analyzer.Evidence) string {
 	return string(e.Verdict) + "|" + e.Check + "|" + e.Summary
 }
 
 func shortPodName(name string) string {
 	parts := strings.Split(name, "-")
-	if len(parts) > 2 { return "-" + parts[len(parts)-1] }
+	if len(parts) > 2 { return strings.Join(parts[:len(parts)-1], "-") + "-…-" + parts[len(parts)-1] }
 	return name
 }
