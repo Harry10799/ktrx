@@ -38,7 +38,7 @@ NetworkPolicy allow rules are additive across all policies selecting a Pod. KTRX
 - Warning Events by default; use `--verbose` to include Normal Events.
 - Log analysis for common error/fatal/exception patterns and HTTP 4xx/5xx responses.
 - Use `--logs` to display full current and previous container logs.
-- Cross-service dependency-failure correlation remains a future enhancement; KTRX does not infer upstream root causes from unrelated workloads.
+- Direct dependency correlation identifies same-namespace Services explicitly referenced in literal container environment values or commands, then inspects only their selected backend Pods.
 
 ### Output and Deployment inspection
 
@@ -181,6 +181,7 @@ KTRX uses the current kubeconfig, or an explicitly supplied kubeconfig/context. 
 - Ingresses and IngressClasses (`networking.k8s.io`).
 - NetworkPolicies (`networking.k8s.io`) in the Pod namespace.
 - Events and Pod logs (`pods/log`).
+- Dependency correlation also uses list access to Pods and Services in the source namespace.
 - For `ktrx netcheck`, create access to `pods/exec` in the selected namespace.
 - Pods across namespaces for Ingress controller discovery.
 
@@ -205,6 +206,6 @@ internal/analyzer/   Pod inspection and evidence/verdict rules
 
 ## Current limitations
 
-- Cross-service dependency-failure correlation is not implemented.
+- Dependency correlation is limited to explicit same-namespace Service references; values stored only in Secrets/ConfigMaps and cross-namespace/external dependencies are not inspected.
 - NetworkPolicy inspection is declarative; runtime checks provide path-specific evidence but cannot attribute a failure to NetworkPolicy alone.
 - Gateway API HTTPRoute support and Hubble integration are future enhancements.
