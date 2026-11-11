@@ -91,10 +91,16 @@ func traceDependencies(ctx context.Context, client kubernetes.Interface, pod *co
 		for i := range pods.Items {
 			target := &pods.Items[i]
 			if dependencyPodReady(target) { trace.ReadyPods++ } else {
-				trace.UnreadyPods = append(trace.UnreadyPods, target.Name+" ("+string(target.Status.Phase)+")")
+				trace.UnreadyPods = append(trace.UnreadyPods, dependencyPodSummary(target))
 			}
 		}
 		switch {
+		case svc.Spec.PublishNotReadyAddresses:
+			trace.Verdict = Unknown
+			trace.Summary = "Service publishes not-ready addresses; Pod readiness alone cannot determine backend eligibility"
+			evidence = append(evidence, Evidence{Check: "dependency/" + name, Verdict: Unknown, Summary: trace.Summary,
+				Details: append(append([]string{}, trace.References...), trace.UnreadyPods...),
+				Suggestion: "Inspect EndpointSlices and the application's own health signals for this Service."})
 		case trace.SelectedPods == 0:
 			trace.Verdict, trace.Summary = Failed, "Referenced Service selector matches no Pods"
 			evidence = append(evidence, Evidence{Check: "dependency/" + name, Verdict: Failed, Summary: trace.Summary,
@@ -160,4 +166,27 @@ func dependencyPodReady(pod *corev1.Pod) bool {
 		if condition.Type == corev1.PodReady { return condition.Status == corev1.ConditionTrue }
 	}
 	return false
+}
+
+
+func dependencyPodSummary(pod *corev1.Pod) string {
+	parts := []string{string(pod.Status.Phase)}
+	for _, status := range pod.Status.ContainerStatuses {
+		reason := ""
+		switch {
+		case status.State.Waiting != nil:
+			reason = status.State.Waiting.Reason
+		case status.State.Terminated != nil:
+			reason = status.State.Terminated.Reason
+		case status.LastTerminationState.Terminated != nil:
+			reason = "lastTermination=" + status.LastTerminationState.Terminated.Reason
+		}
+		if reason != "" {
+			parts = append(parts, status.Name+":"+reason)
+		}
+		if status.RestartCount > 0 {
+			parts = append(parts, status.Name+" restarts="+strconv.FormatInt(int64(status.RestartCount), 10))
+		}
+	}
+	return pod.Name + " (" + strings.Join(parts, "; ") + ")"
 }
