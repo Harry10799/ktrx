@@ -14,13 +14,13 @@
 - Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
 - Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.
 - Pod Events timeline, ordered by timestamp, including reason, message, count and reporting source.
-- Concise log diagnostics: error/non-2xx lines by default; full current and previous logs with `--logs`.
+- Log analysis: detect common error/fatal/exception patterns and HTTP 4xx/5xx lines; `--logs` displays full current and previous logs. Cross-service dependency-failure correlation is not implemented yet.
 - Warning Events by default; include Normal Events with `--verbose`.
 - Relative timestamps (for example, `31m ago`) in terminal and Markdown output.
-- Deployment replica selection prioritizes not-ready Pods and higher restart counts; `--all` inspects every matching replica.
-- Service targetPort and probe-port checks against declared container ports; undeclared ports remain UNKNOWN rather than being assumed broken.
+- Deployment replica selection prioritizes not-ready Pods and higher restart counts; `--all` inspects every matching replica. Terminal output deduplicates shared findings and shows only per-Pod differences.
+- Service targetPort and probe-port checks against declared container ports; undeclared ports remain UNKNOWN rather than being assumed broken, while a mismatch against declared ports is WARN.
 - Evidence-based verdict precedence: FAILED > WARN > UNKNOWN > HEALTHY, with a summary of warning, unchecked and failed findings.
-- Explicit UNKNOWN findings for checks not performed (probe execution details, DNS resolution, outbound connectivity and log-content analysis).
+- Explicit UNKNOWN findings for checks not performed (DNS resolution, outbound connectivity and cross-service dependency-failure correlation). Missing readiness probes are WARN; missing liveness/startup probes are INFO.
 - Ingress diagnostics: IngressClass existence, controller Pod discovery/readiness and assigned load-balancer addresses.
 - Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
 - Terminal, JSON and Markdown output formats.
@@ -50,11 +50,17 @@ git clone https://github.com/Harry10799/kubetrace.git
 cd kubetrace
 go mod tidy
 go build -o kubetrace ./cmd/kubetrace
+
+# Install into $(go env GOPATH)/bin (add it to PATH if needed)
+go install ./cmd/kubetrace
+
+# Or use the Makefile
+go install github.com/Harry10799/kubetrace/cmd/kubetrace@latest
 ```
 
 ## Usage
 
-The shortest form is the recommended command. The `pod` subcommand is also available, and Deployment targets resolve to one matching Pod.
+If `kubetrace` returns `command not found`, add the Go bin directory to your PATH (for example, `export PATH="$(go env GOPATH)/bin:$PATH"`; persist it in `~/.bashrc` or `~/.zshrc`). The shortest form is the recommended command. The `pod` subcommand is also available, and Deployment targets resolve to one matching Pod.
 
 ```bash
 # Inspect a Pod
