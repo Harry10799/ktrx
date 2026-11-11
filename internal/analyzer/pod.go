@@ -263,6 +263,7 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 			}
 		}
 	}}
+}
 
 func probePort(probe *corev1.Probe) (int32, string, bool) {
 	if probe == nil { return 0, "", false }
