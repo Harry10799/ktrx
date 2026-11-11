@@ -2,12 +2,16 @@ package analyzer
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestTraceInboundNearMatchRequiresStrongSignal(t *testing.T) {
@@ -53,5 +57,20 @@ func TestCloseLabelValue(t *testing.T) {
 	}
 	if closeLabelValue("fe", "be") {
 		t.Fatal("short values must not fuzzy-match")
+	}
+}
+
+func TestTraceInboundServicesRBACDeniedProducesCriticalUnknown(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("list", "services", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "services"}, "", errors.New("forbidden"))
+	})
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "default"}}
+	_, evidence := traceInbound(context.Background(), client, pod)
+	if len(evidence) != 1 || evidence[0].Check != "inbound-services" || evidence[0].Verdict != Unknown {
+		t.Fatalf("expected inbound-services UNKNOWN on RBAC denial, got %+v", evidence)
+	}
+	if got := aggregate(evidence); got != Unknown {
+		t.Fatalf("aggregate() = %s, want UNKNOWN for Service RBAC denial", got)
 	}
 }
