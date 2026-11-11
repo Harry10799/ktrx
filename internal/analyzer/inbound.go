@@ -51,17 +51,35 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 		}
 		selector := labels.Set(svc.Spec.Selector)
 		if !selector.AsSelector().Matches(podLabels) {
-			// Flag only plausible selector mistakes: at least one selector key
-			// exists on the Pod, but its value differs.
 			mismatches := make([]string, 0)
+			plausible := serviceNameRelated(svc.Name, pod.Name)
 			for key, expected := range svc.Spec.Selector {
-				if actual, exists := pod.Labels[key]; exists && actual != expected {
+				actual, exists := pod.Labels[key]
+				if exists && actual != expected {
 					mismatches = append(mismatches, fmt.Sprintf("%s=%s (pod has %s)", key, expected, actual))
+				} else if !exists {
+					mismatches = append(mismatches, fmt.Sprintf("%s=%s (pod has no %s label)", key, expected, key))
+				}
+				for _, podValue := range pod.Labels {
+					if closeLabelValue(expected, podValue) {
+						plausible = true
+					}
 				}
 			}
-			if len(mismatches) > 0 {
+			for _, servicePort := range svc.Spec.Ports {
+				for _, container := range pod.Spec.Containers {
+					for _, containerPort := range container.Ports {
+						if servicePort.TargetPort.Type == 0 && servicePort.TargetPort.IntVal == containerPort.ContainerPort ||
+							servicePort.TargetPort.Type == 1 && servicePort.TargetPort.StrVal != "" && servicePort.TargetPort.StrVal == containerPort.Name ||
+							servicePort.TargetPort.IntVal == 0 && servicePort.TargetPort.StrVal == "" && servicePort.Port == containerPort.ContainerPort {
+							plausible = true
+						}
+					}
+				}
+			}
+			if plausible && len(mismatches) > 0 && serviceHasNoEndpoints(ctx, client, svc) {
 				sort.Strings(mismatches)
-				nearMatches = append(nearMatches, fmt.Sprintf("Service %s selector mismatch: %s", svc.Name, strings.Join(mismatches, ", ")))
+				nearMatches = append(nearMatches, fmt.Sprintf("Service %s selector mismatch: %s (Service currently has no endpoints)", svc.Name, strings.Join(mismatches, ", ")))
 			}
 			continue
 		}
@@ -235,3 +253,58 @@ func uniqueSorted(values []string) []string {
 	return result
 }
 
+
+func serviceNameRelated(serviceName, podName string) bool {
+	serviceName = strings.Trim(serviceName, "-")
+	podName = strings.Trim(podName, "-")
+	return serviceName == podName || strings.HasPrefix(podName, serviceName+"-") ||
+		strings.HasPrefix(serviceName, podName+"-") || closeLabelValue(serviceName, podName)
+}
+
+func closeLabelValue(a, b string) bool {
+	a, b = strings.ToLower(strings.TrimSpace(a)), strings.ToLower(strings.TrimSpace(b))
+	if a == b { return true }
+	if a == "" || b == "" || len(a) > 64 || len(b) > 64 { return false }
+	previous := make([]int, len(b)+1)
+	for j := range previous { previous[j] = j }
+	for i := 1; i <= len(a); i++ {
+		current := make([]int, len(b)+1)
+		current[0] = i
+		minimum := current[0]
+		for j := 1; j <= len(b); j++ {
+			cost := 0
+			if a[i-1] != b[j-1] { cost = 1 }
+			current[j] = minInt(current[j-1]+1, previous[j]+1, previous[j-1]+cost)
+			if current[j] < minimum { minimum = current[j] }
+		}
+		if minimum > 2 { return false }
+		previous = current
+	}
+	return previous[len(b)] <= 2
+}
+
+func minInt(values ...int) int {
+	minimum := values[0]
+	for _, value := range values[1:] { if value < minimum { minimum = value } }
+	return minimum
+}
+
+func serviceHasNoEndpoints(ctx context.Context, client kubernetes.Interface, svc *corev1.Service) bool {
+	slices, err := client.DiscoveryV1().EndpointSlices(svc.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.Set{"kubernetes.io/service-name": svc.Name}.AsSelector().String(),
+	})
+	if err == nil {
+		for _, slice := range slices.Items {
+			for _, endpoint := range slice.Endpoints {
+				if len(endpoint.Addresses) > 0 { return false }
+			}
+		}
+		return true
+	}
+	endpoints, legacyErr := client.CoreV1().Endpoints(svc.Namespace).Get(ctx, svc.Name, metav1.GetOptions{})
+	if legacyErr != nil { return false }
+	for _, subset := range endpoints.Subsets {
+		if len(subset.Addresses)+len(subset.NotReadyAddresses) > 0 { return false }
+	}
+	return true
+}
