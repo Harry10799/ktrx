@@ -13,6 +13,7 @@
 - Controller owner chain: Pod → ReplicaSet → Deployment.
 - Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
 - Evidence-based HEALTHY / FAILED / UNKNOWN verdict.
+- Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
 - Terminal, JSON and Markdown output formats.
 
 ## v0.1 roadmap
@@ -51,6 +52,7 @@ go build -o kubetrace ./cmd/kubetrace
 kubetrace trace POD_NAME -n NAMESPACE
 kubetrace trace POD_NAME -n NAMESPACE --output json
 kubetrace trace POD_NAME -n NAMESPACE --output markdown
+kubetrace trace POD_NAME -n NAMESPACE --no-color
 kubetrace trace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
