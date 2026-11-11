@@ -54,3 +54,40 @@ func TestComparePodsReportsEvidenceByCheck(t *testing.T) {
 		t.Fatalf("unexpected evidence difference: %#v", result.Differences[0])
 	}
 }
+
+func TestComparePodsReportsImagesForUnmatchedContainerNames(t *testing.T) {
+	reference := &analyzer.PodReport{
+		Namespace: "default",
+		Name:      "reference",
+		Containers: []analyzer.ContainerInfo{
+			{Name: "nginx", Image: "nginx:latest"},
+		},
+	}
+	candidate := &analyzer.PodReport{
+		Namespace: "default",
+		Name:      "candidate",
+		Containers: []analyzer.ContainerInfo{
+			{Name: "ktrx-compare-candidate", Image: "nginx:1.27"},
+		},
+	}
+
+	result := comparePods(reference, candidate)
+	want := map[string][2]string{
+		"nginx.image":                  {"nginx:latest", "<absent>"},
+		"ktrx-compare-candidate.image": {"<absent>", "nginx:1.27"},
+	}
+	for field, values := range want {
+		found := false
+		for _, difference := range result.Differences {
+			if difference.Area == "Containers" && difference.Field == field {
+				found = true
+				if difference.Reference != values[0] || difference.Candidate != values[1] {
+					t.Errorf("%s: got %q -> %q, want %q -> %q", field, difference.Reference, difference.Candidate, values[0], values[1])
+				}
+			}
+		}
+		if !found {
+			t.Errorf("expected container image difference for %s", field)
+		}
+	}
+}
