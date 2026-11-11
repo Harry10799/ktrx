@@ -31,6 +31,8 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 		ServiceAccount: pod.Spec.ServiceAccountName, Labels: pod.Labels, Verdict: Healthy,
 	}
 	report.OwnerChain = a.ownerChain(ctx, pod)
+	report.InboundServices, inboundEvidence := traceInbound(ctx, a.Client, pod)
+	report.Evidence = append(report.Evidence, inboundEvidence...)
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
 			report.Ready = true
