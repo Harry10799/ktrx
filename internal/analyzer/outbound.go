@@ -41,11 +41,9 @@ func traceOutbound(ctx context.Context, client kubernetes.Interface, pod *corev1
 		trace.Nameservers = append(trace.Nameservers, pod.Spec.DNSConfig.Nameservers...)
 		trace.Searches = append(trace.Searches, pod.Spec.DNSConfig.Searches...)
 		for _, option := range pod.Spec.DNSConfig.Options {
-			if option != nil {
-				value := option.Name
-				if option.Value != nil { value += ":" + *option.Value }
-				trace.Options = append(trace.Options, value)
-			}
+			value := option.Name
+			if option.Value != nil { value += ":" + *option.Value }
+			trace.Options = append(trace.Options, value)
 		}
 	}
 	evidence := []Evidence{{
