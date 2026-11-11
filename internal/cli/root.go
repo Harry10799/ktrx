@@ -137,6 +137,19 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 	for _,v:=range r.InboundServices { fmt.Printf("  • %s type=%s endpoint=%s ready=%s ports=%s\n",style("39",true,v.Name),v.Type,boolean(v.EndpointFound),endpointReadyLabel(v),strings.Join(v.Ports,", ")) }
 	fmt.Println("\n"+section("Ingress Routes:")); if len(r.IngressRoutes)==0 { fmt.Println("  • No matching Ingress routes") }
 	for _,v:=range r.IngressRoutes { fmt.Printf("  • %s host=%s path=%s service=%s:%s class=%s classExists=%s controller=%d/%d addresses=%s\n",style("39",true,v.Name),v.Host,v.Path,v.Service,v.ServicePort,value(v.Class),boolLabel(v.ClassExists),v.ControllerReady,v.ControllerPods,strings.Join(v.Addresses,", ")) }
+	fmt.Println("\n"+section("Outbound / DNS:"))
+	fmt.Printf("  DNS policy: %s  hostNetwork: %t\n", value(r.Outbound.DNSPolicy), r.Outbound.HostNetwork)
+	if len(r.Outbound.Nameservers) > 0 { fmt.Printf("  Nameservers: %s\n", strings.Join(r.Outbound.Nameservers, ", ")) }
+	if len(r.Outbound.Searches) > 0 { fmt.Printf("  Search domains: %s\n", strings.Join(r.Outbound.Searches, ", ")) }
+	if len(r.Outbound.Options) > 0 { fmt.Printf("  Options: %s\n", strings.Join(r.Outbound.Options, ", ")) }
+	if len(r.Outbound.Policies) == 0 { fmt.Println("  • No matching egress NetworkPolicies") }
+	for _, p := range r.Outbound.Policies {
+		state := "not egress-isolating"
+		if p.EgressIsolating { state = "egress-isolating" }
+		fmt.Printf("  • %s (%s, %d rule(s))\n", p.Name, state, p.RuleCount)
+		if len(p.Destinations) > 0 { fmt.Printf("      To: %s\n", strings.Join(p.Destinations, "; ")) }
+		if len(p.Ports) > 0 { fmt.Printf("      Ports: %s\n", strings.Join(p.Ports, ", ")) }
+	}
 	fmt.Println("\n"+section("Events:")); if len(r.Events)==0 { if includeLogs { fmt.Println("  • No events found") } else { fmt.Println("  • No Warning events (use --verbose to include Normal events)") } }
 	for _,v:=range r.Events { fmt.Printf("  • %s %s count=%d %s %s\n",v.Type,v.Timestamp,v.Count,v.Reason,strings.ReplaceAll(v.Message,"bytes"," bytes")) }
 	fmt.Println("\n"+section("Logs:")); if !includeLogs { fmt.Println("  • Error/non-2xx matches only; use --logs for full logs") }
@@ -152,7 +165,10 @@ func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
 	fmt.Println("\n## Details"); fmt.Printf("- Phase: %s; Ready: %t; Restarts: %d; Node: %s; Pod IP: %s; QoS: %s; Age: %s\n",r.Phase,r.Ready,r.Restarts,value(r.Node),value(r.PodIP),value(r.QOSClass),r.Age)
 	fmt.Println("\n### Containers"); for _,v:=range r.Containers { fmt.Printf("- **%s** — %s; state: %s; ready: %t; restarts: %d\n",v.Name,v.Image,v.State,v.Ready,v.RestartCount) }
 	fmt.Println("\n### Inbound Services"); for _,v:=range r.InboundServices { fmt.Printf("- **%s** (%s): endpoint=%t, ready=%s; ports: %s\n",v.Name,v.Type,v.EndpointFound,endpointReadyLabel(v),strings.Join(v.Ports,", ")) }
-	fmt.Println("\n### Ingress Routes"); for _,v:=range r.IngressRoutes { fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s; class exists: %s; controller ready: %d/%d; addresses: %s\n",v.Name,v.Host,v.Path,v.Service,v.ServicePort,value(v.Class),boolLabel(v.ClassExists),v.ControllerReady,v.ControllerPods,strings.Join(v.Addresses,", ")) }
+	fmt.Println("\n### Ingress Routes");fmt.Println("\n### Outbound / DNS")
+	fmt.Printf("- DNS policy: %s; hostNetwork: %t\n", value(r.Outbound.DNSPolicy), r.Outbound.HostNetwork)
+	for _, p := range r.Outbound.Policies { fmt.Printf("- **%s** — egress isolation: %t; rules: %d; destinations: %s; ports: %s\n", p.Name, p.EgressIsolating, p.RuleCount, strings.Join(p.Destinations, ", "), strings.Join(p.Ports, ", ")) }
+	 for _,v:=range r.IngressRoutes { fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s; class exists: %s; controller ready: %d/%d; addresses: %s\n",v.Name,v.Host,v.Path,v.Service,v.ServicePort,value(v.Class),boolLabel(v.ClassExists),v.ControllerReady,v.ControllerPods,strings.Join(v.Addresses,", ")) }
 	fmt.Println("\n### Events"); for _,v:=range r.Events { fmt.Printf("- **%s %s** — %s (count: %d): %s\n",v.Type,v.Timestamp,v.Reason,v.Count,strings.ReplaceAll(v.Message,"bytes"," bytes")) }
 	fmt.Println("\n### Logs"); if !includeLogs { fmt.Println("Error/non-2xx matches only; use --logs for full logs.") }
 	for _,v:=range r.Logs { if v.Current!="" { fmt.Printf("\n#### %s — current\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n",v.Name,v.Current) }; if v.Previous!="" { fmt.Printf("\n#### %s — previous\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n",v.Name,v.Previous) } }; return nil
@@ -189,8 +205,13 @@ func value(s string) string {
 }
 
 func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEnabled bool) error {
-	style := func(color, value string) string { if !colorEnabled { return value }; return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value) }
-	fmt.Printf("%s %s (%d pods)\n", style("39", "Deployment"), name, len(reports))
+	style := func(color, value string) string {
+		if !colorEnabled { return value }
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
+	}
+	fmt.Printf("%s %s  %s\n", style("39", "◆ KUBETRACE"), style("99", "DEPLOYMENT"), name)
+	fmt.Printf("%s %d replicas inspected\n", style("245", "↳"), len(reports))
+
 	common := map[string]bool{}
 	for _, e := range reports[0].Evidence { common[evidenceKey(e)] = true }
 	for _, r := range reports[1:] {
@@ -198,36 +219,53 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 		for _, e := range r.Evidence { present[evidenceKey(e)] = true }
 		for k := range common { if !present[k] { delete(common, k) } }
 	}
-	fmt.Println("\nShared findings:")
+
+	fmt.Println("\n" + style("99", "SHARED FINDINGS"))
 	printed := 0
 	for _, e := range reports[0].Evidence {
 		if !common[evidenceKey(e)] { continue }
 		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info || e.Verdict == analyzer.Unknown {
-			fmt.Printf("  • [%s] %s: %s\n", e.Verdict, e.Check, e.Summary)
-			if e.Suggestion != "" { fmt.Printf("    Suggestion: %s\n", e.Suggestion) }
+			fmt.Printf("  %s  %s: %s\n", deploymentVerdictStyle(style, e.Verdict), e.Check, e.Summary)
+			if e.Suggestion != "" { fmt.Printf("      ↳ %s\n", e.Suggestion) }
 			printed++
 		}
 	}
-	if printed == 0 { fmt.Println("  • No shared failures or warnings") }
+	if printed == 0 { fmt.Println("  ✓ No shared findings") }
+
 	for _, r := range reports {
-		fmt.Printf("\nPod %s: ", shortPodName(r.Name))
+		fmt.Printf("\n%s %s\n", style("39", "POD"), shortPodName(r.Name))
 		unique := 0
 		for _, e := range r.Evidence {
 			if common[evidenceKey(e)] { continue }
 			if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info || e.Verdict == analyzer.Unknown {
-				if unique == 0 { fmt.Println() }
-				fmt.Printf("  • [%s] %s: %s\n", e.Verdict, e.Check, e.Summary)
+				fmt.Printf("  %s  %s: %s\n", deploymentVerdictStyle(style, e.Verdict), e.Check, e.Summary)
 				unique++
 			}
 		}
-		if unique == 0 { fmt.Println("no differences") }
-		fmt.Printf("  State: phase=%s ready=%t restarts=%d node=%s IP=%s\n", r.Phase, r.Ready, r.Restarts, value(r.Node), value(r.PodIP))
+		if unique == 0 { fmt.Println("  • No pod-specific differences") }
+		readyLabel := "NOT READY"
+		readyVerdict := analyzer.Failed
+		if r.Ready { readyLabel, readyVerdict = "READY", analyzer.Healthy }
+		fmt.Printf("  %s  phase=%s  restarts=%d\n", deploymentVerdictStyle(style, readyVerdict)+" "+readyLabel, r.Phase, r.Restarts)
+		fmt.Printf("  Node: %s  IP: %s\n", value(r.Node), value(r.PodIP))
 	}
-	fmt.Println("\nUse kubetrace POD_NAME -n NAMESPACE --logs for full per-Pod logs.")
+	fmt.Println("\n" + style("245", "Tip: kubetrace POD_NAME -n NAMESPACE --logs shows full per-Pod logs."))
 	return nil
 }
 
-func deploymentVerdictStyle(style func(string,string) string, v analyzer.Verdict) string { color := "245"; symbol := "○"; switch v { case analyzer.Healthy: color, symbol = "42", "✓"; case analyzer.Failed: color, symbol = "196", "✖"; case analyzer.Warning: color, symbol = "214", "▲"; case analyzer.Info: color, symbol = "39", "ℹ"; case analyzer.Unknown: color, symbol = "245", "?" }; return style(color, symbol+" ["+string(v)+"]") }\n\nfunc evidenceKey(e analyzer.Evidence) string {
+func deploymentVerdictStyle(style func(string, string) string, v analyzer.Verdict) string {
+	color, symbol := "245", "○"
+	switch v {
+	case analyzer.Healthy: color, symbol = "42", "✓"
+	case analyzer.Failed: color, symbol = "196", "✖"
+	case analyzer.Warning: color, symbol = "214", "▲"
+	case analyzer.Info: color, symbol = "39", "ℹ"
+	case analyzer.Unknown: color, symbol = "245", "?"
+	}
+	return style(color, symbol+" ["+string(v)+"]")
+}
+
+func evidenceKey(e analyzer.Evidence) string {
 	return string(e.Verdict) + "|" + e.Check + "|" + e.Summary
 }
 
