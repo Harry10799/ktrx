@@ -13,6 +13,8 @@
 - Controller owner chain: Pod → ReplicaSet → Deployment.
 - Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
 - Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.
+- Pod Events timeline, ordered by timestamp, including reason, message, count and reporting source.
+- Bounded current container logs (last 20 lines) and previous-instance logs when a container has restarted.
 - Evidence-based HEALTHY / FAILED / UNKNOWN verdict.
 - Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
 - Terminal, JSON and Markdown output formats.
@@ -21,8 +23,6 @@
 
 - Environment and ConfigMap reference discovery (names only; never Secret values).
 - Pod DNS configuration.
-- Current and previous container logs, grouped errors and dependency context.
-- Events timeline: restarts, OOMKilled, probe failures and exit codes.
 - Mounted ConfigMap, Secret and PVC status.
 - NetworkPolicies selecting the pod (inventory only, not policy evaluation).
 - Evidence and suggested fix for every check.
@@ -56,7 +56,7 @@ kubetrace trace POD_NAME -n NAMESPACE --no-color
 kubetrace trace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
-The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints and Ingresses (`networking.k8s.io`) in the namespace. Inbound tracing reports UNKNOWN when the required endpoint APIs cannot be inspected.
+The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints, Ingresses (`networking.k8s.io`) and Events in the namespace, plus permission to read pod logs (`pods/log`). Event and log retrieval failures are reported as UNKNOWN evidence; warning Events are displayed as diagnostic context and do not independently change the overall verdict.
 
 ## Project layout
 
