@@ -245,21 +245,24 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 			}
 		}
 	}
-	for _, c := range pod.Spec.Containers {
-		for _, probe := range []struct{name string; port int32; set bool}{
-			{"readiness", probePort(c.ReadinessProbe)}, {"liveness", probePort(c.LivenessProbe)}, {"startup", probePort(c.StartupProbe)},
-		} {
-			if !probe.set { continue }
+	for _, container := range pod.Spec.Containers {
+		probes := []struct{name string; probe *corev1.Probe}{
+			{"readiness", container.ReadinessProbe},
+			{"liveness", container.LivenessProbe},
+			{"startup", container.StartupProbe},
+		}
+		for _, item := range probes {
+			port, set := probePort(item.probe)
+			if !set { continue }
 			matched := false
-			for _, cp := range c.Ports { if cp.ContainerPort == probe.port { matched = true } }
+			for _, cp := range container.Ports { if cp.ContainerPort == port { matched = true } }
 			if matched {
-				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + c.Name + "/" + probe.name, Verdict: Healthy, Summary: fmt.Sprintf("%s probe port %d matches a declared containerPort", probe.name, probe.port)})
+				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Healthy, Summary: fmt.Sprintf("%s probe port %d matches a declared containerPort", item.name, port)})
 			} else {
-				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + c.Name + "/" + probe.name, Verdict: Unknown, Summary: fmt.Sprintf("%s probe port %d has no matching declared containerPort; the process may still listen on it", probe.name, probe.port)})
+				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Unknown, Summary: fmt.Sprintf("%s probe port %d has no matching declared containerPort; the process may still listen on it", item.name, port)})
 			}
 		}
-	}
-}
+	}}
 
 func probePort(probe *corev1.Probe) (int32, bool) {
 	if probe == nil { return 0, false }
