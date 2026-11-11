@@ -126,6 +126,7 @@ func ktrxAccessRequirements(namespace string) []accessRequirement {
 		{name: "List NetworkPolicies", verb: "list", group: "networking.k8s.io", resource: "networkpolicies", namespace: namespace},
 		{name: "List Events", verb: "list", resource: "events", namespace: namespace},
 		{name: "Read container logs", verb: "get", resource: "pods", subresource: "log", namespace: namespace},
+		{name: "Execute explicit in-Pod network probes", verb: "create", resource: "pods", subresource: "exec", namespace: namespace},
 		{name: "Read ReplicaSets", verb: "get", group: "apps", resource: "replicasets", namespace: namespace},
 		{name: "Discover Ingress controller Pods across namespaces", verb: "list", resource: "pods"},
 	}
