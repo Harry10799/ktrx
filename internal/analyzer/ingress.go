@@ -149,7 +149,6 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 		}
 		return nil, evidence
 	}
-	evidence = append(evidence, make([]Evidence, 0, len(routes)*3)...)
 	checked := map[string]bool{}
 	for i := range routes {
 		route := &routes[i]
