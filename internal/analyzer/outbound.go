@@ -129,7 +129,7 @@ func traceOutbound(ctx context.Context, client kubernetes.Interface, pod *corev1
 	}
 	evidence = append(evidence, Evidence{Check: "outbound-connectivity", Verdict: Unknown,
 		Summary: "Live outbound connections have not been tested",
-		Suggestion: "Use kubetrace netcheck (planned) or an approved in-container probe to test DNS, TCP and HTTP to a named destination."})
+		Suggestion: "Use ktrx netcheck (planned) or an approved in-container probe to test DNS, TCP and HTTP to a named destination."})
 	return trace, evidence
 }
 
