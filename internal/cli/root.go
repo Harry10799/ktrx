@@ -152,7 +152,7 @@ func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
 	fmt.Println("\n### Containers"); for _,v:=range r.Containers { fmt.Printf("- **%s** — %s; state: %s; ready: %t; restarts: %d\n",v.Name,v.Image,v.State,v.Ready,v.RestartCount) }
 	fmt.Println("\n### Inbound Services"); for _,v:=range r.InboundServices { fmt.Printf("- **%s** (%s): endpoint=%t, ready=%s; ports: %s\n",v.Name,v.Type,v.EndpointFound,endpointReadyLabel(v),strings.Join(v.Ports,", ")) }
 	fmt.Println("\n### Ingress Routes"); for _,v:=range r.IngressRoutes { fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s; class exists: %s; controller ready: %d/%d; addresses: %s\n",v.Name,v.Host,v.Path,v.Service,v.ServicePort,value(v.Class),boolLabel(v.ClassExists),v.ControllerReady,v.ControllerPods,strings.Join(v.Addresses,", ")) }
-	fmt.Println("\n### Events"); for _,v:=range r.Events { fmt.Printf("- **%s %s** — %s (count: %d): %s\n",v.Type,v.Timestamp,v.Reason,v.Count,v.Message) }
+	fmt.Println("\n### Events"); for _,v:=range r.Events { fmt.Printf("- **%s %s** — %s (count: %d): %s\n",v.Type,v.Timestamp,v.Reason,v.Count,strings.ReplaceAll(v.Message,"bytes"," bytes")) }
 	fmt.Println("\n### Logs"); if !includeLogs { fmt.Println("Error/non-2xx matches only; use --logs for full logs.") }
 	for _,v:=range r.Logs { if v.Current!="" { fmt.Printf("\n#### %s — current\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n",v.Name,v.Current) }; if v.Previous!="" { fmt.Printf("\n#### %s — previous\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n",v.Name,v.Previous) } }; return nil
 }
@@ -201,7 +201,7 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 	printed := 0
 	for _, e := range reports[0].Evidence {
 		if !common[evidenceKey(e)] { continue }
-		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning {
+		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info {
 			fmt.Printf("  • [%s] %s: %s\n", e.Verdict, e.Check, e.Summary)
 			if e.Suggestion != "" { fmt.Printf("    Suggestion: %s\n", e.Suggestion) }
 			printed++
