@@ -2,7 +2,7 @@
 
 **kubetrace** is a pod-centric Kubernetes troubleshooting CLI. It starts with one pod and builds an evidence-backed picture of its runtime health and related Kubernetes resources.
 
-> Early development — v0.1 foundation. The implementation is being delivered incrementally.
+> Early development — v0.2 diagnostics. Some checks intentionally remain UNKNOWN until active in-container network and application analysis is implemented.
 
 ## Implemented
 
@@ -15,7 +15,9 @@
 - Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.
 - Pod Events timeline, ordered by timestamp, including reason, message, count and reporting source.
 - Bounded current container logs (last 20 lines) and previous-instance logs when a container has restarted.
-- Evidence-based HEALTHY / FAILED / UNKNOWN verdict.
+- Evidence-based HEALTHY / FAILED / UNKNOWN verdict, with non-failing WARN findings for risky configuration.
+- Explicit UNKNOWN findings for checks not performed (probe execution details, DNS resolution, outbound connectivity and log-content analysis).
+- Ingress diagnostics: IngressClass existence, controller Pod discovery/readiness and assigned load-balancer addresses.
 - Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
 - Terminal, JSON and Markdown output formats.
 
@@ -49,6 +51,9 @@ go build -o kubetrace ./cmd/kubetrace
 ## Usage
 
 ```bash
+kubetrace POD_NAME -n NAMESPACE
+kubetrace pod POD_NAME -n NAMESPACE
+kubetrace deploy/DEPLOYMENT_NAME -n NAMESPACE
 kubetrace trace POD_NAME -n NAMESPACE
 kubetrace trace POD_NAME -n NAMESPACE --output json
 kubetrace trace POD_NAME -n NAMESPACE --output markdown
@@ -56,7 +61,7 @@ kubetrace trace POD_NAME -n NAMESPACE --no-color
 kubetrace trace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
-The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints, Ingresses (`networking.k8s.io`) and Events in the namespace, plus permission to read pod logs (`pods/log`). Event and log retrieval failures are reported as UNKNOWN evidence; warning Events are displayed as diagnostic context and do not independently change the overall verdict.
+The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints, Ingresses (`networking.k8s.io`) and Events in the namespace, plus permission to read pod logs (`pods/log`). Ingress diagnostics also need `get` on cluster-scoped IngressClasses and `list` on Pods across namespaces to discover controller Pods. Event and log retrieval failures are reported as UNKNOWN evidence; warning Events are displayed as diagnostic context and do not independently change the overall verdict. Deployment targets resolve to one matching Pod (the CLI reports which replica it selected).
 
 ## Project layout
 
