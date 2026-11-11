@@ -1,224 +1,212 @@
 # KTRX
 
-**KTRX** stands for **Kubernetes Troubleshooting & Root-cause Explorer**.
+**KTRX (Kubernetes Troubleshooting & Root-cause Explorer)** is an evidence-first Kubernetes troubleshooting CLI. Point it at a Pod or Deployment to inspect workload health, trace inbound Service/Ingress relationships, review recent events and logs, inspect declared egress policy, and compare a known-good Pod with a candidate.
 
-**KTRX** is a pod-centric Kubernetes troubleshooting CLI. Give it a Pod name and it builds an evidence-backed view of that Pod's health, ownership, inbound traffic path, outbound network policy and recent activity.
+KTRX helps answer **“what can we prove from the Kubernetes API right now?”** It reports findings with evidence and suggestions instead of guessing at a root cause.
 
-> **Development status:** early development (v0.2 diagnostics). KTRX is read-only. Checks that require an in-container probe or deeper application correlation are reported as `UNKNOWN` rather than guessed.
+> **Project status:** Early-stage / pre-1.0. Interfaces and diagnostics may change. Review the limitations below before using it in production.
 
-## Features
+## What it can do
 
-### Pod and workload health
+- **Workload health:** Pod readiness and phase, container state, restarts, OOM/termination evidence, resource requests/limits, QoS and owner chain.
+- **Inbound path:** Service selectors, EndpointSlices (with legacy Endpoints fallback), endpoint readiness, Service ports and Ingress host/path backends.
+- **Ingress awareness:** IngressClass lookup and ingress-nginx controller discovery. Other controller implementations are identified as unsupported for controller-Pod discovery rather than treated as failed.
+- **Outbound context:** Pod DNS configuration and NetworkPolicies selecting the Pod, including declared egress isolation, destinations and ports.
+- **Events and logs:** Pod event timeline, common error patterns and HTTP 4xx/5xx access-log entries; optional full current/previous logs.
+- **Dependency clues:** Correlates literal same-namespace Service references in container environment values/commands with selected backend Pod health.
+- **Runtime checks:** Explicit DNS, TCP and HTTP(S) probes from an existing Pod container.
+- **Comparison:** Compare a known-good Pod with a candidate to surface configuration and evidence differences.
+- **Preflight:** Check Kubernetes API connectivity and the RBAC permissions KTRX uses.
+- **Output:** Colorized terminal, JSON and Markdown (command-specific output support is noted below).
 
-- Pod phase, readiness, restart count, node, IP, QoS, age, ServiceAccount and labels.
-- Container image, state, readiness, restart count, resource requests and limits.
-- Owner chain: Pod → ReplicaSet → Deployment.
-- Probe configuration checks. Missing readiness probes are WARN; missing liveness/startup probes are INFO.
-- Evidence-based verdicts: `FAILED`, `UNKNOWN`, `WARN`, and `HEALTHY`.
-- Headline precedence: `FAILED > UNKNOWN (critical evidence unavailable) > WARN > HEALTHY`. Explicitly optional observations (such as probe-port declaration, default Ingress class resolution, Ingress status, and unavailable previous-container logs) remain visible as evidence but do not downgrade the headline.
+## Quick start
 
-### Inbound traffic
+### Requirements
 
-- Service selector matching and backend discovery through EndpointSlices, with legacy Endpoints fallback.
-- Endpoint readiness and Service port → targetPort → declared container-port inspection.
-- Ingress host/path backend tracing.
-- IngressClass lookup, controller Pod discovery/readiness and load-balancer address status.
-
-### Outbound diagnostics
-
-- Pod DNS policy and configured nameservers, search domains and options.
-- Namespace NetworkPolicies that select the Pod.
-- Egress isolation status, declared destination selectors/CIDRs and ports.
-- Explicit, user-selected DNS, TCP and HTTP(S) probes can run inside an existing Pod container with `ktrx netcheck`.
-
-NetworkPolicy allow rules are additive across all policies selecting a Pod. KTRX reports the declared policy configuration; it does not infer that a destination is blocked from one policy in isolation. Run `ktrx netcheck` from the workload Pod to gather runtime evidence. A failed probe alone does not prove NetworkPolicy is the cause; routing, DNS, firewalls, TLS and application health can also affect the result.
-
-### Events and logs
-
-- Pod Events timeline with timestamps, reasons, messages, counts and reporting source.
-- Warning Events by default; use `--verbose` to include Normal Events.
-- Log analysis for common error/fatal/exception patterns and HTTP 4xx/5xx responses.
-- Use `--logs` to display full current and previous container logs.
-- Direct dependency correlation identifies same-namespace Services explicitly referenced in literal container environment values or commands, then inspects only their selected backend Pods. It reports selected/Ready counts, unready Pod names, container waiting/termination reasons and restart counts; inspection is capped at 20 Services per source Pod. Services configured with `publishNotReadyAddresses` remain `UNKNOWN` because Pod readiness does not determine endpoint eligibility.
-
-### Output and Deployment inspection
-
-- Colored terminal output with verdict-aware status colors; disable colors with `--no-color` or `NO_COLOR`.
-- Terminal, JSON and Markdown output formats.
-- Deployment targets select the least healthy matching Pod first (not-ready Pods, then higher restart counts).
-- Use `--all` to inspect every matching replica. Shared findings are shown once, followed by Pod-specific differences.
-
-## Install
-
-**Requirements:** Go 1.23 or later and access to a Kubernetes cluster through a kubeconfig.
-
-### Build from source
-
-```bash
-git clone https://github.com/Harry10799/ktrx.git
-cd ktrx
-go build -o ktrx ./cmd/ktrx
-```
-
-Run the local binary:
-
-```bash
-./ktrx --help
-```
+- Go **1.23+** to build or install from source.
+- A Kubernetes cluster and a working kubeconfig (kubectl should connect to the intended cluster).
+- Kubernetes permissions for the checks you want to run. See [RBAC permissions](#rbac-permissions).
 
 ### Install with Go
 
-```bash
-go install ./cmd/ktrx
-```
+~~~bash
+go install github.com/Harry10799/ktrx/cmd/ktrx@latest
+~~~
 
-Go installs the binary into `$(go env GOPATH)/bin`. Add that directory to your `PATH` if the shell cannot find `ktrx`:
+Ensure $(go env GOPATH)/bin is in your PATH, then verify:
 
-```bash
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
+~~~bash
+ktrx --help
+~~~
 
-Add the export to `~/.bashrc` or `~/.zshrc` to make it persistent.
+### Build from source
 
-### Install with Make
-
-```bash
-make build
-make install
-```
+~~~bash
+git clone https://github.com/Harry10799/ktrx.git
+cd ktrx
+go build -o ktrx ./cmd/ktrx
+./ktrx --help
+~~~
 
 ## Usage
 
-The recommended syntax is to pass the Pod name directly:
+KTRX uses your current kubeconfig context by default. The namespace defaults to default.
 
-```bash
-# Inspect a Pod
-ktrx POD_NAME -n NAMESPACE
+### 1. Inspect a Pod
 
-# Inspect a Deployment (select the least healthy matching Pod)
-ktrx deploy/DEPLOYMENT_NAME -n NAMESPACE
+~~~bash
+ktrx nginx-abc123 -n production
+~~~
 
-# Inspect every Pod belonging to a Deployment
-ktrx deploy/DEPLOYMENT_NAME -n NAMESPACE --all
-```
+Inspect full logs or choose a machine-readable format:
 
-### Options
+~~~bash
+ktrx nginx-abc123 -n production --logs
+ktrx nginx-abc123 -n production --output json
+ktrx nginx-abc123 -n production --output markdown
+~~~
 
-```bash
-# JSON or Markdown output
-ktrx POD_NAME -n NAMESPACE --output json
-ktrx POD_NAME -n NAMESPACE --output markdown
+### 2. Inspect a Deployment
 
-# Logs, verbose Events and color control
-ktrx POD_NAME -n NAMESPACE --logs
-ktrx POD_NAME -n NAMESPACE --verbose
-ktrx POD_NAME -n NAMESPACE --no-color
+By default, KTRX selects the least healthy matching Pod first (not-ready Pods, then higher restart counts):
 
-# Use a specific Kubernetes context
-ktrx POD_NAME -n NAMESPACE --context CONTEXT_NAME
-```
+~~~bash
+ktrx deploy/api -n production
+~~~
 
-### Cluster preflight
+Inspect every matching replica:
 
-Check Kubernetes API connectivity and the read permissions KTRX uses before investigating a production workload:
+~~~bash
+ktrx deploy/api -n production --all
+~~~
 
-```bash
+### 3. Check cluster access before troubleshooting
+
+~~~bash
 ktrx doctor -n production
-ktrx doctor -n production --output json
-ktrx doctor -n production --timeout 20s
+~~~
+
+Include the permission needed for runtime network checks:
+
+~~~bash
 ktrx doctor -n production --include-netcheck
-```
+~~~
 
-The command checks Pod, Service, EndpointSlice/Endpoints, Ingress/IngressClass, NetworkPolicy, Event, log, ReplicaSet and Ingress-controller discovery permissions. Use `--include-netcheck` to additionally verify the `create` permission on `pods/exec` needed by runtime probes. It is read-only and returns a non-zero exit status if any required permission is denied or cannot be verified.
+The preflight uses Kubernetes SelfSubjectAccessReview. If the identity cannot create these review resources, permission results can be UNKNOWN; this does not mean the underlying resource permission is denied.
 
-KTRX uses Kubernetes SelfSubjectAccessReview for RBAC checks. If the identity cannot create SelfSubjectAccessReview resources, the permission results are reported as `UNKNOWN`; ask the cluster administrator to permit that self-review API or verify the listed permissions through the organization's approved process. A passing preflight confirms authorization checks only—it does not validate application health, network reachability or NetworkPolicy enforcement.
+### 4. Run an explicit network check from a Pod
 
-### Runtime network checks
+~~~bash
+ktrx netcheck nginx-abc123 -n production --dns kubernetes.default.svc
+ktrx netcheck nginx-abc123 -n production --tcp postgres.production.svc:5432
+ktrx netcheck nginx-abc123 -n production --http https://api.example.com/health
+~~~
 
-Run only the probes you explicitly request, from a selected container in one existing Running Pod. KTRX does not create diagnostic Pods or modify workloads:
+You can request more than one probe in a single invocation:
 
-```bash
-ktrx netcheck nginx-pod -n production --dns kubernetes.default.svc
-ktrx netcheck nginx-pod -n production --tcp postgres.production.svc:5432
-ktrx netcheck nginx-pod -n production --http https://api.example.com/health
-ktrx netcheck nginx-pod -n production --dns api.example.com --tcp api.example.com:443 --http https://api.example.com/health --output json
-```
+~~~bash
+ktrx netcheck nginx-abc123 -n production \
+  --dns api.example.com \
+  --tcp api.example.com:443 \
+  --http https://api.example.com/health \
+  --output json
+~~~
 
-The container must contain `/bin/sh` and the required utility: `getent` or `nslookup` for DNS, `nc` for TCP, and `curl` or `wget` for HTTP. Specify `--container` for multi-container Pods. Each probe has a 10-second default timeout; configure it with `--timeout` (maximum 2 minutes). Missing utilities are reported as `UNAVAILABLE`, not as network failures. HTTP 4xx/5xx responses are treated as failed HTTP checks. Probes execute inside the selected container and may generate DNS queries or outbound traffic; use only approved destinations.
+The selected container must have /bin/sh and the relevant utility: getent or nslookup for DNS, nc for TCP, and curl or wget for HTTP. Use --container NAME for multi-container Pods. Each probe has a 10-second default timeout (maximum 2 minutes). Missing utilities are reported as unavailable, not as network failures.
 
-### Compare Pods
+### 5. Compare a known-good Pod with a candidate
 
-Compare a known-good reference Pod with a candidate Pod to surface differences in health, container settings, resources, Services, Ingress routes, DNS, NetworkPolicies and diagnostic evidence:
+~~~bash
+ktrx compare api-good-abc api-bad-xyz -n production
+~~~
 
-```bash
-ktrx compare REFERENCE_POD CANDIDATE_POD -n NAMESPACE
-ktrx compare REFERENCE_POD CANDIDATE_POD -n NAMESPACE --output json
-```
+**Argument order matters:** reference Pod first, candidate Pod second. Differences are investigation clues, not proof of causation.
 
-The first Pod is the reference; the second is the candidate being investigated. Differences are clues, not proof of root cause.
+### Common options
 
-### Subcommands and compatibility
+~~~bash
+# Select kubeconfig and context
+ktrx POD -n production --kubeconfig ~/.kube/config --context prod
 
-The explicit `pod` subcommand is also supported:
+# Include Normal Events
+ktrx POD -n production --verbose
 
-```bash
-ktrx pod POD_NAME -n NAMESPACE
-```
+# Disable terminal colors
+ktrx POD -n production --no-color
+~~~
 
-The older `trace` syntax remains available as a backward-compatible alias:
+Use ktrx --help and ktrx <command> --help for the complete command and flag reference.
 
-```bash
-ktrx trace POD_NAME -n NAMESPACE
-```
+## Understanding verdicts
 
-For full per-Pod logs when inspecting a Deployment, run the direct Pod command with `--logs`.
+KTRX attaches a verdict to individual evidence items and produces a headline verdict:
 
-## Live command output demo
+| Verdict | Meaning |
+| --- | --- |
+| FAILED | A concrete failure was observed. |
+| UNKNOWN | Important evidence could not be verified; this is not the same as healthy. |
+| WARN | A risk, degraded condition or configuration concern was observed. |
+| INFO | Context or an optional observation; not counted as a failure. |
+| HEALTHY | The checked condition was observed to be healthy. |
 
-Want to see what KTRX actually prints before installing it? The [KTRX live demo report](docs/DEMO.md) captures real command output in Markdown, including Pod inspection, JSON/Markdown output, Deployment inspection, RBAC preflight, runtime DNS/TCP checks and Pod comparison.
+Headline precedence:
 
-Generate or refresh the report from your own Kubernetes cluster (Minikube is supported):
+~~~text
+FAILED > UNKNOWN (critical evidence unavailable) > WARN > HEALTHY
+~~~
 
-```bash
+Some explicitly optional observations can be UNKNOWN without downgrading the headline. They remain visible in the evidence output. A HEALTHY headline means the checks KTRX could perform did not identify a higher-priority issue; it is **not** a guarantee that the application is correct or reachable from every client.
+
+## Safety and RBAC permissions
+
+KTRX does not create diagnostic Pods or modify workload resources during normal inspection. The netcheck command is opt-in: it executes the requested commands inside an existing Pod container and can generate DNS queries or outbound traffic.
+
+The caller needs read permissions for the resources used by the selected checks, including:
+
+- Pods, Services, EndpointSlices and legacy Endpoints.
+- Ingresses and IngressClasses.
+- NetworkPolicies, Events and pods/log.
+- ReplicaSets for owner-chain inspection.
+- Pod listing across namespaces for Ingress controller discovery.
+- pods/exec create permission for ktrx netcheck.
+- SelfSubjectAccessReview creation for ktrx doctor.
+
+Use ktrx doctor -n NAMESPACE to inspect the required permissions. Grant only the permissions appropriate for your environment. KTRX does not read or print Secret values.
+
+## Live demo
+
+[View the captured KTRX command output](docs/DEMO.md). The report is generated from a real Kubernetes cluster and may reflect that cluster's RBAC, installed controllers and available container utilities.
+
+To regenerate it in your own environment:
+
+~~~bash
 bash scripts/generate-demo.sh
-```
+~~~
 
-The script verifies Kubernetes connectivity, builds KTRX, creates an isolated `ktrx-demo` namespace with a Deployment, Service and Ingress (`ktrx-demo.local`, IngressClass `nginx`), runs the commands, and writes their commands and output to `docs/DEMO.md`. It also captures Minikube status, addon inventory (including whether the ingress addon is enabled), IngressClasses, ingress-nginx controller Pods/Deployments/Services, admission-webhook Service/Endpoints, and the demo Ingress YAML/status/events. The script waits for discovered ingress-nginx Deployments before attempting Ingress creation. An unavailable admission webhook is recorded as a non-fatal demo result so the remaining KTRX checks still run. The script does not enable addons or otherwise modify your Minikube configuration; enable the ingress addon yourself if you want a live controller. The comparison uses matching container names and settings so the image change is easy to identify. Transient scheduling Events from initial placement are cleared after the reference Deployment is ready; readiness is configured while liveness/startup probes are intentionally omitted. It deletes the demo namespace automatically. Set `KEEP_DEMO=1` to retain the resources for inspection. Requirements: Bash, Go, kubectl and a reachable cluster; Minikube CLI is optional but required for addon inventory.
-
-## Kubernetes permissions
-
-KTRX uses the current kubeconfig, or an explicitly supplied kubeconfig/context. The caller needs read access to the resources used by the checks:
-
-- Pods and, when applicable, ReplicaSets.
-- Services, EndpointSlices (`discovery.k8s.io`) and legacy Endpoints.
-- Ingresses and IngressClasses (`networking.k8s.io`).
-- NetworkPolicies (`networking.k8s.io`) in the Pod namespace.
-- Events and Pod logs (`pods/log`).
-- Dependency correlation also uses list access to Pods and Services in the source namespace.
-- For `ktrx netcheck`, create access to `pods/exec` in the selected namespace.
-- Pods across namespaces for Ingress controller discovery.
-
-Some checks may return `UNKNOWN` if the caller lacks the required permissions or the cluster does not expose the information. KTRX does not read or print Secret values.
-
-## Project layout
-
-```text
-cmd/ktrx/       CLI entry point
-internal/cli/        Cobra commands and output formats
-internal/kube/       Kubernetes client construction
-internal/analyzer/   Pod inspection and evidence/verdict rules
-```
-
-## Design principles
-
-1. **Pod-centric:** start with one Pod and follow directly related resources.
-2. **Evidence first:** base findings on observed Kubernetes API state.
-3. **Read-only by default:** do not mutate cluster resources.
-4. **Honest uncertainty:** report unsupported or inaccessible checks as `UNKNOWN`.
-5. **No cluster-wide scan:** complement tools such as Popeye rather than replace them.
+The script requires Bash, Go, kubectl and a reachable cluster; Minikube is optional. It creates an isolated ktrx-demo namespace and removes it when finished. Set KEEP_DEMO=1 to retain the namespace for inspection. The script does not enable Minikube addons or change your cluster configuration. Review the script before running it against a shared cluster.
 
 ## Current limitations
 
-- Dependency correlation is limited to explicit same-namespace Service references in literal environment values and command arguments; values stored only in Secrets/ConfigMaps and cross-namespace/external dependencies are not inspected. A backend health finding is a correlation clue, not proof that the dependency caused the source workload's symptoms.
-- NetworkPolicy inspection is declarative; runtime checks provide path-specific evidence but cannot attribute a failure to NetworkPolicy alone.
-- Gateway API HTTPRoute support and Hubble integration are future enhancements.
+KTRX is an aid for investigation, not an autonomous root-cause oracle.
+
+- Dependency discovery is limited to literal same-namespace Service references in container environment values and command arguments. It does not resolve values stored only in Secrets/ConfigMaps or discover arbitrary cross-namespace/external dependencies.
+- NetworkPolicy analysis describes declared policy configuration. Runtime probe failures can also be caused by DNS, routing, firewalls, TLS or application health; KTRX does not claim a failed probe proves NetworkPolicy is responsible.
+- Runtime probes require suitable utilities inside the chosen container and execute in that container's network context.
+- Ingress controller Pod discovery currently supports ingress-nginx. Other controllers can still have their Ingress routes inspected, but controller-Pod health discovery is not implemented for them.
+- Kubernetes API visibility and RBAC restrictions can cause checks to be reported as UNKNOWN.
+- Gateway API HTTPRoute support and Hubble integration are not currently implemented.
+
+## Contributing
+
+Bug reports, reproducible examples, test cases and focused pull requests are welcome. Please include:
+
+1. KTRX version/commit and Kubernetes version.
+2. The command you ran (redact credentials, tokens, internal hostnames and sensitive data).
+3. Relevant output with --output json where possible.
+4. Expected behavior versus actual behavior.
+
+Please do not attach kubeconfig files, Secret manifests, access tokens or unredacted production logs.
+
+## License
+
+KTRX is licensed under the [Apache License 2.0](LICENSE).
