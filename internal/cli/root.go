@@ -146,6 +146,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
 	fmt.Printf("# Pod trace: %s/%s\n\n**Verdict:** %s (%d warnings, %d not checked, %d failed)\n\n",r.Namespace,r.Name,r.Verdict,r.WarningCount,r.UnknownCount,r.FailedCount)
 	fmt.Println("## Issues"); for _,e:=range r.Evidence { if e.Verdict==analyzer.Failed || e.Verdict==analyzer.Warning { fmt.Printf("- **%s — %s:** %s\n",e.Verdict,e.Check,e.Summary); if e.Suggestion!="" { fmt.Printf("  - Suggestion: %s\n",e.Suggestion) } } }
+	fmt.Println("\n## Info"); for _,e:=range r.Evidence { if e.Verdict==analyzer.Info { fmt.Printf("- **%s:** %s\n",e.Check,e.Summary) } }
 	fmt.Println("\n## Not checked"); for _,e:=range r.Evidence { if e.Verdict==analyzer.Unknown { fmt.Printf("- **%s:** %s\n",e.Check,e.Summary) } }
 	fmt.Println("\n## Details"); fmt.Printf("- Phase: %s; Ready: %t; Restarts: %d; Node: %s; Pod IP: %s; QoS: %s; Age: %s\n",r.Phase,r.Ready,r.Restarts,value(r.Node),value(r.PodIP),value(r.QOSClass),r.Age)
 	fmt.Println("\n### Containers"); for _,v:=range r.Containers { fmt.Printf("- **%s** — %s; state: %s; ready: %t; restarts: %d\n",v.Name,v.Image,v.State,v.Ready,v.RestartCount) }
