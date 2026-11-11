@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sort"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -14,43 +17,73 @@ import (
 )
 
 func NewRootCommand() *cobra.Command {
+	var namespace, kubeconfig, contextName, output string
+	var noColor bool
 	root := &cobra.Command{
-		Use: "kubetrace",
-		Short: "Evidence-based, pod-centric Kubernetes troubleshooting",
+		Use: "kubetrace [POD|deploy/NAME]",
+		Short: "Evidence-based Kubernetes troubleshooting",
 		SilenceUsage: true,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 { return cmd.Help() }
+			return runTrace(cmd, args[0], namespace, kubeconfig, contextName, output, noColor)
+		},
 	}
+	root.Flags().StringVarP(&namespace, "namespace", "n", "default", "Resource namespace")
+	root.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
+	root.Flags().StringVar(&contextName, "context", "", "Kubeconfig context")
+	root.Flags().StringVar(&output, "output", "terminal", "Output format: terminal, json or markdown")
+	root.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
 	root.AddCommand(newTraceCommand())
 	return root
+}
+
+
+func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, output string, noColor bool) error {
+	client, err := kube.NewClient(kubeconfig, contextName)
+	if err != nil { return err }
+	podName := target
+	if strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/") {
+		parts := strings.SplitN(target, "/", 2)
+		deployment, getErr := client.AppsV1().Deployments(namespace).Get(cmd.Context(), parts[1], metav1.GetOptions{})
+		if getErr != nil { return fmt.Errorf("get deployment %s/%s: %w", namespace, parts[1], getErr) }
+		selector, selectorErr := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
+		if selectorErr != nil { return fmt.Errorf("deployment has invalid selector: %w", selectorErr) }
+		pods, listErr := client.CoreV1().Pods(namespace).List(cmd.Context(), metav1.ListOptions{LabelSelector: selector.String()})
+		if listErr != nil { return fmt.Errorf("list deployment pods: %w", listErr) }
+		if len(pods.Items) == 0 { return fmt.Errorf("deployment %s/%s has no matching pods", namespace, parts[1]) }
+		sort.Slice(pods.Items, func(i, j int) bool {
+			ready := func(p appsv1.Deployment) bool { return p.Name != "" }
+			_ = ready
+			return pods.Items[i].Name < pods.Items[j].Name
+		})
+		podName = pods.Items[0].Name
+		fmt.Fprintf(cmd.ErrOrStderr(), "Resolved %s to Pod %s (selected 1 of %d replicas)\\n", target, podName, len(pods.Items))
+	}
+	report, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(cmd.Context(), namespace, podName)
+	if err != nil { return err }
+	switch strings.ToLower(output) {
+	case "json":
+		encoder := json.NewEncoder(os.Stdout); encoder.SetIndent("", "  "); return encoder.Encode(report)
+	case "markdown":
+		return printMarkdown(report)
+	case "terminal", "text":
+		return printTerminal(report, !noColor && os.Getenv("NO_COLOR") == "")
+	default:
+		return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
+	}
 }
 
 func newTraceCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output string
 	var noColor bool
 	cmd := &cobra.Command{
-		Use: "trace POD",
+		Use: "pod POD|deploy/NAME",
+		Aliases: []string{"trace"},
 		Short: "Inspect a pod and report its current health evidence",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := kube.NewClient(kubeconfig, contextName)
-			if err != nil {
-				return err
-			}
-			report, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(cmd.Context(), namespace, args[0])
-			if err != nil {
-				return err
-			}
-			switch strings.ToLower(output) {
-			case "json":
-				encoder := json.NewEncoder(os.Stdout)
-				encoder.SetIndent("", "  ")
-				return encoder.Encode(report)
-			case "markdown":
-				return printMarkdown(report)
-			case "terminal", "text":
-				return printTerminal(report, !noColor && os.Getenv("NO_COLOR") == "")
-			default:
-				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
-			}
+			return runTrace(cmd, args[0], namespace, kubeconfig, contextName, output, noColor)
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Pod namespace")
