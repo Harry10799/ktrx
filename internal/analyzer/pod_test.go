@@ -41,27 +41,51 @@ func TestContainerFailureEvidenceCurrentOOMFailsAndSkipsEmptyMessage(t *testing.
 	}
 }
 
-func TestAggregateIgnoresNonCriticalUnknownChecks(t *testing.T) {
+func TestAggregateIgnoresOnlyExplicitOptionalUnknownChecks(t *testing.T) {
 	items := []Evidence{
 		{Check: "pod-phase", Verdict: Healthy},
 		{Check: "probe/liveness/app", Verdict: Unknown},
+		{Check: "probe/startup/app", Verdict: Unknown},
+		{Check: "outbound-connectivity", Verdict: Unknown},
+		{Check: "dependency-discovery", Verdict: Unknown},
+		{Check: "ingress-address/web", Verdict: Unknown},
 	}
 	if got := aggregate(items); got != Healthy {
-		t.Fatalf("aggregate() = %s, want HEALTHY when only optional checks are unknown", got)
+		t.Fatalf("aggregate() = %s, want HEALTHY when only allowlisted optional checks are unknown", got)
 	}
 }
 
-func TestAggregateKeepsCriticalUnknownChecksUnknown(t *testing.T) {
+func TestAggregateUnknownByDefaultForRBACAndLifecycleChecks(t *testing.T) {
+	checks := []string{
+		"inbound-services",
+		"inbound-endpoint/web",
+		"pod-events",
+		"pod-phase",
+		"pod-lifecycle",
+		"container-logs/app",
+		"ingress-controller/web",
+	}
+	for _, check := range checks {
+		t.Run(check, func(t *testing.T) {
+			items := []Evidence{{Check: check, Verdict: Unknown}}
+			if got := aggregate(items); got != Unknown {
+				t.Fatalf("aggregate(%q) = %s, want UNKNOWN", check, got)
+			}
+		})
+	}
+}
+
+func TestAggregateCriticalUnknownOutranksWarning(t *testing.T) {
 	items := []Evidence{
-		{Check: "pod-phase", Verdict: Healthy},
-		{Check: "pod-events", Verdict: Unknown},
+		{Check: "image-tag/app", Verdict: Warning},
+		{Check: "inbound-services", Verdict: Unknown},
 	}
 	if got := aggregate(items); got != Unknown {
-		t.Fatalf("aggregate() = %s, want UNKNOWN when event collection failed", got)
+		t.Fatalf("aggregate() = %s, want UNKNOWN when critical evidence is unavailable", got)
 	}
 }
 
-func TestAggregateWarningsOutrankNonCriticalUnknown(t *testing.T) {
+func TestAggregateOptionalUnknownDoesNotHideWarning(t *testing.T) {
 	items := []Evidence{
 		{Check: "probe/liveness/app", Verdict: Unknown},
 		{Check: "image-tag/app", Verdict: Warning},
