@@ -134,7 +134,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled bool) error {
 	fmt.Println("\n" + section("Ingress Routes:"))
 	if len(r.IngressRoutes) == 0 { fmt.Println("  • No Ingress routes reference matching Services") }
 	for _, route := range r.IngressRoutes {
-		fmt.Printf("  • %s  host=%s  path=%s  service=%s:%s  class=%s\n", style("39", true, route.Name), route.Host, route.Path, route.Service, route.ServicePort, value(route.Class))
+		fmt.Printf("  • %s  host=%s  path=%s  service=%s:%s  class=%s  classExists=%s  controller=%d/%d  addresses=%s\n", style("39", true, route.Name), route.Host, route.Path, route.Service, route.ServicePort, value(route.Class), boolLabel(route.ClassExists), route.ControllerReady, route.ControllerPods, strings.Join(route.Addresses, ", "))
 	}
 	fmt.Println("\n" + section("Events Timeline:"))
 	if len(r.Events) == 0 { fmt.Println("  • No events found for this Pod") }
@@ -177,7 +177,7 @@ func printMarkdown(r *analyzer.PodReport) error {
 	fmt.Println("\n## Ingress Routes")
 	if len(r.IngressRoutes) == 0 { fmt.Println("- No Ingress routes reference matching Services") }
 	for _, route := range r.IngressRoutes {
-		fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s\n", route.Name, route.Host, route.Path, route.Service, route.ServicePort, value(route.Class))
+		fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s; class exists: %s; controller ready: %d/%d; addresses: %s\n", route.Name, route.Host, route.Path, route.Service, route.ServicePort, value(route.Class), boolLabel(route.ClassExists), route.ControllerReady, route.ControllerPods, strings.Join(route.Addresses, ", "))
 	}
 	fmt.Println("\n## Events Timeline")
 	if len(r.Events) == 0 { fmt.Println("- No events found for this Pod") }
