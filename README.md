@@ -176,13 +176,13 @@ For full per-Pod logs when inspecting a Deployment, run the direct Pod command w
 
 Want to see what KTRX actually prints before installing it? The [KTRX live demo report](docs/DEMO.md) captures real command output in Markdown, including Pod inspection, JSON/Markdown output, Deployment inspection, RBAC preflight, runtime DNS/TCP checks and Pod comparison.
 
-Generate or refresh the report from your own Kubernetes cluster:
+Generate or refresh the report from your own Kubernetes cluster (Minikube is supported):
 
 ```bash
 bash scripts/generate-demo.sh
 ```
 
-The script verifies Kubernetes connectivity, builds KTRX, creates an isolated `ktrx-demo` namespace with sample workloads, runs the commands, and writes their commands and output to `docs/DEMO.md`. The comparison uses matching container names and settings so the image change is easy to identify. Transient scheduling Events from initial placement are cleared after the reference Deployment is ready; readiness is configured while liveness/startup probes are intentionally omitted. It deletes the demo namespace automatically. Set `KEEP_DEMO=1` to retain the resources for inspection. Requirements: Bash, Go, kubectl and a reachable cluster.
+The script verifies Kubernetes connectivity, builds KTRX, creates an isolated `ktrx-demo` namespace with a Deployment, Service and Ingress (`ktrx-demo.local`, IngressClass `nginx`), runs the commands, and writes their commands and output to `docs/DEMO.md`. It also captures Minikube status, addon inventory (including whether the ingress addon is enabled), IngressClasses, ingress-nginx controller Pods/Services, and the demo Ingress YAML/status/events. The script does not enable addons or otherwise modify your Minikube configuration; enable the ingress addon yourself if you want a live controller. If it is disabled, the Ingress resource is still created and KTRX can report the missing/pending controller evidence. The comparison uses matching container names and settings so the image change is easy to identify. Transient scheduling Events from initial placement are cleared after the reference Deployment is ready; readiness is configured while liveness/startup probes are intentionally omitted. It deletes the demo namespace automatically. Set `KEEP_DEMO=1` to retain the resources for inspection. Requirements: Bash, Go, kubectl and a reachable cluster; Minikube CLI is optional but required for addon inventory.
 
 ## Kubernetes permissions
 
