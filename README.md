@@ -1,21 +1,38 @@
 # kubetrace
 
-**kubetrace** is a pod-centric Kubernetes troubleshooting CLI. It follows the path into a pod, gathers related configuration and runtime evidence, and reports a verdict with actionable suggestions.
+**kubetrace** is a pod-centric Kubernetes troubleshooting CLI. It starts with one pod and builds an evidence-backed picture of its runtime health and related Kubernetes resources.
 
-> v0.1 focuses on read-only Kubernetes API inspection. It does not modify cluster resources, expose Secret values, run cluster-wide scans, or make AI-generated guesses.
+> Early development — v0.1 foundation. The implementation is being delivered incrementally.
 
-## v0.1 scope
+## Implemented
 
-- Pod overview: status, readiness, restarts, node, IP, QoS, age, owner chain, images, resources, probes and ServiceAccount.
-- Inbound trace: Service → EndpointSlices/Endpoints → Pod, including selector evidence and port mapping.
-- Best-effort outbound references from environment variables and ConfigMaps (names only; never Secret values).
-- Pod DNS configuration, mounted volumes and ConfigMap/Secret/PVC references.
-- Pod-selecting NetworkPolicies (inventory only; no policy evaluation).
-- Events and current/previous container logs.
-- Evidence-based HEALTHY / FAILED / UNKNOWN verdicts.
-- Terminal, JSON and Markdown output.
+- Go CLI built with Cobra.
+- Kubernetes client using the current kubeconfig, optional kubeconfig path and context.
+- Pod overview: phase, readiness, restarts, node, IP, QoS, age, ServiceAccount and labels.
+- Container overview: image, state, readiness, restart count, resource requests and limits.
+- Controller owner chain: Pod → ReplicaSet → Deployment.
+- Evidence-based HEALTHY / FAILED / UNKNOWN verdict.
+- Terminal, JSON and Markdown output formats.
 
-Ingress tracing, deeper dependency correlation and complete log/event analysis are being built incrementally. v0.2 is planned to add in-pod DNS checks, healthy-vs-broken diffing, Gateway API HTTPRoute support, and node/resource context when metrics-server is available.
+## v0.1 roadmap
+
+- Inbound trace: Service → EndpointSlices/Endpoints → Pod, selector evidence and port mapping.
+- Ingress → Service path.
+- Environment and ConfigMap reference discovery (names only; never Secret values).
+- Pod DNS configuration.
+- Current and previous container logs, grouped errors and dependency context.
+- Events timeline: restarts, OOMKilled, probe failures and exit codes.
+- Mounted ConfigMap, Secret and PVC status.
+- NetworkPolicies selecting the pod (inventory only, not policy evaluation).
+- Evidence and suggested fix for every check.
+
+## Later
+
+- DNS resolution from inside the pod (UNKNOWN when permissions prevent the check).
+- Healthy-vs-broken diff.
+- Gateway API HTTPRoute support.
+- Node conditions and resource usage when metrics-server is available.
+- NetworkPolicy blocked-by analysis and Hubble integration.
 
 ## Install / build
 
@@ -31,18 +48,13 @@ go build -o kubetrace ./cmd/kubetrace
 ## Usage
 
 ```bash
-# Inspect a pod in the current kubeconfig context
 kubetrace trace POD_NAME -n NAMESPACE
-
-# Structured output
 kubetrace trace POD_NAME -n NAMESPACE --output json
 kubetrace trace POD_NAME -n NAMESPACE --output markdown
-
-# Use a specific kubeconfig context
 kubetrace trace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
-The caller needs read permissions for the resources being inspected (Pods, their owner resources, Services, EndpointSlices/Endpoints, Events, logs, ConfigMaps, PVCs and NetworkPolicies). Missing optional permissions are reported as UNKNOWN where possible; Secret data is never printed.
+The caller needs permission to read the target pod and its ReplicaSet owner when applicable. Additional v0.1 analyzers will require read access to their respective Kubernetes resources.
 
 ## Project layout
 
@@ -55,12 +67,8 @@ internal/analyzer/   Pod inspection and evidence/verdict rules
 
 ## Design principles
 
-1. **Pod-centric:** start from one pod; follow only directly related resources.
-2. **Evidence first:** every verdict is backed by observed Kubernetes state.
+1. **Pod-centric:** inspect one requested pod and follow only directly related resources.
+2. **Evidence first:** verdicts are based on observed Kubernetes state.
 3. **Safe by default:** read-only API calls; never print Secret values.
-4. **Honest uncertainty:** unavailable permissions or unsupported checks produce UNKNOWN, not guessed conclusions.
-5. **No cluster-wide scan:** kubetrace is complementary to tools such as Popeye.
-
-## Status
-
-Early development — v0.1 foundation. APIs and output may evolve.
+4. **Honest uncertainty:** unavailable permissions or unsupported checks produce UNKNOWN rather than guesses.
+5. **No cluster-wide scan:** kubetrace complements tools such as Popeye; it does not replace them.
