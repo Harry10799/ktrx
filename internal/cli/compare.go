@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Harry10799/ktrx/internal/analyzer"
 	"github.com/Harry10799/ktrx/internal/kube"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -21,11 +21,11 @@ type podDifference struct {
 }
 
 type podComparison struct {
-	Namespace  string           `json:"namespace"`
-	Reference  string           `json:"referencePod"`
-	Candidate  string           `json:"candidatePod"`
+	Namespace   string          `json:"namespace"`
+	Reference   string          `json:"referencePod"`
+	Candidate   string          `json:"candidatePod"`
 	Differences []podDifference `json:"differences"`
-	Summary    string           `json:"summary"`
+	Summary     string          `json:"summary"`
 }
 
 func newCompareCommand() *cobra.Command {
@@ -38,15 +38,22 @@ func newCompareCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := kube.NewClient(kubeconfig, contextName)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			reference, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(cmd.Context(), namespace, args[0])
-			if err != nil { return fmt.Errorf("analyze reference pod: %w", err) }
+			if err != nil {
+				return fmt.Errorf("analyze reference pod: %w", err)
+			}
 			candidate, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(cmd.Context(), namespace, args[1])
-			if err != nil { return fmt.Errorf("analyze candidate pod: %w", err) }
+			if err != nil {
+				return fmt.Errorf("analyze candidate pod: %w", err)
+			}
 			result := comparePods(reference, candidate)
 			switch strings.ToLower(output) {
 			case "json":
-				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  ")
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
 				return enc.Encode(result)
 			case "markdown":
 				return printComparisonMarkdown(result)
@@ -82,18 +89,27 @@ func comparePods(reference, candidate *analyzer.PodReport) podComparison {
 
 	containerMap := func(items []analyzer.ContainerInfo) map[string]analyzer.ContainerInfo {
 		out := make(map[string]analyzer.ContainerInfo, len(items))
-		for _, item := range items { out[item.Name] = item }
+		for _, item := range items {
+			out[item.Name] = item
+		}
 		return out
 	}
 	leftContainers, rightContainers := containerMap(reference.Containers), containerMap(candidate.Containers)
 	names := map[string]bool{}
-	for name := range leftContainers { names[name] = true }
-	for name := range rightContainers { names[name] = true }
+	for name := range leftContainers {
+		names[name] = true
+	}
+	for name := range rightContainers {
+		names[name] = true
+	}
 	ordered := make([]string, 0, len(names))
-	for name := range names { ordered = append(ordered, name) }
+	for name := range names {
+		ordered = append(ordered, name)
+	}
 	sort.Strings(ordered)
 	for _, name := range ordered {
-		left, leftOK := leftContainers[name]; right, rightOK := rightContainers[name]
+		left, leftOK := leftContainers[name]
+		right, rightOK := rightContainers[name]
 		if !leftOK {
 			add("Containers", name+".name", "<absent>", "present")
 			add("Containers", name+".image", "<absent>", right.Image)
@@ -127,9 +143,13 @@ func comparePods(reference, candidate *analyzer.PodReport) podComparison {
 }
 
 func canonical(value any) string {
-	if value == nil { return "—" }
+	if value == nil {
+		return "—"
+	}
 	data, err := json.Marshal(value)
-	if err != nil { return fmt.Sprint(value) }
+	if err != nil {
+		return fmt.Sprint(value)
+	}
 	return string(data)
 }
 
@@ -138,21 +158,29 @@ func serviceSignature(r *analyzer.PodReport) string {
 	for _, s := range r.InboundServices {
 		items = append(items, fmt.Sprintf("%s|%s|%s|%t|%t|%s", s.Name, s.Type, strings.Join(s.Ports, ","), s.EndpointFound, s.EndpointReady, canonical(s.Selector)))
 	}
-	sort.Strings(items); return strings.Join(items, "; ")
+	sort.Strings(items)
+	return strings.Join(items, "; ")
 }
 func ingressSignature(r *analyzer.PodReport) string {
 	items := make([]string, 0, len(r.IngressRoutes))
-	for _, v := range r.IngressRoutes { items = append(items, fmt.Sprintf("%s|%s|%s|%s|%s|%s", v.Name, v.Host, v.Path, v.Service, v.ServicePort, v.Class)) }
-	sort.Strings(items); return strings.Join(items, "; ")
+	for _, v := range r.IngressRoutes {
+		items = append(items, fmt.Sprintf("%s|%s|%s|%s|%s|%s", v.Name, v.Host, v.Path, v.Service, v.ServicePort, v.Class))
+	}
+	sort.Strings(items)
+	return strings.Join(items, "; ")
 }
 func dnsSignature(r *analyzer.PodReport) string {
 	return fmt.Sprintf("policy=%s hostNetwork=%t nameservers=%s searches=%s options=%s", r.Outbound.DNSPolicy, r.Outbound.HostNetwork, strings.Join(r.Outbound.Nameservers, ","), strings.Join(r.Outbound.Searches, ","), strings.Join(r.Outbound.Options, ","))
 }
 func policySignature(r *analyzer.PodReport) string {
 	items := make([]string, 0, len(r.Outbound.Policies))
-	for _, p := range r.Outbound.Policies { items = append(items, fmt.Sprintf("%s|%s|%t|%d|%s|%s", p.Name, p.PodSelector, p.EgressIsolating, p.RuleCount, strings.Join(p.Destinations, ","), strings.Join(p.Ports, ","))) }
-	sort.Strings(items); return strings.Join(items, "; ")
+	for _, p := range r.Outbound.Policies {
+		items = append(items, fmt.Sprintf("%s|%s|%t|%d|%s|%s", p.Name, p.PodSelector, p.EgressIsolating, p.RuleCount, strings.Join(p.Destinations, ","), strings.Join(p.Ports, ",")))
+	}
+	sort.Strings(items)
+	return strings.Join(items, "; ")
 }
+
 // addEvidenceDifferences compares stable, per-check diagnostic findings.
 // Log analysis is intentionally excluded: log contents are runtime observations
 // and commonly differ between otherwise identical replicas.
@@ -171,10 +199,16 @@ func addEvidenceDifferences(result *podComparison, reference, candidate []analyz
 	}
 	left, right := index(reference), index(candidate)
 	checks := make(map[string]bool, len(left)+len(right))
-	for check := range left { checks[check] = true }
-	for check := range right { checks[check] = true }
+	for check := range left {
+		checks[check] = true
+	}
+	for check := range right {
+		checks[check] = true
+	}
 	ordered := make([]string, 0, len(checks))
-	for check := range checks { ordered = append(ordered, check) }
+	for check := range checks {
+		ordered = append(ordered, check)
+	}
 	sort.Strings(ordered)
 	for _, check := range ordered {
 		l, lok := left[check]
@@ -196,13 +230,17 @@ func addEvidenceDifferences(result *podComparison, reference, candidate []analyz
 
 func printComparisonTerminal(r podComparison, colorEnabled bool) error {
 	style := func(color, value string) string {
-		if !colorEnabled { return value }
+		if !colorEnabled {
+			return value
+		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
 	fmt.Printf("%s  %s/%s\n", style("39", "◆ KTRX COMPARE"), r.Namespace, r.Candidate)
 	fmt.Printf("Reference: %s\nCandidate: %s\n", r.Reference, r.Candidate)
 	fmt.Println("\n" + style("99", "DIFFERENCES"))
-	if len(r.Differences) == 0 { fmt.Println("  ✓ No differences found") }
+	if len(r.Differences) == 0 {
+		fmt.Println("  ✓ No differences found")
+	}
 	for _, d := range r.Differences {
 		fmt.Printf("  %s %s / %s\n", style("214", "Δ"), d.Area, d.Field)
 		fmt.Printf("      Reference: %s\n      Candidate: %s\n", value(d.Reference), value(d.Candidate))

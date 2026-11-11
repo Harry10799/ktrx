@@ -41,36 +41,36 @@ type EventInfo struct {
 }
 
 type ContainerLogs struct {
-	Name         string `json:"name" yaml:"name"`
-	Current      string `json:"current,omitempty" yaml:"current,omitempty"`
-	Previous     string `json:"previous,omitempty" yaml:"previous,omitempty"`
-	CurrentError string `json:"currentError,omitempty" yaml:"currentError,omitempty"`
+	Name          string `json:"name" yaml:"name"`
+	Current       string `json:"current,omitempty" yaml:"current,omitempty"`
+	Previous      string `json:"previous,omitempty" yaml:"previous,omitempty"`
+	CurrentError  string `json:"currentError,omitempty" yaml:"currentError,omitempty"`
 	PreviousError string `json:"previousError,omitempty" yaml:"previousError,omitempty"`
 }
 
 type PodReport struct {
-	Namespace      string          `json:"namespace" yaml:"namespace"`
-	Name           string          `json:"name" yaml:"name"`
-	Phase          string          `json:"phase" yaml:"phase"`
-	Ready          bool            `json:"ready" yaml:"ready"`
-	Restarts       int32           `json:"restarts" yaml:"restarts"`
-	Node           string          `json:"node,omitempty" yaml:"node,omitempty"`
-	PodIP          string          `json:"podIP,omitempty" yaml:"podIP,omitempty"`
-	QOSClass       string          `json:"qosClass,omitempty" yaml:"qosClass,omitempty"`
-	Age            string          `json:"age" yaml:"age"`
-	ServiceAccount string          `json:"serviceAccount,omitempty" yaml:"serviceAccount,omitempty"`
-	OwnerChain     []string        `json:"ownerChain,omitempty" yaml:"ownerChain,omitempty"`
-	Labels         map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
-	Containers     []ContainerInfo `json:"containers" yaml:"containers"`
+	Namespace       string            `json:"namespace" yaml:"namespace"`
+	Name            string            `json:"name" yaml:"name"`
+	Phase           string            `json:"phase" yaml:"phase"`
+	Ready           bool              `json:"ready" yaml:"ready"`
+	Restarts        int32             `json:"restarts" yaml:"restarts"`
+	Node            string            `json:"node,omitempty" yaml:"node,omitempty"`
+	PodIP           string            `json:"podIP,omitempty" yaml:"podIP,omitempty"`
+	QOSClass        string            `json:"qosClass,omitempty" yaml:"qosClass,omitempty"`
+	Age             string            `json:"age" yaml:"age"`
+	ServiceAccount  string            `json:"serviceAccount,omitempty" yaml:"serviceAccount,omitempty"`
+	OwnerChain      []string          `json:"ownerChain,omitempty" yaml:"ownerChain,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Containers      []ContainerInfo   `json:"containers" yaml:"containers"`
 	Dependencies    []DependencyTrace `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
-	InboundServices []ServiceTrace `json:"inboundServices,omitempty" yaml:"inboundServices,omitempty"`
-	IngressRoutes   []IngressTrace `json:"ingressRoutes,omitempty" yaml:"ingressRoutes,omitempty"`
-	Outbound        OutboundTrace  `json:"outbound" yaml:"outbound"`
-	Events          []EventInfo    `json:"events,omitempty" yaml:"events,omitempty"`
-	Logs            []ContainerLogs `json:"logs,omitempty" yaml:"logs,omitempty"`
-	Evidence       []Evidence      `json:"evidence" yaml:"evidence"`
-	Verdict        Verdict         `json:"verdict" yaml:"verdict"`
-	WarningCount   int             `json:"warningCount" yaml:"warningCount"`
-	UnknownCount   int             `json:"unknownCount" yaml:"unknownCount"`
-	FailedCount    int             `json:"failedCount" yaml:"failedCount"`
+	InboundServices []ServiceTrace    `json:"inboundServices,omitempty" yaml:"inboundServices,omitempty"`
+	IngressRoutes   []IngressTrace    `json:"ingressRoutes,omitempty" yaml:"ingressRoutes,omitempty"`
+	Outbound        OutboundTrace     `json:"outbound" yaml:"outbound"`
+	Events          []EventInfo       `json:"events,omitempty" yaml:"events,omitempty"`
+	Logs            []ContainerLogs   `json:"logs,omitempty" yaml:"logs,omitempty"`
+	Evidence        []Evidence        `json:"evidence" yaml:"evidence"`
+	Verdict         Verdict           `json:"verdict" yaml:"verdict"`
+	WarningCount    int               `json:"warningCount" yaml:"warningCount"`
+	UnknownCount    int               `json:"unknownCount" yaml:"unknownCount"`
+	FailedCount     int               `json:"failedCount" yaml:"failedCount"`
 }

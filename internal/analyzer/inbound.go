@@ -14,16 +14,16 @@ import (
 
 // ServiceTrace describes one Service whose selector matches the traced pod.
 type ServiceTrace struct {
-	Name              string            `json:"name" yaml:"name"`
-	Type              string            `json:"type" yaml:"type"`
-	ClusterIP         string            `json:"clusterIP,omitempty" yaml:"clusterIP,omitempty"`
-	Selector          map[string]string `json:"selector,omitempty" yaml:"selector,omitempty"`
-	Ports             []string          `json:"ports,omitempty" yaml:"ports,omitempty"`
-	EndpointSource    string            `json:"endpointSource,omitempty" yaml:"endpointSource,omitempty"`
-	EndpointFound     bool              `json:"endpointFound" yaml:"endpointFound"`
-	EndpointReady     bool              `json:"endpointReady" yaml:"endpointReady"`
-	EndpointReadyKnown bool             `json:"endpointReadyKnown" yaml:"endpointReadyKnown"`
-	EndpointAddresses []string          `json:"endpointAddresses,omitempty" yaml:"endpointAddresses,omitempty"`
+	Name               string            `json:"name" yaml:"name"`
+	Type               string            `json:"type" yaml:"type"`
+	ClusterIP          string            `json:"clusterIP,omitempty" yaml:"clusterIP,omitempty"`
+	Selector           map[string]string `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Ports              []string          `json:"ports,omitempty" yaml:"ports,omitempty"`
+	EndpointSource     string            `json:"endpointSource,omitempty" yaml:"endpointSource,omitempty"`
+	EndpointFound      bool              `json:"endpointFound" yaml:"endpointFound"`
+	EndpointReady      bool              `json:"endpointReady" yaml:"endpointReady"`
+	EndpointReadyKnown bool              `json:"endpointReadyKnown" yaml:"endpointReadyKnown"`
+	EndpointAddresses  []string          `json:"endpointAddresses,omitempty" yaml:"endpointAddresses,omitempty"`
 }
 
 // traceInbound discovers Services selecting the pod and verifies that the pod
@@ -34,8 +34,8 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 	if err != nil {
 		return nil, []Evidence{{
 			Check: "inbound-services", Verdict: Unknown,
-			Summary: "Could not list Services in the pod namespace",
-			Details: []string{err.Error()},
+			Summary:    "Could not list Services in the pod namespace",
+			Details:    []string{err.Error()},
 			Suggestion: "Grant read access to Services in the namespace and retry.",
 		}}
 	}
@@ -106,8 +106,8 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 			} else if sliceErr != nil && legacyErr != nil {
 				evidence = append(evidence, Evidence{
 					Check: "inbound-endpoint/" + svc.Name, Verdict: Unknown,
-					Summary: "Could not inspect EndpointSlices or Endpoints for Service " + svc.Name,
-					Details: []string{sliceErr.Error(), legacyErr.Error()},
+					Summary:    "Could not inspect EndpointSlices or Endpoints for Service " + svc.Name,
+					Details:    []string{sliceErr.Error(), legacyErr.Error()},
 					Suggestion: "Grant read access to discovery.k8s.io EndpointSlices and core Endpoints.",
 				})
 				traces = append(traces, trace)
@@ -119,14 +119,14 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 		case !trace.EndpointFound:
 			evidence = append(evidence, Evidence{
 				Check: "inbound-endpoint/" + svc.Name, Verdict: Failed,
-				Summary: fmt.Sprintf("Service %s selects this pod, but the pod is not present in its endpoints", svc.Name),
+				Summary:    fmt.Sprintf("Service %s selects this pod, but the pod is not present in its endpoints", svc.Name),
 				Suggestion: "Check the Service selector, pod labels, readiness and EndpointSlice/Endpoints controller state.",
 			})
 		case trace.EndpointReadyKnown && !trace.EndpointReady:
 			evidence = append(evidence, Evidence{
 				Check: "inbound-endpoint/" + svc.Name, Verdict: Failed,
-				Summary: fmt.Sprintf("Pod is registered in Service %s endpoints but is not ready", svc.Name),
-				Details: trace.EndpointAddresses,
+				Summary:    fmt.Sprintf("Pod is registered in Service %s endpoints but is not ready", svc.Name),
+				Details:    trace.EndpointAddresses,
 				Suggestion: "Inspect pod readiness conditions and readiness probes.",
 			})
 		case !trace.EndpointReadyKnown:
@@ -149,8 +149,8 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 		sort.Strings(nearMatches)
 		evidence = append(evidence, Evidence{
 			Check: "inbound-service-selector", Verdict: Warning,
-			Summary: "One or more Services have selectors that nearly match this Pod but use different label values",
-			Details: nearMatches,
+			Summary:    "One or more Services have selectors that nearly match this Pod but use different label values",
+			Details:    nearMatches,
 			Suggestion: "Compare each Service spec.selector with the Pod labels; correct the selector or Pod labels if this Service is intended to route to this Pod.",
 		})
 	}
@@ -245,14 +245,15 @@ func uniqueSorted(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))
 	for _, value := range values {
-		if _, ok := seen[value]; ok { continue }
+		if _, ok := seen[value]; ok {
+			continue
+		}
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
 	sort.Strings(result)
 	return result
 }
-
 
 func serviceNameRelated(serviceName, workloadName string) bool {
 	serviceName = strings.Trim(serviceName, "-")
@@ -266,9 +267,13 @@ func serviceNameRelated(serviceName, workloadName string) bool {
 	// web-7d9f...). Match meaningful hyphen-delimited tokens, not arbitrary
 	// single-character overlaps.
 	for _, serviceToken := range strings.Split(serviceName, "-") {
-		if len(serviceToken) < 4 { continue }
+		if len(serviceToken) < 4 {
+			continue
+		}
 		for _, workloadToken := range strings.Split(workloadName, "-") {
-			if serviceToken == workloadToken { return true }
+			if serviceToken == workloadToken {
+				return true
+			}
 		}
 	}
 	return false
@@ -276,21 +281,33 @@ func serviceNameRelated(serviceName, workloadName string) bool {
 
 func closeLabelValue(a, b string) bool {
 	a, b = strings.ToLower(strings.TrimSpace(a)), strings.ToLower(strings.TrimSpace(b))
-	if a == b { return true }
-	if a == "" || b == "" || len(a) < 5 || len(b) < 5 || len(a) > 64 || len(b) > 64 { return false }
+	if a == b {
+		return true
+	}
+	if a == "" || b == "" || len(a) < 5 || len(b) < 5 || len(a) > 64 || len(b) > 64 {
+		return false
+	}
 	previous := make([]int, len(b)+1)
-	for j := range previous { previous[j] = j }
+	for j := range previous {
+		previous[j] = j
+	}
 	for i := 1; i <= len(a); i++ {
 		current := make([]int, len(b)+1)
 		current[0] = i
 		minimum := current[0]
 		for j := 1; j <= len(b); j++ {
 			cost := 0
-			if a[i-1] != b[j-1] { cost = 1 }
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
 			current[j] = minInt(current[j-1]+1, previous[j]+1, previous[j-1]+cost)
-			if current[j] < minimum { minimum = current[j] }
+			if current[j] < minimum {
+				minimum = current[j]
+			}
 		}
-		if minimum > 2 { return false }
+		if minimum > 2 {
+			return false
+		}
 		previous = current
 	}
 	return previous[len(b)] <= 2
@@ -298,7 +315,11 @@ func closeLabelValue(a, b string) bool {
 
 func minInt(values ...int) int {
 	minimum := values[0]
-	for _, value := range values[1:] { if value < minimum { minimum = value } }
+	for _, value := range values[1:] {
+		if value < minimum {
+			minimum = value
+		}
+	}
 	return minimum
 }
 
@@ -309,15 +330,21 @@ func serviceHasNoEndpoints(ctx context.Context, client kubernetes.Interface, svc
 	if err == nil {
 		for _, slice := range slices.Items {
 			for _, endpoint := range slice.Endpoints {
-				if len(endpoint.Addresses) > 0 { return false }
+				if len(endpoint.Addresses) > 0 {
+					return false
+				}
 			}
 		}
 		return true
 	}
 	endpoints, legacyErr := client.CoreV1().Endpoints(svc.Namespace).Get(ctx, svc.Name, metav1.GetOptions{})
-	if legacyErr != nil { return false }
+	if legacyErr != nil {
+		return false
+	}
 	for _, subset := range endpoints.Subsets {
-		if len(subset.Addresses)+len(subset.NotReadyAddresses) > 0 { return false }
+		if len(subset.Addresses)+len(subset.NotReadyAddresses) > 0 {
+			return false
+		}
 	}
 	return true
 }

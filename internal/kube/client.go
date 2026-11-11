@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	"k8s.io/client-go/rest"
 )
 
 // NewRESTConfig loads Kubernetes connection details for client-go operations.

@@ -18,17 +18,17 @@ import (
 // the pod being inspected. It does not claim that the external load balancer
 // or DNS is reachable.
 type IngressTrace struct {
-	Name        string   `json:"name" yaml:"name"`
-	Class       string   `json:"class,omitempty" yaml:"class,omitempty"`
-	Host        string   `json:"host" yaml:"host"`
-	Path        string   `json:"path" yaml:"path"`
-	PathType    string   `json:"pathType,omitempty" yaml:"pathType,omitempty"`
-	Service     string   `json:"service" yaml:"service"`
-	ServicePort string   `json:"servicePort" yaml:"servicePort"`
-	ClassExists *bool `json:"classExists,omitempty" yaml:"classExists,omitempty"`
-	ControllerPods int `json:"controllerPods,omitempty" yaml:"controllerPods,omitempty"`
-	ControllerReady int `json:"controllerReady,omitempty" yaml:"controllerReady,omitempty"`
-	Addresses []string `json:"addresses,omitempty" yaml:"addresses,omitempty"`
+	Name            string   `json:"name" yaml:"name"`
+	Class           string   `json:"class,omitempty" yaml:"class,omitempty"`
+	Host            string   `json:"host" yaml:"host"`
+	Path            string   `json:"path" yaml:"path"`
+	PathType        string   `json:"pathType,omitempty" yaml:"pathType,omitempty"`
+	Service         string   `json:"service" yaml:"service"`
+	ServicePort     string   `json:"servicePort" yaml:"servicePort"`
+	ClassExists     *bool    `json:"classExists,omitempty" yaml:"classExists,omitempty"`
+	ControllerPods  int      `json:"controllerPods,omitempty" yaml:"controllerPods,omitempty"`
+	ControllerReady int      `json:"controllerReady,omitempty" yaml:"controllerReady,omitempty"`
+	Addresses       []string `json:"addresses,omitempty" yaml:"addresses,omitempty"`
 }
 
 type ingressBackend struct {
@@ -60,8 +60,8 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 	if err != nil {
 		return nil, []Evidence{{
 			Check: "ingress-routes", Verdict: Unknown,
-			Summary: "Could not list Ingress resources in the pod namespace",
-			Details: []string{err.Error()},
+			Summary:    "Could not list Ingress resources in the pod namespace",
+			Details:    []string{err.Error()},
 			Suggestion: "Grant read access to networking.k8s.io Ingress resources in the namespace.",
 		}}
 	}
@@ -79,9 +79,16 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 			key := ingressName + "/" + serviceName
 			related := false
 			for _, name := range relatedNames {
-				if serviceNameRelated(serviceName, name) { related = true; break }
+				if serviceNameRelated(serviceName, name) {
+					related = true
+					break
+				}
 			}
-			if related { missingBackends[key] = struct{}{} } else { namespaceNotes[key] = struct{}{} }
+			if related {
+				missingBackends[key] = struct{}{}
+			} else {
+				namespaceNotes[key] = struct{}{}
+			}
 			return false
 		}
 		return true
@@ -97,9 +104,9 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 			if checkBackend(ing.Name, backend.service) {
 				if _, ok := serviceNames[backend.service]; ok {
 					routes = append(routes, IngressTrace{
-					Name: ing.Name, Class: className, Host: "*",
-					Path: "/", PathType: "DefaultBackend",
-					Service: backend.service, ServicePort: backend.port,
+						Name: ing.Name, Class: className, Host: "*",
+						Path: "/", PathType: "DefaultBackend",
+						Service: backend.service, ServicePort: backend.port,
 					})
 				}
 			}
@@ -139,24 +146,32 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 	}
 
 	sort.Slice(routes, func(i, j int) bool {
-		if routes[i].Name != routes[j].Name { return routes[i].Name < routes[j].Name }
-		if routes[i].Host != routes[j].Host { return routes[i].Host < routes[j].Host }
+		if routes[i].Name != routes[j].Name {
+			return routes[i].Name < routes[j].Name
+		}
+		if routes[i].Host != routes[j].Host {
+			return routes[i].Host < routes[j].Host
+		}
 		return routes[i].Path < routes[j].Path
 	})
 	missingKeys := make([]string, 0, len(missingBackends))
-	for key := range missingBackends { missingKeys = append(missingKeys, key) }
+	for key := range missingBackends {
+		missingKeys = append(missingKeys, key)
+	}
 	sort.Strings(missingKeys)
 	for _, key := range missingKeys {
 		evidence = append(evidence, Evidence{
 			Check: "ingress-backend/" + key, Verdict: Failed,
-			Summary: "Ingress references a backend Service that does not exist in namespace " + namespace,
-			Details: []string{key},
+			Summary:    "Ingress references a backend Service that does not exist in namespace " + namespace,
+			Details:    []string{key},
 			Suggestion: "Create the referenced Service or correct the Ingress backend service name.",
 		})
 	}
 	if len(namespaceNotes) > 0 {
 		noteKeys := make([]string, 0, len(namespaceNotes))
-		for key := range namespaceNotes { noteKeys = append(noteKeys, key) }
+		for key := range namespaceNotes {
+			noteKeys = append(noteKeys, key)
+		}
 		sort.Strings(noteKeys)
 		evidence = append(evidence, Evidence{
 			Check: "ingress-namespace-note", Verdict: Info,
@@ -183,8 +198,12 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 				evidence = append(evidence, Evidence{Check: "ingress-status/" + route.Name, Verdict: Unknown, Summary: "Could not inspect Ingress status", Details: []string{getErr.Error()}})
 			} else {
 				for _, item := range ing.Status.LoadBalancer.Ingress {
-					if item.IP != "" { route.Addresses = append(route.Addresses, item.IP) }
-					if item.Hostname != "" { route.Addresses = append(route.Addresses, item.Hostname) }
+					if item.IP != "" {
+						route.Addresses = append(route.Addresses, item.IP)
+					}
+					if item.Hostname != "" {
+						route.Addresses = append(route.Addresses, item.Hostname)
+					}
 				}
 				if route.Class == "" {
 					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Unknown, Summary: "Ingress does not specify ingressClassName; default class resolution was not verified"})
@@ -212,9 +231,13 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 					route.ControllerPods = 0
 					route.ControllerReady = 0
 					for _, controller := range controllers {
-						if !isIngressControllerPod(controller) { continue }
+						if !isIngressControllerPod(controller) {
+							continue
+						}
 						route.ControllerPods++
-						if controller.Status.Phase == corev1.PodRunning && podReady(controller) { route.ControllerReady++ }
+						if controller.Status.Phase == corev1.PodRunning && podReady(controller) {
+							route.ControllerReady++
+						}
 					}
 					if route.ControllerPods == 0 {
 						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "No controller pods found with the supported controller labels; controller discovery may be implementation-specific"})
@@ -227,7 +250,7 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 			}
 		}
 		evidence = append(evidence, Evidence{
-			Check: "ingress-route/" + route.Name,
+			Check:   "ingress-route/" + route.Name,
 			Verdict: Healthy,
 			Summary: fmt.Sprintf("Ingress %s routes host %s path %s to Service %s:%s", route.Name, route.Host, route.Path, route.Service, route.ServicePort),
 			Details: []string{"class=" + valueOrUnknown(route.Class), "pathType=" + valueOrUnknown(route.PathType)},
@@ -248,14 +271,20 @@ func promoteRoutedSelectorMismatches(ctx context.Context, client kubernetes.Inte
 			backends[ing.Spec.DefaultBackend.Service.Name] = struct{}{}
 		}
 		for _, rule := range ing.Spec.Rules {
-			if rule.HTTP == nil { continue }
+			if rule.HTTP == nil {
+				continue
+			}
 			for _, path := range rule.HTTP.Paths {
-				if path.Backend.Service != nil { backends[path.Backend.Service.Name] = struct{}{} }
+				if path.Backend.Service != nil {
+					backends[path.Backend.Service.Name] = struct{}{}
+				}
 			}
 		}
 	}
 	for i := range evidence {
-		if evidence[i].Check != "inbound-service-selector" { continue }
+		if evidence[i].Check != "inbound-service-selector" {
+			continue
+		}
 		for _, detail := range evidence[i].Details {
 			for serviceName := range backends {
 				if strings.HasPrefix(detail, "Service "+serviceName+" selector mismatch:") {
@@ -270,7 +299,6 @@ func promoteRoutedSelectorMismatches(ctx context.Context, client kubernetes.Inte
 }
 
 func boolPointer(v bool) *bool { return &v }
-
 
 // listIngressControllerPods uses narrow label queries rather than listing every
 // Pod in every namespace. Multiple selectors cover common ingress controller
@@ -295,8 +323,12 @@ func listIngressControllerPods(ctx context.Context, client kubernetes.Interface)
 		for i := range list.Items {
 			pod := list.Items[i]
 			key := pod.Namespace + "/" + pod.Name
-			if _, ok := seen[key]; ok { continue }
-			if !isIngressControllerPod(pod) { continue }
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			if !isIngressControllerPod(pod) {
+				continue
+			}
 			seen[key] = struct{}{}
 			pods = append(pods, pod)
 		}
@@ -316,7 +348,9 @@ func isIngressControllerPod(pod corev1.Pod) bool {
 
 func podReady(pod corev1.Pod) bool {
 	for _, condition := range pod.Status.Conditions {
-		if condition.Type == corev1.PodReady { return condition.Status == corev1.ConditionTrue }
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
 	}
 	return false
 }
@@ -334,6 +368,8 @@ func ingressServiceBackend(backend *networkingv1.IngressServiceBackend) ingressB
 }
 
 func valueOrUnknown(v string) string {
-	if v == "" { return "unknown" }
+	if v == "" {
+		return "unknown"
+	}
 	return v
 }

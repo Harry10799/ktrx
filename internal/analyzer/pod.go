@@ -12,8 +12,8 @@ import (
 )
 
 type PodAnalyzer struct {
-	Client kubernetes.Interface
-	IncludeLogs bool
+	Client        kubernetes.Interface
+	IncludeLogs   bool
 	VerboseEvents bool
 }
 
@@ -29,7 +29,7 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	report := &PodReport{
 		Namespace: pod.Namespace, Name: pod.Name, Phase: string(pod.Status.Phase),
 		Node: pod.Spec.NodeName, PodIP: pod.Status.PodIP, QOSClass: string(pod.Status.QOSClass),
-		Age: relativeTime(pod.CreationTimestamp.Time),
+		Age:            relativeTime(pod.CreationTimestamp.Time),
 		ServiceAccount: pod.Spec.ServiceAccountName, Labels: pod.Labels, Verdict: Healthy,
 	}
 	report.OwnerChain = a.ownerChain(ctx, pod)
@@ -45,7 +45,9 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	promoteRoutedSelectorMismatches(ctx, a.Client, pod, report.Evidence)
 	events, eventEvidence := collectPodEvents(ctx, a.Client, pod, a.VerboseEvents)
 	report.Events = events
-	if eventEvidence != nil { report.Evidence = append(report.Evidence, *eventEvidence) }
+	if eventEvidence != nil {
+		report.Evidence = append(report.Evidence, *eventEvidence)
+	}
 	logs, logEvidence := collectContainerLogs(ctx, a.Client, pod, a.IncludeLogs)
 	report.Logs = logs
 	report.Evidence = append(report.Evidence, logEvidence...)
@@ -113,14 +115,22 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Failed, Summary: "Readiness probe is configured but Pod Ready condition is not True", Suggestion: "Inspect probe path, port, thresholds and container logs."})
 		}
 		var optionalMissing []string
-		if container.LivenessProbe == nil { optionalMissing = append(optionalMissing, "liveness") } else {
+		if container.LivenessProbe == nil {
+			optionalMissing = append(optionalMissing, "liveness")
+		} else {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Unknown, Summary: "Liveness probe is configured; current execution result is not directly exposed in Pod status"})
 		}
-		if container.StartupProbe == nil { optionalMissing = append(optionalMissing, "startup") } else {
+		if container.StartupProbe == nil {
+			optionalMissing = append(optionalMissing, "startup")
+		} else {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Unknown, Summary: "Startup probe is configured; current execution result is not directly exposed in Pod status"})
 		}
-		if len(optionalMissing) > 0 { report.Evidence = append(report.Evidence, Evidence{Check: "probes-optional/" + container.Name, Verdict: Info, Summary: "No " + strings.Join(optionalMissing, "/") + " probe configured; add only when required by the application"}) }
-		if imageUsesMutableTag(container.Image) { report.Evidence = append(report.Evidence, Evidence{Check: "image-tag/" + container.Name, Verdict: Warning, Summary: "Container image uses a mutable or implicit tag: " + container.Image, Suggestion: "Pin the image to an immutable digest or a controlled version tag."}) }
+		if len(optionalMissing) > 0 {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probes-optional/" + container.Name, Verdict: Info, Summary: "No " + strings.Join(optionalMissing, "/") + " probe configured; add only when required by the application"})
+		}
+		if imageUsesMutableTag(container.Image) {
+			report.Evidence = append(report.Evidence, Evidence{Check: "image-tag/" + container.Name, Verdict: Warning, Summary: "Container image uses a mutable or implicit tag: " + container.Image, Suggestion: "Pin the image to an immutable digest or a controlled version tag."})
+		}
 	}
 	if pod.Status.QOSClass == corev1.PodQOSBestEffort {
 		report.Evidence = append(report.Evidence, Evidence{Check: "resource-qos", Verdict: Warning, Summary: "Pod QoS is BestEffort; containers have no CPU or memory requests/limits", Suggestion: "Define appropriate resource requests and limits to improve scheduling and resource isolation."})
@@ -147,8 +157,8 @@ func containerFailureEvidence(name string, status corev1.ContainerStatus) []Evid
 			}
 			evidence = append(evidence, Evidence{
 				Check: "container-state/" + name, Verdict: Failed,
-				Summary: fmt.Sprintf("Container %s is waiting: %s", name, reason),
-				Details: details,
+				Summary:    fmt.Sprintf("Container %s is waiting: %s", name, reason),
+				Details:    details,
 				Suggestion: "Inspect pod events, image reference, pull credentials and container configuration.",
 			})
 		}
@@ -254,7 +264,9 @@ func quantities(values corev1.ResourceList) map[string]string {
 func imageUsesMutableTag(image string) bool {
 	lastSlash := strings.LastIndex(image, "/")
 	lastColon := strings.LastIndex(image, ":")
-	if lastColon <= lastSlash { return true }
+	if lastColon <= lastSlash {
+		return true
+	}
 	tag := image[lastColon+1:]
 	return tag == "" || tag == "latest"
 }
@@ -269,7 +281,9 @@ func aggregate(items []Evidence) Verdict {
 		case Warning:
 			result = Warning
 		case Unknown:
-			if result != Warning { result = Unknown }
+			if result != Warning {
+				result = Unknown
+			}
 		}
 	}
 	return result
@@ -278,9 +292,12 @@ func aggregate(items []Evidence) Verdict {
 func countVerdicts(items []Evidence) (warnings, unknown, failed int) {
 	for _, item := range items {
 		switch item.Verdict {
-		case Warning: warnings++
-		case Unknown: unknown++
-		case Failed: failed++
+		case Warning:
+			warnings++
+		case Unknown:
+			unknown++
+		case Failed:
+			failed++
 		}
 	}
 	return
@@ -292,7 +309,9 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 	for _, svc := range report.InboundServices {
 		for _, sp := range svc.Ports {
 			parts := strings.SplitN(sp, " -> ", 2)
-			if len(parts) != 2 { continue }
+			if len(parts) != 2 {
+				continue
+			}
 			target := strings.SplitN(parts[1], "/", 2)[0]
 			var targetPort int32
 			_, scanErr := fmt.Sscanf(target, "%d", &targetPort)
@@ -311,7 +330,10 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 			} else {
 				declared := false
 				for _, container := range pod.Spec.Containers {
-					if len(container.Ports) > 0 { declared = true; break }
+					if len(container.Ports) > 0 {
+						declared = true
+						break
+					}
 				}
 				verdict := Unknown
 				summary := fmt.Sprintf("Service %s targetPort %q has no matching declared containerPort; the application may still listen on it", svc.Name, target)
@@ -324,23 +346,33 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 		}
 	}
 	for _, container := range pod.Spec.Containers {
-		probes := []struct{name string; probe *corev1.Probe}{
+		probes := []struct {
+			name  string
+			probe *corev1.Probe
+		}{
 			{"readiness", container.ReadinessProbe},
 			{"liveness", container.LivenessProbe},
 			{"startup", container.StartupProbe},
 		}
 		for _, item := range probes {
 			port, portName, set := probePort(item.probe)
-			if !set { continue }
+			if !set {
+				continue
+			}
 			matched := false
 			for _, cp := range container.Ports {
-				if (portName == "" && cp.ContainerPort == port) || (portName != "" && cp.Name == portName) { matched = true; port = cp.ContainerPort }
+				if (portName == "" && cp.ContainerPort == port) || (portName != "" && cp.Name == portName) {
+					matched = true
+					port = cp.ContainerPort
+				}
 			}
 			if matched {
 				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Healthy, Summary: fmt.Sprintf("%s probe port resolves to declared containerPort %d", item.name, port)})
 			} else {
 				label := portName
-				if label == "" { label = fmt.Sprintf("%d", port) }
+				if label == "" {
+					label = fmt.Sprintf("%d", port)
+				}
 				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Unknown, Summary: fmt.Sprintf("%s probe port %q has no matching declared containerPort; the process may still listen on it", item.name, label)})
 			}
 		}
@@ -348,13 +380,19 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 }
 
 func probePort(probe *corev1.Probe) (int32, string, bool) {
-	if probe == nil { return 0, "", false }
+	if probe == nil {
+		return 0, "", false
+	}
 	switch {
 	case probe.HTTPGet != nil:
-		if probe.HTTPGet.Port.Type == 0 { return probe.HTTPGet.Port.IntVal, "", true }
+		if probe.HTTPGet.Port.Type == 0 {
+			return probe.HTTPGet.Port.IntVal, "", true
+		}
 		return 0, probe.HTTPGet.Port.StrVal, true
 	case probe.TCPSocket != nil:
-		if probe.TCPSocket.Port.Type == 0 { return probe.TCPSocket.Port.IntVal, "", true }
+		if probe.TCPSocket.Port.Type == 0 {
+			return probe.TCPSocket.Port.IntVal, "", true
+		}
 		return 0, probe.TCPSocket.Port.StrVal, true
 	case probe.GRPC != nil:
 		return probe.GRPC.Port, "", true

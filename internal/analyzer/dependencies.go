@@ -39,11 +39,15 @@ func traceDependencies(ctx context.Context, client kubernetes.Interface, pod *co
 			Details: []string{err.Error()}, Suggestion: "Grant list access to Services in the source Pod namespace."}}
 	}
 	serviceByName := make(map[string]*corev1.Service, len(services.Items))
-	for i := range services.Items { serviceByName[services.Items[i].Name] = &services.Items[i] }
+	for i := range services.Items {
+		serviceByName[services.Items[i].Name] = &services.Items[i]
+	}
 	references := map[string][]string{}
 	for _, container := range pod.Spec.Containers {
 		for _, env := range container.Env {
-			if env.Value == "" { continue }
+			if env.Value == "" {
+				continue
+			}
 			for _, name := range referencedServices(env.Value, env.Name, pod.Namespace, serviceByName) {
 				references[name] = appendUnique(references[name], container.Name+"/"+env.Name)
 			}
@@ -56,14 +60,18 @@ func traceDependencies(ctx context.Context, client kubernetes.Interface, pod *co
 	}
 	if len(references) == 0 {
 		return nil, []Evidence{{Check: "dependency-discovery", Verdict: Info,
-			Summary: "No same-namespace Service dependencies found in literal container environment values or commands",
+			Summary:    "No same-namespace Service dependencies found in literal container environment values or commands",
 			Suggestion: "Expose dependency hostnames through explicit variables such as DB_HOST or API_URL. Values stored only in Secrets/ConfigMaps are intentionally not read."}}
 	}
 	names := make([]string, 0, len(references))
-	for name := range references { names = append(names, name) }
+	for name := range references {
+		names = append(names, name)
+	}
 	sort.Strings(names)
 	limit := len(names)
-	if limit > 20 { limit = 20 }
+	if limit > 20 {
+		limit = 20
+	}
 	traces := make([]DependencyTrace, 0, limit)
 	evidence := make([]Evidence, 0, limit+1)
 	for _, name := range names[:limit] {
@@ -90,7 +98,9 @@ func traceDependencies(ctx context.Context, client kubernetes.Interface, pod *co
 		trace.SelectedPods = len(pods.Items)
 		for i := range pods.Items {
 			target := &pods.Items[i]
-			if dependencyPodReady(target) { trace.ReadyPods++ } else {
+			if dependencyPodReady(target) {
+				trace.ReadyPods++
+			} else {
 				trace.UnreadyPods = append(trace.UnreadyPods, dependencyPodSummary(target))
 			}
 		}
@@ -99,7 +109,7 @@ func traceDependencies(ctx context.Context, client kubernetes.Interface, pod *co
 			trace.Verdict = Unknown
 			trace.Summary = "Service publishes not-ready addresses; Pod readiness alone cannot determine backend eligibility"
 			evidence = append(evidence, Evidence{Check: "dependency/" + name, Verdict: Unknown, Summary: trace.Summary,
-				Details: append(append([]string{}, trace.References...), trace.UnreadyPods...),
+				Details:    append(append([]string{}, trace.References...), trace.UnreadyPods...),
 				Suggestion: "Inspect EndpointSlices and the application's own health signals for this Service."})
 		case trace.SelectedPods == 0:
 			trace.Verdict, trace.Summary = Failed, "Referenced Service selector matches no Pods"
@@ -133,16 +143,25 @@ func traceDependencies(ctx context.Context, client kubernetes.Interface, pod *co
 
 func referencedServices(raw, key, namespace string, services map[string]*corev1.Service) []string {
 	value := strings.TrimSpace(raw)
-	if value == "" { return nil }
+	if value == "" {
+		return nil
+	}
 	hosts := []string{}
-	if parsed, err := url.Parse(value); err == nil && parsed.Hostname() != "" { hosts = append(hosts, parsed.Hostname()) }
+	if parsed, err := url.Parse(value); err == nil && parsed.Hostname() != "" {
+		hosts = append(hosts, parsed.Hostname())
+	}
 	host := value
-	if h, _, err := net.SplitHostPort(value); err == nil { host = h
+	if h, _, err := net.SplitHostPort(value); err == nil {
+		host = h
 	} else if strings.Count(value, ":") == 1 && !strings.Contains(value, "://") {
 		parts := strings.SplitN(value, ":", 2)
-		if _, err := strconv.Atoi(parts[1]); err == nil { host = parts[0] }
+		if _, err := strconv.Atoi(parts[1]); err == nil {
+			host = parts[0]
+		}
 	}
-	if !strings.Contains(host, "/") && !strings.Contains(host, " ") { hosts = append(hosts, strings.TrimSuffix(host, ".")) }
+	if !strings.Contains(host, "/") && !strings.Contains(host, " ") {
+		hosts = append(hosts, strings.TrimSuffix(host, "."))
+	}
 	var found []string
 	for _, candidate := range hosts {
 		parts := strings.Split(candidate, ".")
@@ -155,19 +174,24 @@ func referencedServices(raw, key, namespace string, services map[string]*corev1.
 		case len(parts) == 1 && serviceHostKey.MatchString(key):
 			name = parts[0]
 		}
-		if _, ok := services[name]; ok { found = appendUnique(found, name) }
+		if _, ok := services[name]; ok {
+			found = appendUnique(found, name)
+		}
 	}
 	return found
 }
 
 func dependencyPodReady(pod *corev1.Pod) bool {
-	if pod.Status.Phase != corev1.PodRunning { return false }
+	if pod.Status.Phase != corev1.PodRunning {
+		return false
+	}
 	for _, condition := range pod.Status.Conditions {
-		if condition.Type == corev1.PodReady { return condition.Status == corev1.ConditionTrue }
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
 	}
 	return false
 }
-
 
 func dependencyPodSummary(pod *corev1.Pod) string {
 	parts := []string{string(pod.Status.Phase)}

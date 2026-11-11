@@ -10,7 +10,7 @@ func TestContainerFailureEvidenceDistinguishesRecoveredOOM(t *testing.T) {
 	previous := &corev1.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137}
 	status := corev1.ContainerStatus{
 		Name: "app", Ready: true, RestartCount: 2,
-		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+		State:                corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
 		LastTerminationState: corev1.ContainerState{Terminated: previous},
 	}
 	evidence := containerFailureEvidence("app", status)
@@ -27,7 +27,7 @@ func TestContainerFailureEvidenceDistinguishesRecoveredOOM(t *testing.T) {
 
 func TestContainerFailureEvidenceCurrentOOMFailsAndSkipsEmptyMessage(t *testing.T) {
 	status := corev1.ContainerStatus{
-		Name: "app",
+		Name:  "app",
 		State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137}},
 	}
 	evidence := containerFailureEvidence("app", status)
@@ -35,6 +35,8 @@ func TestContainerFailureEvidenceCurrentOOMFailsAndSkipsEmptyMessage(t *testing.
 		t.Fatalf("current OOM should fail, got %+v", evidence)
 	}
 	for _, detail := range evidence[0].Details {
-		if detail == "message=" { t.Fatalf("empty message should be omitted: %+v", evidence[0].Details) }
+		if detail == "message=" {
+			t.Fatalf("empty message should be omitted: %+v", evidence[0].Details)
+		}
 	}
 }

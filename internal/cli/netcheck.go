@@ -34,10 +34,10 @@ type netcheckResult struct {
 }
 
 type netcheckReport struct {
-	Namespace string            `json:"namespace"`
-	Pod       string            `json:"pod"`
-	Container string            `json:"container"`
-	Results   []netcheckResult  `json:"results"`
+	Namespace string           `json:"namespace"`
+	Pod       string           `json:"pod"`
+	Container string           `json:"container"`
+	Results   []netcheckResult `json:"results"`
 }
 
 func newNetcheckCommand() *cobra.Command {
@@ -80,11 +80,17 @@ func newNetcheckCommand() *cobra.Command {
 			}
 
 			config, err := kube.NewRESTConfig(kubeconfig, contextName, timeout)
-			if err != nil { return err }
+			if err != nil {
+				return err
+			}
 			client, err := kubernetes.NewForConfig(config)
-			if err != nil { return fmt.Errorf("create Kubernetes client: %w", err) }
+			if err != nil {
+				return fmt.Errorf("create Kubernetes client: %w", err)
+			}
 			pod, err := client.CoreV1().Pods(namespace).Get(cmd.Context(), args[0], metav1.GetOptions{})
-			if err != nil { return fmt.Errorf("get Pod %s/%s: %w", namespace, args[0], err) }
+			if err != nil {
+				return fmt.Errorf("get Pod %s/%s: %w", namespace, args[0], err)
+			}
 			if pod.Status.Phase != corev1.PodRunning {
 				return fmt.Errorf("Pod %s/%s is %s; netcheck requires a Running Pod", namespace, args[0], pod.Status.Phase)
 			}
@@ -95,8 +101,15 @@ func newNetcheckCommand() *cobra.Command {
 				container = pod.Spec.Containers[0].Name
 			} else {
 				found := false
-				for _, c := range pod.Spec.Containers { if c.Name == container { found = true; break } }
-				if !found { return fmt.Errorf("container %q is not a regular container in Pod %s/%s", container, namespace, args[0]) }
+				for _, c := range pod.Spec.Containers {
+					if c.Name == container {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return fmt.Errorf("container %q is not a regular container in Pod %s/%s", container, namespace, args[0])
+				}
 			}
 
 			containerRunning := false
@@ -112,7 +125,9 @@ func newNetcheckCommand() *cobra.Command {
 
 			report := netcheckReport{Namespace: namespace, Pod: args[0], Container: container}
 			probeTimeout := int(timeout.Seconds())
-			if probeTimeout < 1 { probeTimeout = 1 }
+			if probeTimeout < 1 {
+				probeTimeout = 1
+			}
 			run := func(kind, target, script string) {
 				start := time.Now()
 				ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
@@ -127,7 +142,9 @@ func newNetcheckCommand() *cobra.Command {
 				} else {
 					result.Status = "FAIL"
 					result.Error = strings.TrimSpace(execErr.Error())
-					if strings.TrimSpace(stderr) != "" { result.Error += ": " + strings.TrimSpace(stderr) }
+					if strings.TrimSpace(stderr) != "" {
+						result.Error += ": " + strings.TrimSpace(stderr)
+					}
 				}
 				report.Results = append(report.Results, result)
 			}
@@ -144,14 +161,21 @@ func newNetcheckCommand() *cobra.Command {
 				run("HTTP", httpTarget, "if command -v curl >/dev/null 2>&1; then curl -fSs -o /dev/null -w 'HTTP_STATUS=%{http_code}\\n' --max-time "+strconv.Itoa(probeTimeout)+" "+q+"; elif command -v wget >/dev/null 2>&1; then wget --spider -T "+strconv.Itoa(probeTimeout)+" -S "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
 			}
 			if strings.EqualFold(output, "json") {
-				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  ")
-				if err := enc.Encode(report); err != nil { return err }
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				if err := enc.Encode(report); err != nil {
+					return err
+				}
 			} else if strings.EqualFold(output, "terminal") || strings.EqualFold(output, "text") {
 				printNetcheck(report, !noColor && os.Getenv("NO_COLOR") == "")
 			} else {
 				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
 			}
-			for _, result := range report.Results { if result.Status != "PASS" { return fmt.Errorf("one or more network checks did not pass") } }
+			for _, result := range report.Results {
+				if result.Status != "PASS" {
+					return fmt.Errorf("one or more network checks did not pass")
+				}
+			}
 			return nil
 		},
 	}
@@ -186,12 +210,14 @@ func execInPod(ctx context.Context, config *rest.Config, client kubernetes.Inter
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
 			Container: container,
-			Command: []string{"/bin/sh", "-c", script},
-			Stdout: true,
-			Stderr: true,
+			Command:   []string{"/bin/sh", "-c", script},
+			Stdout:    true,
+			Stderr:    true,
 		}, scheme.ParameterCodec)
 	executor, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
-	if err != nil { return "", "", fmt.Errorf("create Pod exec stream: %w", err) }
+	if err != nil {
+		return "", "", fmt.Errorf("create Pod exec stream: %w", err)
+	}
 	var stdout, stderr bytes.Buffer
 	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{Stdout: &stdout, Stderr: &stderr})
 	return stdout.String(), stderr.String(), err
@@ -203,17 +229,27 @@ func shellQuote(value string) string {
 
 func printNetcheck(report netcheckReport, colorEnabled bool) {
 	style := func(color, value string) string {
-		if !colorEnabled { return value }
+		if !colorEnabled {
+			return value
+		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
 	fmt.Printf("%s  %s/%s (%s)\n", style("39", "KTRX NETCHECK"), report.Namespace, report.Pod, report.Container)
 	for _, result := range report.Results {
 		color := "42"
 		symbol := "✓"
-		if result.Status == "FAIL" { color, symbol = "196", "✖" }
-		if result.Status == "UNAVAILABLE" { color, symbol = "214", "!" }
+		if result.Status == "FAIL" {
+			color, symbol = "196", "✖"
+		}
+		if result.Status == "UNAVAILABLE" {
+			color, symbol = "214", "!"
+		}
 		fmt.Printf("  %s [%s] %s (%s)\n", style(color, symbol+" "+result.Status), result.Type, result.Target, result.Duration)
-		if result.Output != "" { fmt.Printf("      %s\n", strings.ReplaceAll(result.Output, "\n", "\n      ")) }
-		if result.Error != "" { fmt.Printf("      %s\n", result.Error) }
+		if result.Output != "" {
+			fmt.Printf("      %s\n", strings.ReplaceAll(result.Output, "\n", "\n      "))
+		}
+		if result.Error != "" {
+			fmt.Printf("      %s\n", result.Error)
+		}
 	}
 }

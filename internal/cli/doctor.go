@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Harry10799/ktrx/internal/kube"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	authv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,14 +17,14 @@ import (
 )
 
 type accessCheck struct {
-	Name      string `json:"name"`
-	Verb      string `json:"verb"`
-	Group     string `json:"group,omitempty"`
-	Resource  string `json:"resource"`
+	Name        string `json:"name"`
+	Verb        string `json:"verb"`
+	Group       string `json:"group,omitempty"`
+	Resource    string `json:"resource"`
 	Subresource string `json:"subresource,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-	Status    string `json:"status"`
-	Reason    string `json:"reason,omitempty"`
+	Namespace   string `json:"namespace,omitempty"`
+	Status      string `json:"status"`
+	Reason      string `json:"reason,omitempty"`
 }
 
 type doctorReport struct {
@@ -51,8 +51,12 @@ func newDoctorCommand() *cobra.Command {
 		Long:  "Run a read-only preflight against the selected Kubernetes context. The command checks the permissions used by KTRX diagnostics and never changes cluster resources.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if strings.TrimSpace(namespace) == "" { return fmt.Errorf("namespace must not be empty") }
-			if timeout <= 0 { return fmt.Errorf("timeout must be greater than zero") }
+			if strings.TrimSpace(namespace) == "" {
+				return fmt.Errorf("namespace must not be empty")
+			}
+			if timeout <= 0 {
+				return fmt.Errorf("timeout must be greater than zero")
+			}
 			client, err := kube.NewClientWithTimeout(kubeconfig, contextName, timeout)
 			if err != nil {
 				return err
@@ -94,7 +98,9 @@ func newDoctorCommand() *cobra.Command {
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
-				if err := enc.Encode(report); err != nil { return err }
+				if err := enc.Encode(report); err != nil {
+					return err
+				}
 			} else if strings.EqualFold(output, "terminal") || strings.EqualFold(output, "text") {
 				printDoctorTerminal(cmd, report, !noColor && os.Getenv("NO_COLOR") == "")
 			} else {
@@ -152,45 +158,69 @@ func checkAccess(ctx context.Context, client kubernetes.Interface, req accessReq
 	switch {
 	case review.Status.Allowed:
 		result.Status = "PASS"
-		if review.Status.Reason != "" { result.Reason = review.Status.Reason }
+		if review.Status.Reason != "" {
+			result.Reason = review.Status.Reason
+		}
 	case review.Status.Denied:
 		result.Status = "DENIED"
 		result.Reason = review.Status.Reason
-		if result.Reason == "" { result.Reason = "The API server denied this permission" }
+		if result.Reason == "" {
+			result.Reason = "The API server denied this permission"
+		}
 	default:
 		result.Status = "UNKNOWN"
 		result.Reason = review.Status.Reason
 		if review.Status.EvaluationError != "" {
-			if result.Reason != "" { result.Reason += "; " }
+			if result.Reason != "" {
+				result.Reason += "; "
+			}
 			result.Reason += review.Status.EvaluationError
 		}
-		if result.Reason == "" { result.Reason = "The authorization response was inconclusive" }
+		if result.Reason == "" {
+			result.Reason = "The authorization response was inconclusive"
+		}
 	}
 	return result
 }
 
 func printDoctorTerminal(cmd *cobra.Command, report doctorReport, colorEnabled bool) {
 	style := func(color, value string) string {
-		if !colorEnabled { return value }
+		if !colorEnabled {
+			return value
+		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "%s  namespace=%s", style("39", "KTRX DOCTOR"), report.Namespace)
-	if report.Server != "" { fmt.Fprintf(cmd.OutOrStdout(), "  Kubernetes=%s", report.Server) }
+	if report.Server != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "  Kubernetes=%s", report.Server)
+	}
 	fmt.Fprintln(cmd.OutOrStdout())
 	for _, check := range report.Checks {
 		color, symbol := "245", "?"
 		switch check.Status {
-		case "PASS": color, symbol = "42", "✓"
-		case "DENIED": color, symbol = "196", "✖"
+		case "PASS":
+			color, symbol = "42", "✓"
+		case "DENIED":
+			color, symbol = "196", "✖"
 		}
 		target := check.Resource
-		if check.Subresource != "" { target += "/" + check.Subresource }
-		if check.Group != "" { target = check.Group + "/" + target }
-		if check.Namespace != "" { target += " (namespace " + check.Namespace + ")" } else if check.Resource == "pods" { target += " (all namespaces)" }
+		if check.Subresource != "" {
+			target += "/" + check.Subresource
+		}
+		if check.Group != "" {
+			target = check.Group + "/" + target
+		}
+		if check.Namespace != "" {
+			target += " (namespace " + check.Namespace + ")"
+		} else if check.Resource == "pods" {
+			target += " (all namespaces)"
+		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-8s %-48s %s\n", style(color, symbol), check.Status, check.Name, target)
-		if check.Reason != "" { fmt.Fprintf(cmd.OutOrStdout(), "      %s\n", check.Reason) }
+		if check.Reason != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "      %s\n", check.Reason)
+		}
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "\nSummary: %s  PASS=%d DENIED=%d UNKNOWN=%d\n", style(map[bool]string{true:"42",false:"196"}[report.Ready], map[bool]string{true:"READY",false:"NOT READY"}[report.Ready]), report.Passed, report.Denied, report.Unknown)
+	fmt.Fprintf(cmd.OutOrStdout(), "\nSummary: %s  PASS=%d DENIED=%d UNKNOWN=%d\n", style(map[bool]string{true: "42", false: "196"}[report.Ready], map[bool]string{true: "READY", false: "NOT READY"}[report.Ready]), report.Passed, report.Denied, report.Unknown)
 	if !report.Ready {
 		fmt.Fprintln(cmd.OutOrStdout(), "Grant only the missing read permissions to the KTRX identity, then run doctor again.")
 	} else {

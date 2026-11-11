@@ -12,31 +12,39 @@ import (
 
 func TestTraceIngressScopesMissingBackendToPod(t *testing.T) {
 	tests := []struct {
-		name string
-		backend string
-		podName string
-		wantFailed bool
+		name              string
+		backend           string
+		podName           string
+		wantFailed        bool
 		wantNamespaceNote bool
 	}{
-		{name:"related missing backend fails", backend:"web", podName:"web-abc", wantFailed:true},
-		{name:"unrelated missing backend is only a note", backend:"redis", podName:"web-abc", wantNamespaceNote:true},
+		{name: "related missing backend fails", backend: "web", podName: "web-abc", wantFailed: true},
+		{name: "unrelated missing backend is only a note", backend: "redis", podName: "web-abc", wantNamespaceNote: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ing := &networkingv1.Ingress{
-				ObjectMeta:metav1.ObjectMeta{Name:"sample", Namespace:"default"},
-				Spec:networkingv1.IngressSpec{Rules:[]networkingv1.IngressRule{{IngressRuleValue:networkingv1.IngressRuleValue{HTTP:&networkingv1.HTTPIngressRuleValue{Paths:[]networkingv1.HTTPIngressPath{{Backend:networkingv1.IngressBackend{Service:&networkingv1.IngressServiceBackend{Name:tt.backend}}}}}}}}},
+				ObjectMeta: metav1.ObjectMeta{Name: "sample", Namespace: "default"},
+				Spec:       networkingv1.IngressSpec{Rules: []networkingv1.IngressRule{{IngressRuleValue: networkingv1.IngressRuleValue{HTTP: &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{{Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: tt.backend}}}}}}}}},
 			}
-			pod := &corev1.Pod{ObjectMeta:metav1.ObjectMeta{Name:tt.podName, Namespace:"default"}}
+			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: tt.podName, Namespace: "default"}}
 			client := fake.NewSimpleClientset(ing)
 			_, evidence := traceIngress(context.Background(), client, pod, nil)
 			failed, note := false, false
 			for _, item := range evidence {
-				if item.Verdict == Failed && item.Check == "ingress-backend/sample/"+tt.backend { failed = true }
-				if item.Check == "ingress-namespace-note" && item.Verdict == Info { note = true }
+				if item.Verdict == Failed && item.Check == "ingress-backend/sample/"+tt.backend {
+					failed = true
+				}
+				if item.Check == "ingress-namespace-note" && item.Verdict == Info {
+					note = true
+				}
 			}
-			if failed != tt.wantFailed { t.Fatalf("related backend failure=%t, want %t; evidence=%+v", failed, tt.wantFailed, evidence) }
-			if note != tt.wantNamespaceNote { t.Fatalf("namespace note=%t, want %t; evidence=%+v", note, tt.wantNamespaceNote, evidence) }
+			if failed != tt.wantFailed {
+				t.Fatalf("related backend failure=%t, want %t; evidence=%+v", failed, tt.wantFailed, evidence)
+			}
+			if note != tt.wantNamespaceNote {
+				t.Fatalf("namespace note=%t, want %t; evidence=%+v", note, tt.wantNamespaceNote, evidence)
+			}
 		})
 	}
 }
@@ -60,11 +68,10 @@ func TestPromoteRoutedSelectorMismatch(t *testing.T) {
 	}
 }
 
-
 func TestListIngressControllerPodsExcludesUnrelatedPods(t *testing.T) {
 	controller := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "ingress-controller", Namespace: "ingress-system", Labels: map[string]string{"app.kubernetes.io/component": "controller"}},
-		Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
 	}
 	app := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "application", Namespace: "default", Labels: map[string]string{"app": "web"}}}
 	worker := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "worker", Namespace: "jobs", Labels: map[string]string{"role": "worker"}}}
