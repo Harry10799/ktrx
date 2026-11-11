@@ -9,7 +9,6 @@ cd "$ROOT_DIR"
 BINARY="${KTRX_BINARY:-$ROOT_DIR/ktrx}"
 DOC="$ROOT_DIR/docs/DEMO.md"
 NAMESPACE="${KTRX_DEMO_NAMESPACE:-ktrx-demo}"
-TMP_DIR="$(mktemp -d)"
 CREATED_NAMESPACE=0
 
 if ! kubectl cluster-info >/dev/null 2>&1; then
@@ -17,6 +16,8 @@ if ! kubectl cluster-info >/dev/null 2>&1; then
   echo "Configure a valid kubeconfig/context, then rerun: bash scripts/generate-demo.sh" >&2
   exit 1
 fi
+
+TMP_DIR="$(mktemp -d)"
 
 cleanup() {
   if [[ "$CREATED_NAMESPACE" -eq 1 && "${KEEP_DEMO:-0}" != "1" ]]; then
