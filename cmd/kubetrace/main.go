@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/Harry10799/kubetrace/internal/cli"
+	"github.com/Harry10799/ktrx/internal/cli"
 )
 
 func main() {
