@@ -68,7 +68,7 @@ func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod 
 	return results, evidence
 }
 
-var noisyLogPattern = regexp.MustCompile(`(?i)(\b(error|fatal|panic|exception|fail(ed|ure)?|critical)\b|\b(?:HTTP(?:/\\d(?:\\.\\d)?)?"?\\s+|status[=: ]+)[45]\d{2}\b)`)
+var noisyLogPattern = regexp.MustCompile(`(?i)(\b(error|fatal|panic|exception|fail(ed|ure)?|critical)\b|\b(?:HTTP(?:/\d(?:\.\d)?)?"?\s+|status[=: ]+)[45]\d{2}\b)`)
 
 func filterLogLines(raw string, includeAll bool) string {
 	if includeAll || strings.TrimSpace(raw) == "" {
@@ -87,7 +87,7 @@ func filterLogLines(raw string, includeAll bool) string {
 	return strings.Join(selected, "\n")
 }
 
-var serverErrorPattern = regexp.MustCompile(`(?i)\b(?:HTTP(?:/\\d(?:\\.\\d)?)?"?\\s+|status[=: ]+)5\d{2}\b`)
+var serverErrorPattern = regexp.MustCompile(`(?i)\b(?:HTTP(?:/\d(?:\.\d)?)?"?\s+|status[=: ]+)5\d{2}\b`)
 
 func analyzeLogContent(container, raw string) []Evidence {
 	var matches []string
