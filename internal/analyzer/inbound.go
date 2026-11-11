@@ -254,11 +254,24 @@ func uniqueSorted(values []string) []string {
 }
 
 
-func serviceNameRelated(serviceName, podName string) bool {
+func serviceNameRelated(serviceName, workloadName string) bool {
 	serviceName = strings.Trim(serviceName, "-")
-	podName = strings.Trim(podName, "-")
-	return serviceName == podName || strings.HasPrefix(podName, serviceName+"-") ||
-		strings.HasPrefix(serviceName, podName+"-") || closeLabelValue(serviceName, podName)
+	workloadName = strings.Trim(workloadName, "-")
+	if serviceName == workloadName || strings.HasPrefix(workloadName, serviceName+"-") ||
+		strings.HasPrefix(serviceName, workloadName+"-") || closeLabelValue(serviceName, workloadName) {
+		return true
+	}
+	// Kubernetes-generated Pod names and Service names often share a stable
+	// application token while differing in suffixes (for example web-svc and
+	// web-7d9f...). Match meaningful hyphen-delimited tokens, not arbitrary
+	// single-character overlaps.
+	for _, serviceToken := range strings.Split(serviceName, "-") {
+		if len(serviceToken) < 4 { continue }
+		for _, workloadToken := range strings.Split(workloadName, "-") {
+			if serviceToken == workloadToken { return true }
+		}
+	}
+	return false
 }
 
 func closeLabelValue(a, b string) bool {
