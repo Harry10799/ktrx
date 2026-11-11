@@ -96,28 +96,24 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 		report.Evidence = append(report.Evidence, Evidence{Check: "container-restarts", Verdict: Unknown, Summary: fmt.Sprintf("Containers have restarted %d time(s)", report.Restarts), Suggestion: "Inspect previous container logs and pod events for OOMKilled, probe failures or process exits."})
 	}
 
-	// Explicitly mark important dimensions that this CLI does not actively test.
+	// Group probe recommendations to avoid inflating warning counts.
 	for _, container := range pod.Spec.Containers {
 		if container.ReadinessProbe == nil {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Warning, Summary: "No readiness probe configured"})
+			report.Evidence = append(report.Evidence, Evidence{Check: "probes/" + container.Name, Verdict: Warning, Summary: "No readiness probe configured", Suggestion: "Configure readiness checks so Services only send traffic when the application is ready."})
 		} else if report.Ready {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Healthy, Summary: "Readiness probe is configured and Pod Ready condition is True"})
 		} else {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Failed, Summary: "Readiness probe is configured but Pod Ready condition is not True", Suggestion: "Inspect probe path, port, thresholds and container logs."})
 		}
-		if container.LivenessProbe == nil {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Warning, Summary: "No liveness probe configured"})
-		} else {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Unknown, Summary: "Liveness probe is configured; current probe execution result is not directly exposed in Pod status"})
+		var optionalMissing []string
+		if container.LivenessProbe == nil { optionalMissing = append(optionalMissing, "liveness") } else {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Unknown, Summary: "Liveness probe is configured; current execution result is not directly exposed in Pod status"})
 		}
-		if container.StartupProbe == nil {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Warning, Summary: "No startup probe configured"})
-		} else {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Unknown, Summary: "Startup probe is configured; current probe execution result is not directly exposed in Pod status"})
+		if container.StartupProbe == nil { optionalMissing = append(optionalMissing, "startup") } else {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Unknown, Summary: "Startup probe is configured; current execution result is not directly exposed in Pod status"})
 		}
-		if imageUsesMutableTag(container.Image) {
-			report.Evidence = append(report.Evidence, Evidence{Check: "image-tag/" + container.Name, Verdict: Warning, Summary: "Container image uses a mutable or implicit tag: " + container.Image, Suggestion: "Pin the image to an immutable digest or a controlled version tag."})
-		}
+		if len(optionalMissing) > 0 { report.Evidence = append(report.Evidence, Evidence{Check: "probes-optional/" + container.Name, Verdict: Info, Summary: "No " + strings.Join(optionalMissing, "/") + " probe configured; add only when required by the application"}) }
+		if imageUsesMutableTag(container.Image) { report.Evidence = append(report.Evidence, Evidence{Check: "image-tag/" + container.Name, Verdict: Warning, Summary: "Container image uses a mutable or implicit tag: " + container.Image, Suggestion: "Pin the image to an immutable digest or a controlled version tag."}) }
 	}
 	if pod.Status.QOSClass == corev1.PodQOSBestEffort {
 		report.Evidence = append(report.Evidence, Evidence{Check: "resource-qos", Verdict: Warning, Summary: "Pod QoS is BestEffort; containers have no CPU or memory requests/limits", Suggestion: "Define appropriate resource requests and limits to improve scheduling and resource isolation."})
@@ -125,7 +121,7 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	report.Evidence = append(report.Evidence,
 		Evidence{Check: "dns", Verdict: Unknown, Summary: "DNS resolution was not checked from inside the container"},
 		Evidence{Check: "outbound-connectivity", Verdict: Unknown, Summary: "Outbound network connectivity was not checked"},
-		Evidence{Check: "log-analysis", Verdict: Unknown, Summary: "Container logs were collected but application errors and HTTP status patterns were not analyzed"},
+		Evidence{Check: "dependency-failures", Verdict: Unknown, Summary: "Cross-service dependency failure patterns are not analyzed yet"},
 	)
 
 	checkServicePortChain(pod, report)
