@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/Harry10799/kubetrace/internal/analyzer"
-	"github.com/Harry10799/kubetrace/internal/kube"
+	"github.com/Harry10799/ktrx/internal/analyzer"
+	"github.com/Harry10799/ktrx/internal/kube"
 	"github.com/spf13/cobra"
 )
 
@@ -156,7 +156,7 @@ func printComparisonTerminal(r podComparison, colorEnabled bool) error {
 		if !colorEnabled { return value }
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Printf("%s  %s/%s\n", style("39", "◆ KUBETRACE COMPARE"), r.Namespace, r.Candidate)
+	fmt.Printf("%s  %s/%s\n", style("39", "◆ KTRX COMPARE"), r.Namespace, r.Candidate)
 	fmt.Printf("Reference: %s\nCandidate: %s\n", r.Reference, r.Candidate)
 	fmt.Println("\n" + style("99", "DIFFERENCES"))
 	if len(r.Differences) == 0 { fmt.Println("  ✓ No differences found") }
