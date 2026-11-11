@@ -117,6 +117,7 @@ func newDoctorCommand() *cobra.Command {
 func ktrxAccessRequirements(namespace string) []accessRequirement {
 	return []accessRequirement{
 		{name: "Read Pods", verb: "get", resource: "pods", namespace: namespace},
+		{name: "List Pods for Deployment inspection", verb: "list", resource: "pods", namespace: namespace},
 		{name: "List Services", verb: "list", resource: "services", namespace: namespace},
 		{name: "List EndpointSlices", verb: "list", group: "discovery.k8s.io", resource: "endpointslices", namespace: namespace},
 		{name: "Read legacy Endpoints fallback", verb: "get", resource: "endpoints", namespace: namespace},
