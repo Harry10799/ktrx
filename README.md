@@ -12,7 +12,7 @@
 - Container overview: image, state, readiness, restart count, resource requests and limits.
 - Controller owner chain: Pod → ReplicaSet → Deployment.
 - Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
-- Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.
+- Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.\n- Outbound trace: Pod DNS policy/configuration and matching namespace NetworkPolicies, including egress isolation, destinations and ports. This is declarative policy inspection, not a live connectivity test.
 - Pod Events timeline, ordered by timestamp, including reason, message, count and reporting source.
 - Log analysis: detect common error/fatal/exception patterns and HTTP 4xx/5xx lines; `--logs` displays full current and previous logs. Cross-service dependency-failure correlation is not implemented yet.
 - Warning Events by default; include Normal Events with `--verbose`.
@@ -20,12 +20,12 @@
 - Deployment replica selection prioritizes not-ready Pods and higher restart counts; `--all` inspects every matching replica. Terminal output deduplicates shared findings and shows only per-Pod differences.
 - Service targetPort and probe-port checks against declared container ports; undeclared ports remain UNKNOWN rather than being assumed broken, while a mismatch against declared ports is WARN.
 - Evidence-based verdict precedence: FAILED > WARN > UNKNOWN > HEALTHY, with a summary of warning, unchecked and failed findings.
-- Explicit UNKNOWN findings for checks not performed (DNS resolution, outbound connectivity and cross-service dependency-failure correlation). Missing readiness probes are WARN; missing liveness/startup probes are INFO.
+- Explicit UNKNOWN finding for live outbound connectivity and cross-service dependency-failure correlation; DNS settings and egress NetworkPolicies are inspected declaratively. Missing readiness probes are WARN; missing liveness/startup probes are INFO.
 - Ingress diagnostics: IngressClass existence, controller Pod discovery/readiness and assigned load-balancer addresses.
 - Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
 - Terminal, JSON and Markdown output formats.
 
-## v0.1 roadmap
+## Outbound diagnostics scope\n\nKubeTrace reports NetworkPolicies that select the Pod and whether those policies apply egress isolation. It summarizes declared destination selectors, CIDRs and ports. Kubernetes NetworkPolicy allows are additive across matching policies; the report therefore does not claim a destination is blocked based on one policy alone. Actual enforcement depends on the cluster CNI. DNS policy, nameservers, search domains and options are displayed, but name resolution is not executed inside the container.\n\n## v0.1 roadmap
 
 - Environment and ConfigMap reference discovery (names only; never Secret values).
 - Pod DNS configuration.
