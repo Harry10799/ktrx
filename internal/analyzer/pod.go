@@ -33,6 +33,9 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 		ServiceAccount: pod.Spec.ServiceAccountName, Labels: pod.Labels, Verdict: Healthy,
 	}
 	report.OwnerChain = a.ownerChain(ctx, pod)
+	dependencies, dependencyEvidence := traceDependencies(ctx, a.Client, pod)
+	report.Dependencies = dependencies
+	report.Evidence = append(report.Evidence, dependencyEvidence...)
 	inboundServices, inboundEvidence := traceInbound(ctx, a.Client, pod)
 	report.InboundServices = inboundServices
 	report.Evidence = append(report.Evidence, inboundEvidence...)
@@ -121,7 +124,6 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	outbound, outboundEvidence := traceOutbound(ctx, a.Client, pod)
 	report.Outbound = outbound
 	report.Evidence = append(report.Evidence, outboundEvidence...)
-	report.Evidence = append(report.Evidence, Evidence{Check: "dependency-failures", Verdict: Unknown, Summary: "Cross-service dependency failure patterns are not analyzed yet"})
 
 	checkServicePortChain(pod, report)
 	report.WarningCount, report.UnknownCount, report.FailedCount = countVerdicts(report.Evidence)
