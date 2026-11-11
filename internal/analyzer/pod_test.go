@@ -2,13 +2,12 @@ package analyzer
 
 import (
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 )
 
 func TestContainerFailureEvidenceDistinguishesRecoveredOOM(t *testing.T) {
-	previous := &corev1.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137, FinishedAt: time.Now()}
+	previous := &corev1.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137}
 	status := corev1.ContainerStatus{
 		Name: "app", Ready: true, RestartCount: 2,
 		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
