@@ -70,3 +70,19 @@ func TestAggregateWarningsOutrankNonCriticalUnknown(t *testing.T) {
 		t.Fatalf("aggregate() = %s, want WARN", got)
 	}
 }
+
+func TestContainerFailureEvidenceDetectsCrashLoopWaitingState(t *testing.T) {
+	status := corev1.ContainerStatus{
+		Name: "app",
+		State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+			Reason: "CrashLoopBackOff", Message: "back-off restarting failed container",
+		}},
+	}
+	evidence := containerFailureEvidence("app", status)
+	if len(evidence) != 1 || evidence[0].Verdict != Failed {
+		t.Fatalf("CrashLoopBackOff waiting state should fail, got %+v", evidence)
+	}
+	if evidence[0].Check != "container-state/app" {
+		t.Fatalf("unexpected check name: %+v", evidence[0])
+	}
+}
