@@ -14,8 +14,12 @@
 - Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
 - Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.
 - Pod Events timeline, ordered by timestamp, including reason, message, count and reporting source.
-- Bounded current container logs (last 20 lines) and previous-instance logs when a container has restarted.
-- Evidence-based HEALTHY / FAILED / UNKNOWN verdict, with non-failing WARN findings for risky configuration.
+- Concise log diagnostics: error/non-2xx lines by default; full current and previous logs with `--logs`.
+- Warning Events by default; include Normal Events with `--verbose`.
+- Relative timestamps (for example, `31m ago`) in terminal and Markdown output.
+- Deployment replica selection prioritizes not-ready Pods and higher restart counts; `--all` inspects every matching replica.
+- Service targetPort and probe-port checks against declared container ports; undeclared ports remain UNKNOWN rather than being assumed broken.
+- Evidence-based verdict precedence: FAILED > WARN > UNKNOWN > HEALTHY, with a summary of warning, unchecked and failed findings.
 - Explicit UNKNOWN findings for checks not performed (probe execution details, DNS resolution, outbound connectivity and log-content analysis).
 - Ingress diagnostics: IngressClass existence, controller Pod discovery/readiness and assigned load-balancer addresses.
 - Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
@@ -66,12 +70,15 @@ kubetrace deploy/DEPLOYMENT_NAME -n NAMESPACE
 kubetrace POD_NAME -n NAMESPACE --output json
 kubetrace POD_NAME -n NAMESPACE --output markdown
 kubetrace POD_NAME -n NAMESPACE --no-color
+kubetrace POD_NAME -n NAMESPACE --logs
+kubetrace POD_NAME -n NAMESPACE --verbose
+kubetrace deploy/DEPLOYMENT_NAME -n NAMESPACE --all
 kubetrace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
 The older `kubetrace trace POD_NAME` syntax remains supported as a backward-compatible alias, but the direct Pod form above is preferred.
 
-The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints, Ingresses (`networking.k8s.io`) and Events in the namespace, plus permission to read pod logs (`pods/log`). Ingress diagnostics also need `get` on cluster-scoped IngressClasses and `list` on Pods across namespaces to discover controller Pods. Event and log retrieval failures are reported as UNKNOWN evidence; warning Events are displayed as diagnostic context and do not independently change the overall verdict. Deployment targets resolve to one matching Pod (the CLI reports which replica it selected).
+The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints, Ingresses (`networking.k8s.io`) and Events in the namespace, plus permission to read pod logs (`pods/log`). Ingress diagnostics also need `get` on cluster-scoped IngressClasses and `list` on Pods across namespaces to discover controller Pods. Event and log retrieval failures are reported as UNKNOWN evidence; warning Events are displayed as diagnostic context and do not independently change the overall verdict. Deployment targets select the least healthy matching Pod first (not-ready, then higher restart count); `--all` inspects every matching replica.
 
 ## Project layout
 
