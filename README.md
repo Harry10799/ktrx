@@ -179,7 +179,7 @@ Want to see what KTRX actually prints before installing it? The [KTRX live demo 
 Generate or refresh the report from your own Kubernetes cluster:
 
 ```bash
-./scripts/generate-demo.sh
+bash scripts/generate-demo.sh
 ```
 
 The script builds KTRX, creates an isolated `ktrx-demo` namespace with sample workloads, runs the commands, and writes their commands and output to `docs/DEMO.md`. It deletes the demo namespace automatically. Set `KEEP_DEMO=1` to retain the resources for inspection. Requirements: Bash, Go, kubectl and a reachable cluster.
