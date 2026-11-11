@@ -91,7 +91,6 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 		for i, r := range reports { if i > 0 { fmt.Println("\n" + strings.Repeat("─", 72)) }; if e := printTerminal(r, !noColor && os.Getenv("NO_COLOR") == "", includeLogs); e != nil { return e } }; return nil
 	default: return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 	}
-	return nil
 }
 
 func newTraceCommand() *cobra.Command {
