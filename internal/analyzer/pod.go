@@ -248,24 +248,34 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 			{"startup", container.StartupProbe},
 		}
 		for _, item := range probes {
-			port, set := probePort(item.probe)
+			port, portName, set := probePort(item.probe)
 			if !set { continue }
 			matched := false
-			for _, cp := range container.Ports { if cp.ContainerPort == port { matched = true } }
+			for _, cp := range container.Ports {
+				if (portName == "" && cp.ContainerPort == port) || (portName != "" && cp.Name == portName) { matched = true; port = cp.ContainerPort }
+			}
 			if matched {
-				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Healthy, Summary: fmt.Sprintf("%s probe port %d matches a declared containerPort", item.name, port)})
+				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Healthy, Summary: fmt.Sprintf("%s probe port resolves to declared containerPort %d", item.name, port)})
 			} else {
-				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Unknown, Summary: fmt.Sprintf("%s probe port %d has no matching declared containerPort; the process may still listen on it", item.name, port)})
+				label := portName
+				if label == "" { label = fmt.Sprintf("%d", port) }
+				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + container.Name + "/" + item.name, Verdict: Unknown, Summary: fmt.Sprintf("%s probe port %q has no matching declared containerPort; the process may still listen on it", item.name, label)})
 			}
 		}
 	}}
 
-func probePort(probe *corev1.Probe) (int32, bool) {
-	if probe == nil { return 0, false }
+func probePort(probe *corev1.Probe) (int32, string, bool) {
+	if probe == nil { return 0, "", false }
 	switch {
-	case probe.HTTPGet != nil && probe.HTTPGet.Port.Type == 0: return probe.HTTPGet.Port.IntVal, true
-	case probe.TCPSocket != nil && probe.TCPSocket.Port.Type == 0: return probe.TCPSocket.Port.IntVal, true
-	case probe.GRPC != nil: return probe.GRPC.Port, true
-	default: return 0, false
+	case probe.HTTPGet != nil:
+		if probe.HTTPGet.Port.Type == 0 { return probe.HTTPGet.Port.IntVal, "", true }
+		return 0, probe.HTTPGet.Port.StrVal, true
+	case probe.TCPSocket != nil:
+		if probe.TCPSocket.Port.Type == 0 { return probe.TCPSocket.Port.IntVal, "", true }
+		return 0, probe.TCPSocket.Port.StrVal, true
+	case probe.GRPC != nil:
+		return probe.GRPC.Port, "", true
+	default:
+		return 0, "", false
 	}
 }
