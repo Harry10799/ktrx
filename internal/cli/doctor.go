@@ -75,7 +75,7 @@ func newDoctorCommand() *cobra.Command {
 				report.Server = version.GitVersion
 				report.Checks = append(report.Checks, accessCheck{Name: "Kubernetes API connectivity", Resource: "discovery", Verb: "get", Status: "PASS", Reason: "Connected to Kubernetes " + version.GitVersion})
 				report.Passed++
-				for _, req := range ktrxAccessRequirements(namespace) {
+				for _, req := range requirements {
 					check := checkAccess(ctx, client, req)
 					report.Checks = append(report.Checks, check)
 					switch check.Status {
