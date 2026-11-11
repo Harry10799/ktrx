@@ -39,7 +39,7 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	inboundServices, inboundEvidence := traceInbound(ctx, a.Client, pod)
 	report.InboundServices = inboundServices
 	report.Evidence = append(report.Evidence, inboundEvidence...)
-	ingressRoutes, ingressEvidence := traceIngress(ctx, a.Client, pod.Namespace, inboundServices)
+	ingressRoutes, ingressEvidence := traceIngress(ctx, a.Client, pod, inboundServices)
 	report.IngressRoutes = ingressRoutes
 	report.Evidence = append(report.Evidence, ingressEvidence...)
 	events, eventEvidence := collectPodEvents(ctx, a.Client, pod, a.VerboseEvents)
