@@ -16,10 +16,9 @@ func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod 
 	var evidence []Evidence
 	for _, container := range pod.Spec.Containers {
 		entry := ContainerLogs{Name: container.Name}
-		tail := containerLogTailLines
-		current, err := client.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-			Container: container.Name, TailLines: &tail,
-		}).Do(ctx).Raw()
+		currentOptions := &corev1.PodLogOptions{Container: container.Name}
+		if !includeAll { tail := containerLogTailLines; currentOptions.TailLines = &tail }
+		current, err := client.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, currentOptions).Do(ctx).Raw()
 		if err != nil {
 			entry.CurrentError = err.Error()
 			evidence = append(evidence, Evidence{
@@ -40,9 +39,9 @@ func collectContainerLogs(ctx context.Context, client kubernetes.Interface, pod 
 			}
 		}
 		if status != nil && status.RestartCount > 0 {
-			previous, previousErr := client.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-				Container: container.Name, Previous: true, TailLines: &tail,
-			}).Do(ctx).Raw()
+			previousOptions := &corev1.PodLogOptions{Container: container.Name, Previous: true}
+			if !includeAll { tail := containerLogTailLines; previousOptions.TailLines = &tail }
+			previous, previousErr := client.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, previousOptions).Do(ctx).Raw()
 			if previousErr != nil {
 				entry.PreviousError = previousErr.Error()
 				evidence = append(evidence, Evidence{
