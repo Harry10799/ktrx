@@ -14,6 +14,8 @@ import (
 
 type PodAnalyzer struct {
 	Client kubernetes.Interface
+	IncludeLogs bool
+	VerboseEvents bool
 }
 
 func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*PodReport, error) {
@@ -28,7 +30,7 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	report := &PodReport{
 		Namespace: pod.Namespace, Name: pod.Name, Phase: string(pod.Status.Phase),
 		Node: pod.Spec.NodeName, PodIP: pod.Status.PodIP, QOSClass: string(pod.Status.QOSClass),
-		Age: time.Since(pod.CreationTimestamp.Time).Round(time.Second).String(),
+		Age: relativeTime(pod.CreationTimestamp.Time),
 		ServiceAccount: pod.Spec.ServiceAccountName, Labels: pod.Labels, Verdict: Healthy,
 	}
 	report.OwnerChain = a.ownerChain(ctx, pod)
@@ -38,10 +40,10 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	ingressRoutes, ingressEvidence := traceIngress(ctx, a.Client, pod.Namespace, inboundServices)
 	report.IngressRoutes = ingressRoutes
 	report.Evidence = append(report.Evidence, ingressEvidence...)
-	events, eventEvidence := collectPodEvents(ctx, a.Client, pod)
+	events, eventEvidence := collectPodEvents(ctx, a.Client, pod, a.VerboseEvents)
 	report.Events = events
 	if eventEvidence != nil { report.Evidence = append(report.Evidence, *eventEvidence) }
-	logs, logEvidence := collectContainerLogs(ctx, a.Client, pod)
+	logs, logEvidence := collectContainerLogs(ctx, a.Client, pod, a.IncludeLogs)
 	report.Logs = logs
 	report.Evidence = append(report.Evidence, logEvidence...)
 	for _, condition := range pod.Status.Conditions {
@@ -98,19 +100,19 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	// Explicitly mark important dimensions that this CLI does not actively test.
 	for _, container := range pod.Spec.Containers {
 		if container.ReadinessProbe == nil {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Unknown, Summary: "No readiness probe configured"})
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Warning, Summary: "No readiness probe configured"})
 		} else if report.Ready {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Healthy, Summary: "Readiness probe is configured and Pod Ready condition is True"})
 		} else {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Failed, Summary: "Readiness probe is configured but Pod Ready condition is not True", Suggestion: "Inspect probe path, port, thresholds and container logs."})
 		}
 		if container.LivenessProbe == nil {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Unknown, Summary: "No liveness probe configured"})
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Warning, Summary: "No liveness probe configured"})
 		} else {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Unknown, Summary: "Liveness probe is configured; current probe execution result is not directly exposed in Pod status"})
 		}
 		if container.StartupProbe == nil {
-			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Unknown, Summary: "No startup probe configured"})
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Warning, Summary: "No startup probe configured"})
 		} else {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Unknown, Summary: "Startup probe is configured; current probe execution result is not directly exposed in Pod status"})
 		}
@@ -127,6 +129,8 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 		Evidence{Check: "log-analysis", Verdict: Unknown, Summary: "Container logs were collected but application errors and HTTP status patterns were not analyzed"},
 	)
 
+	checkServicePortChain(pod, report)
+	report.WarningCount, report.UnknownCount, report.FailedCount = countVerdicts(report.Evidence)
 	report.Verdict = aggregate(report.Evidence)
 	return report, nil
 }
@@ -185,14 +189,84 @@ func imageUsesMutableTag(image string) bool {
 }
 
 func aggregate(items []Evidence) Verdict {
+	// Explicit precedence: FAILED > WARN > UNKNOWN > HEALTHY.
 	result := Healthy
 	for _, item := range items {
-		if item.Verdict == Failed {
+		switch item.Verdict {
+		case Failed:
 			return Failed
-		}
-		if item.Verdict == Unknown {
-			result = Unknown
+		case Warning:
+			result = Warning
+		case Unknown:
+			if result != Warning { result = Unknown }
 		}
 	}
 	return result
+}
+
+func countVerdicts(items []Evidence) (warnings, unknown, failed int) {
+	for _, item := range items {
+		switch item.Verdict {
+		case Warning: warnings++
+		case Unknown: unknown++
+		case Failed: failed++
+		}
+	}
+	return
+}
+
+// Port-chain diagnostics compare Service targetPorts with declared container
+// ports, then compare HTTP/TCP probe ports with the same declarations.
+func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
+	for _, svc := range report.InboundServices {
+		for _, sp := range svc.Ports {
+			parts := strings.SplitN(sp, " -> ", 2)
+			if len(parts) != 2 { continue }
+			target := strings.SplitN(parts[1], "/", 2)[0]
+			if _, err := fmt.Sscanf(target, "%d", new(int32)); err != nil {
+				report.Evidence = append(report.Evidence, Evidence{
+					Check: "port-chain/" + svc.Name, Verdict: Unknown,
+					Summary: fmt.Sprintf("Service %s uses named targetPort %q; declared container port mapping could not be confirmed from this summary", svc.Name, target),
+				})
+				continue
+			}
+			var targetPort int32
+			_, _ = fmt.Sscanf(target, "%d", &targetPort)
+			declared := false
+			for _, c := range pod.Spec.Containers {
+				for _, cp := range c.Ports {
+					if cp.ContainerPort == targetPort { declared = true }
+				}
+			}
+			if declared {
+				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Healthy, Summary: fmt.Sprintf("Service %s targetPort %d matches a declared containerPort", svc.Name, targetPort)})
+			} else {
+				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Unknown, Summary: fmt.Sprintf("Service %s targetPort %d has no matching declared containerPort; the application may still listen on it, but Kubernetes spec does not confirm it", svc.Name, targetPort)})
+			}
+		}
+	}
+	for _, c := range pod.Spec.Containers {
+		for _, probe := range []struct{name string; port int32; set bool}{
+			{"readiness", probePort(c.ReadinessProbe)}, {"liveness", probePort(c.LivenessProbe)}, {"startup", probePort(c.StartupProbe)},
+		} {
+			if !probe.set { continue }
+			matched := false
+			for _, cp := range c.Ports { if cp.ContainerPort == probe.port { matched = true } }
+			if matched {
+				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + c.Name + "/" + probe.name, Verdict: Healthy, Summary: fmt.Sprintf("%s probe port %d matches a declared containerPort", probe.name, probe.port)})
+			} else {
+				report.Evidence = append(report.Evidence, Evidence{Check: "probe-port/" + c.Name + "/" + probe.name, Verdict: Unknown, Summary: fmt.Sprintf("%s probe port %d has no matching declared containerPort; the process may still listen on it", probe.name, probe.port)})
+			}
+		}
+	}
+}
+
+func probePort(probe *corev1.Probe) (int32, bool) {
+	if probe == nil { return 0, false }
+	switch {
+	case probe.HTTPGet != nil && probe.HTTPGet.Port.Type == 0: return probe.HTTPGet.Port.IntVal, true
+	case probe.TCPSocket != nil && probe.TCPSocket.Port.Type == 0: return probe.TCPSocket.Port.IntVal, true
+	case probe.GRPC != nil: return probe.GRPC.Port, true
+	default: return 0, false
+	}
 }
