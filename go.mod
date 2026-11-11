@@ -1,4 +1,4 @@
-module github.com/Harry10799/kubetrace
+module github.com/Harry10799/ktrx
 
 go 1.23.0
 
