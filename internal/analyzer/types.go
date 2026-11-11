@@ -8,6 +8,7 @@ const (
 	Healthy Verdict = "HEALTHY"
 	Failed  Verdict = "FAILED"
 	Unknown Verdict = "UNKNOWN"
+	Warning Verdict = "WARN"
 )
 
 type Evidence struct {
