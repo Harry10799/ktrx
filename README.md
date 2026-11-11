@@ -115,7 +115,9 @@ kubetrace POD_NAME -n NAMESPACE --no-color
 kubetrace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
-### Compare Pods\n\nCompare a known-good reference Pod with a candidate Pod to surface differences in health, container settings, resources, Services, Ingress routes, DNS, NetworkPolicies and diagnostic evidence:\n\n```bash\nkubetrace compare REFERENCE_POD CANDIDATE_POD -n NAMESPACE\nkubetrace compare REFERENCE_POD CANDIDATE_POD -n NAMESPACE --output json\n```\n\nThe first Pod is the reference; the second is the candidate being investigated. Differences are clues, not proof of root cause.\n\n### Subcommands and compatibility
+### Compare Pods\n\nCompare a known-good reference Pod with a candidate Pod to surface differences in health, container settings, resources, Services, Ingress routes, DNS, NetworkPolicies and diagnostic evidence:\n\n```bash\nkubetrace compare REFERENCE_POD CANDIDATE_POD -n NAMESPACE\nkubetrace compare REFERENCE_POD CANDIDATE_POD -n NAMESPACE --output json\n```\n\nThe first Pod is the reference; the second is the candidate being investigated. Differences are clues, not proof of root cause.
+
+### Subcommands and compatibility
 
 The explicit `pod` subcommand is also supported:
 
