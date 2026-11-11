@@ -67,4 +67,7 @@ type PodReport struct {
 	Logs            []ContainerLogs `json:"logs,omitempty" yaml:"logs,omitempty"`
 	Evidence       []Evidence      `json:"evidence" yaml:"evidence"`
 	Verdict        Verdict         `json:"verdict" yaml:"verdict"`
+	WarningCount   int             `json:"warningCount" yaml:"warningCount"`
+	UnknownCount   int             `json:"unknownCount" yaml:"unknownCount"`
+	FailedCount    int             `json:"failedCount" yaml:"failedCount"`
 }
