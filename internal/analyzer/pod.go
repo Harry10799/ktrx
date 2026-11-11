@@ -272,7 +272,8 @@ func imageUsesMutableTag(image string) bool {
 }
 
 func aggregate(items []Evidence) Verdict {
-	// Explicit precedence: FAILED > WARN > UNKNOWN > HEALTHY.
+	// Confirmed failures and actionable warnings take precedence. Unknown checks
+	// affect the headline only when they prevent a core diagnostic conclusion.
 	result := Healthy
 	for _, item := range items {
 		switch item.Verdict {
@@ -281,7 +282,7 @@ func aggregate(items []Evidence) Verdict {
 		case Warning:
 			result = Warning
 		case Unknown:
-			if result != Warning {
+			if result != Warning && isCriticalUnknown(item.Check) {
 				result = Unknown
 			}
 		}
@@ -399,4 +400,18 @@ func probePort(probe *corev1.Probe) (int32, string, bool) {
 	default:
 		return 0, "", false
 	}
+}
+
+// isCriticalUnknown identifies checks whose absence prevents a trustworthy
+// conclusion about the workload or its directly configured traffic path.
+func isCriticalUnknown(check string) bool {
+	if check == "pod-events" || check == "ingress-routes" || check == "ingress-backends" {
+		return true
+	}
+	for _, prefix := range []string{"container-logs/", "previous-container-logs/", "ingress-controller/"} {
+		if strings.HasPrefix(check, prefix) {
+			return true
+		}
+	}
+	return false
 }
