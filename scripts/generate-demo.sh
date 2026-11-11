@@ -183,9 +183,12 @@ KEEP_DEMO=1 bash scripts/generate-demo.sh
 ```
 EOF
 
-echo "KTRX demo report generated: $DOC"
 if [[ "${KEEP_DEMO:-0}" == "1" ]]; then
   echo "Demo namespace retained: $NAMESPACE"
 else
-  echo "Demo namespace will be deleted automatically."
+  if run_section "Delete temporary demo namespace" kubectl delete namespace "$NAMESPACE" --wait=false; then
+    CREATED_NAMESPACE=0
+  fi
 fi
+
+echo "KTRX demo report generated: $DOC"
