@@ -94,8 +94,16 @@ func comparePods(reference, candidate *analyzer.PodReport) podComparison {
 	sort.Strings(ordered)
 	for _, name := range ordered {
 		left, leftOK := leftContainers[name]; right, rightOK := rightContainers[name]
-		if !leftOK { add("Containers", name, "<absent>", "present"); continue }
-		if !rightOK { add("Containers", name, "present", "<absent>"); continue }
+		if !leftOK {
+			add("Containers", name+".name", "<absent>", "present")
+			add("Containers", name+".image", "<absent>", right.Image)
+			continue
+		}
+		if !rightOK {
+			add("Containers", name+".name", "present", "<absent>")
+			add("Containers", name+".image", left.Image, "<absent>")
+			continue
+		}
 		add("Containers", name+".image", left.Image, right.Image)
 		add("Containers", name+".state", left.State+"/"+left.Reason, right.State+"/"+right.Reason)
 		add("Containers", name+".ready", fmt.Sprint(left.Ready), fmt.Sprint(right.Ready))
