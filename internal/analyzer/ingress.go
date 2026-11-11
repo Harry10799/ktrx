@@ -205,46 +205,51 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 						route.Addresses = append(route.Addresses, item.Hostname)
 					}
 				}
+				controllerSupported := false
 				if route.Class == "" {
 					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Unknown, Summary: "Ingress does not specify ingressClassName; default class resolution was not verified"})
-				} else if _, classErr := client.NetworkingV1().IngressClasses().Get(ctx, route.Class, metav1.GetOptions{}); classErr != nil {
+				} else if ingressClass, classErr := client.NetworkingV1().IngressClasses().Get(ctx, route.Class, metav1.GetOptions{}); classErr != nil {
 					if apierrors.IsNotFound(classErr) {
-						route.ClassExists = boolPointer(false)
-						evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Failed, Summary: "Referenced IngressClass " + route.Class + " does not exist", Details: []string{classErr.Error()}, Suggestion: "Create the IngressClass or correct spec.ingressClassName."})
+						 route.ClassExists = boolPointer(false)
+						 evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Failed, Summary: "Referenced IngressClass " + route.Class + " does not exist", Details: []string{classErr.Error()}, Suggestion: "Create the IngressClass or correct spec.ingressClassName."})
 					} else {
 						evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Unknown, Summary: "Could not verify referenced IngressClass", Details: []string{classErr.Error()}})
 					}
 				} else {
 					route.ClassExists = boolPointer(true)
-					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Healthy, Summary: "IngressClass " + route.Class + " exists"})
+					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Healthy, Summary: "IngressClass " + route.Class + " exists", Details: []string{"controller=" + ingressClass.Spec.Controller}})
+					controllerSupported = supportsIngressControllerDiscovery(ingressClass.Spec.Controller)
+					if !controllerSupported {
+						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Info, Summary: "Controller discovery is not supported for IngressClass controller " + ingressClass.Spec.Controller})
+					}
 				}
 				if len(route.Addresses) == 0 {
 					evidence = append(evidence, Evidence{Check: "ingress-address/" + route.Name, Verdict: Unknown, Summary: "Ingress has no load-balancer address assigned", Suggestion: "Check the Ingress controller and its Service; some local controllers do not publish an address."})
 				} else {
 					evidence = append(evidence, Evidence{Check: "ingress-address/" + route.Name, Verdict: Healthy, Summary: "Ingress has an assigned load-balancer address", Details: route.Addresses})
 				}
-				controllers, listErr := listIngressControllerPods(ctx, client)
-				if listErr != nil {
-					evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "Could not inspect Ingress controller pods", Details: []string{listErr.Error()}})
-				} else {
-					// Count only discovered controller Pods, never every Pod in the cluster.
-					route.ControllerPods = 0
-					route.ControllerReady = 0
-					for _, controller := range controllers {
-						if !isIngressControllerPod(controller) {
-							continue
-						}
-						route.ControllerPods++
-						if controller.Status.Phase == corev1.PodRunning && podReady(controller) {
-							route.ControllerReady++
-						}
-					}
-					if route.ControllerPods == 0 {
-						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "No controller pods found with the supported controller labels; controller discovery may be implementation-specific"})
-					} else if route.ControllerReady == 0 {
-						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Failed, Summary: "Ingress controller pods were found but none are Ready"})
+
+				if controllerSupported {
+					controllers, listErr := listIngressControllerPods(ctx, client)
+					if listErr != nil {
+						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "Could not inspect Ingress controller pods", Details: []string{listErr.Error()}})
 					} else {
-						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Healthy, Summary: fmt.Sprintf("%d/%d discovered Ingress controller pods are Ready", route.ControllerReady, route.ControllerPods)})
+						// Count only discovered ingress-nginx Pods, never every Pod in the cluster.
+						route.ControllerPods = 0
+						route.ControllerReady = 0
+						for _, controller := range controllers {
+							if !isIngressControllerPod(controller) { continue }
+							route.ControllerPods++
+							if controller.Status.Phase == corev1.PodRunning && podReady(controller) { route.ControllerReady++ }
+						}
+						switch {
+						case route.ControllerPods == 0:
+							evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "IngressClass uses ingress-nginx, but no controller Pods were found with supported labels"})
+						case route.ControllerReady == 0:
+							evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Failed, Summary: "Ingress controller pods were found but none are Ready"})
+						default:
+							evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Healthy, Summary: fmt.Sprintf("%d/%d discovered Ingress controller pods are Ready", route.ControllerReady, route.ControllerPods)})
+						}
 					}
 				}
 			}
@@ -370,4 +375,11 @@ func valueOrUnknown(v string) string {
 		return "unknown"
 	}
 	return v
+}
+
+
+// supportsIngressControllerDiscovery reports controller implementations for
+// which KTRX currently has reliable Pod discovery rules.
+func supportsIngressControllerDiscovery(controller string) bool {
+	return controller == "k8s.io/ingress-nginx"
 }
