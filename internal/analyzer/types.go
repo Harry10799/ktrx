@@ -64,6 +64,7 @@ type PodReport struct {
 	Containers     []ContainerInfo `json:"containers" yaml:"containers"`
 	InboundServices []ServiceTrace `json:"inboundServices,omitempty" yaml:"inboundServices,omitempty"`
 	IngressRoutes   []IngressTrace `json:"ingressRoutes,omitempty" yaml:"ingressRoutes,omitempty"`
+	Outbound        OutboundTrace  `json:"outbound" yaml:"outbound"`
 	Events          []EventInfo    `json:"events,omitempty" yaml:"events,omitempty"`
 	Logs            []ContainerLogs `json:"logs,omitempty" yaml:"logs,omitempty"`
 	Evidence       []Evidence      `json:"evidence" yaml:"evidence"`
