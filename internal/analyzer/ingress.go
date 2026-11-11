@@ -231,6 +231,39 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 	return routes, evidence
 }
 
+func promoteRoutedSelectorMismatches(ctx context.Context, client kubernetes.Interface, pod *corev1.Pod, evidence []Evidence) {
+	ingresses, err := client.NetworkingV1().Ingresses(pod.Namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return
+	}
+	backends := make(map[string]struct{})
+	for i := range ingresses.Items {
+		ing := &ingresses.Items[i]
+		if ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
+			backends[ing.Spec.DefaultBackend.Service.Name] = struct{}{}
+		}
+		for _, rule := range ing.Spec.Rules {
+			if rule.HTTP == nil { continue }
+			for _, path := range rule.HTTP.Paths {
+				if path.Backend.Service != nil { backends[path.Backend.Service.Name] = struct{}{} }
+			}
+		}
+	}
+	for i := range evidence {
+		if evidence[i].Check != "inbound-service-selector" { continue }
+		for _, detail := range evidence[i].Details {
+			for serviceName := range backends {
+				if strings.HasPrefix(detail, "Service "+serviceName+" selector mismatch:") {
+					evidence[i].Verdict = Failed
+					evidence[i].Summary = "An Ingress-routed Service has a selector mismatch and currently has no endpoints"
+					evidence[i].Suggestion = "Fix the Service selector or Pod labels immediately; this Service is referenced by an Ingress route and cannot select this Pod."
+					return
+				}
+			}
+		}
+	}
+}
+
 func boolPointer(v bool) *bool { return &v }
 
 func podReady(pod corev1.Pod) bool {
