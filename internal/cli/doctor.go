@@ -44,12 +44,14 @@ type accessRequirement struct {
 func newDoctorCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output string
 	var timeout time.Duration
+	var noColor bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check cluster connectivity and the RBAC permissions KTRX needs",
 		Long:  "Run a read-only preflight against the selected Kubernetes context. The command checks the permissions used by KTRX diagnostics and never changes cluster resources.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(namespace) == "" { return fmt.Errorf("namespace must not be empty") }
 			if timeout <= 0 { return fmt.Errorf("timeout must be greater than zero") }
 			client, err := kube.NewClientWithTimeout(kubeconfig, contextName, timeout)
 			if err != nil {
@@ -93,7 +95,7 @@ func newDoctorCommand() *cobra.Command {
 				enc.SetIndent("", "  ")
 				if err := enc.Encode(report); err != nil { return err }
 			} else if strings.EqualFold(output, "terminal") || strings.EqualFold(output, "text") {
-				printDoctorTerminal(cmd, report, os.Getenv("NO_COLOR") == "")
+				printDoctorTerminal(cmd, report, !noColor && os.Getenv("NO_COLOR") == "")
 			} else {
 				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
 			}
@@ -108,6 +110,7 @@ func newDoctorCommand() *cobra.Command {
 	cmd.Flags().StringVar(&contextName, "context", "", "Kubeconfig context")
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal or json")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Overall timeout for the preflight")
+	cmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
 	return cmd
 }
 
