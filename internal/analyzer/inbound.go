@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
@@ -121,7 +120,7 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 }
 
 func findPodInEndpointSlices(ctx context.Context, client kubernetes.Interface, svc *corev1.Service, pod *corev1.Pod) (bool, bool, bool, []string, error) {
-	selector := labels.Set{discoveryv1.LabelServiceName: svc.Name}.AsSelector().String()
+	selector := labels.Set{"kubernetes.io/service-name": svc.Name}.AsSelector().String()
 	slices, err := client.DiscoveryV1().EndpointSlices(svc.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return false, false, false, nil, err
