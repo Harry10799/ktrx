@@ -99,7 +99,12 @@ func printTerminal(r *analyzer.PodReport, colorEnabled bool) error {
 	}
 	for _, svc := range r.InboundServices {
 		fmt.Printf("  • %s  type=%s  endpoint=%s  ready=%s  source=%s  ports=%s  addresses=%s\n",
-			style("39", true, svc.Name), svc.Type, boolean(svc.EndpointFound), style("42", svc.EndpointReady, endpointReadyLabel(svc)), value(svc.EndpointSource), strings.Join(svc.Ports, ", "), strings.Join(svc.EndpointAddresses, ", "))
+			style("39", true, svc.Name), svc.Type, boolean(svc.EndpointFound), (func() string { if !svc.EndpointReadyKnown { return style("214", true, "unknown") }; return boolean(svc.EndpointReady) })(), value(svc.EndpointSource), strings.Join(svc.Ports, ", "), strings.Join(svc.EndpointAddresses, ", "))
+	}
+	fmt.Println("\n" + section("Ingress Routes:"))
+	if len(r.IngressRoutes) == 0 { fmt.Println("  • No Ingress routes reference matching Services") }
+	for _, route := range r.IngressRoutes {
+		fmt.Printf("  • %s  host=%s  path=%s  service=%s:%s  class=%s\n", style("39", true, route.Name), route.Host, route.Path, route.Service, route.ServicePort, value(route.Class))
 	}
 	fmt.Println("\n" + section("Evidence:"))
 	for _, e := range r.Evidence {
@@ -125,6 +130,11 @@ func printMarkdown(r *analyzer.PodReport) error {
 	for _, svc := range r.InboundServices {
 		fmt.Printf("- **%s** (%s): endpoint found=%t, ready=%s, source=%s; ports: %s; addresses: %s\n",
 			svc.Name, svc.Type, svc.EndpointFound, endpointReadyLabel(svc), value(svc.EndpointSource), strings.Join(svc.Ports, ", "), strings.Join(svc.EndpointAddresses, ", "))
+	}
+	fmt.Println("\n## Ingress Routes")
+	if len(r.IngressRoutes) == 0 { fmt.Println("- No Ingress routes reference matching Services") }
+	for _, route := range r.IngressRoutes {
+		fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s\n", route.Name, route.Host, route.Path, route.Service, route.ServicePort, value(route.Class))
 	}
 	fmt.Println("\n## Evidence")
 	for _, e := range r.Evidence {
