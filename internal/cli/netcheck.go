@@ -201,7 +201,7 @@ func printNetcheck(report netcheckReport, colorEnabled bool) {
 		symbol := "✓"
 		if result.Status == "FAIL" { color, symbol = "196", "✖" }
 		if result.Status == "UNAVAILABLE" { color, symbol = "214", "!" }
-		fmt.Printf("  %s [%s] %s %s (%s)\n", style(color, symbol+" "+result.Status), result.Type, result.Target, result.Duration)
+		fmt.Printf("  %s [%s] %s (%s)\n", style(color, symbol+" "+result.Status), result.Type, result.Target, result.Duration)
 		if result.Output != "" { fmt.Printf("      %s\n", strings.ReplaceAll(result.Output, "\n", "\n      ")) }
 		if result.Error != "" { fmt.Printf("      %s\n", result.Error) }
 	}
