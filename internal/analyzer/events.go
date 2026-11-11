@@ -23,6 +23,7 @@ func collectPodEvents(ctx context.Context, client kubernetes.Interface, pod *cor
 		}
 	}
 	items := make([]EventInfo, 0, len(list.Items))
+	sort.Slice(list.Items, func(i, j int) bool { return eventTime(list.Items[i]).Before(eventTime(list.Items[j])) })
 	for _, event := range list.Items {
 		if !verbose && event.Type != corev1.EventTypeWarning { continue }
 		at := event.EventTime.Time
@@ -34,8 +35,13 @@ func collectPodEvents(ctx context.Context, client kubernetes.Interface, pod *cor
 			Source: event.ReportingController,
 		})
 	}
-	sort.Slice(items, func(i, j int) bool { return items[i].Timestamp < items[j].Timestamp })
 	return items, nil
+}
+
+func eventTime(e corev1.Event) time.Time {
+	if !e.EventTime.IsZero() { return e.EventTime.Time }
+	if !e.LastTimestamp.IsZero() { return e.LastTimestamp.Time }
+	return e.CreationTimestamp.Time
 }
 
 func relativeTime(t time.Time) string {
