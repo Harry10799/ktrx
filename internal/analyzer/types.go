@@ -62,6 +62,7 @@ type PodReport struct {
 	OwnerChain     []string        `json:"ownerChain,omitempty" yaml:"ownerChain,omitempty"`
 	Labels         map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 	Containers     []ContainerInfo `json:"containers" yaml:"containers"`
+	Dependencies    []DependencyTrace `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
 	InboundServices []ServiceTrace `json:"inboundServices,omitempty" yaml:"inboundServices,omitempty"`
 	IngressRoutes   []IngressTrace `json:"ingressRoutes,omitempty" yaml:"ingressRoutes,omitempty"`
 	Outbound        OutboundTrace  `json:"outbound" yaml:"outbound"`
