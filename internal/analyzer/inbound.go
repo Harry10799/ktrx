@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -185,10 +184,14 @@ func servicePortDescriptions(ports []corev1.ServicePort) []string {
 	result := make([]string, 0, len(ports))
 	for _, port := range ports {
 		target := port.TargetPort.String()
-		if port.TargetPort.Type == 0 {
-			target = strconv.Itoa(int(port.Port))
+		if port.TargetPort.IntVal == 0 && port.TargetPort.StrVal == "" {
+			target = fmt.Sprintf("%d", port.Port)
 		}
-		item := fmt.Sprintf("%s:%d -> %s/%s", port.Name, port.Port, target, port.Protocol)
+		name := port.Name
+		if name == "" {
+			name = fmt.Sprintf("%d", port.Port)
+		}
+		item := fmt.Sprintf("%s -> %s/%s", name, target, port.Protocol)
 		result = append(result, item)
 	}
 	return result
