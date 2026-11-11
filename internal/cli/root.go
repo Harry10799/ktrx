@@ -9,8 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/Harry10799/kubetrace/internal/analyzer"
 	"github.com/Harry10799/kubetrace/internal/kube"
-	"gopkg.in/yaml.v3"
-	"context"
 )
 
 func NewRootCommand() *cobra.Command {
@@ -81,5 +79,3 @@ func printMarkdown(r *analyzer.PodReport) error {
 
 func value(s string) string { if s == "" { return "—" }; return s }
 
-var _ = yaml.Marshal
-var _ = context.Background
