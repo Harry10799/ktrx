@@ -133,7 +133,8 @@ func newNetcheckCommand() *cobra.Command {
 			}
 			if dnsTarget != "" {
 				q := shellQuote(dnsTarget)
-				run("DNS", dnsTarget, "if command -v getent >/dev/null 2>&1; then getent hosts "+q+"; elif command -v nslookup >/dev/null 2>&1; then nslookup "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
+				nslookupName := shellQuote(dnsLookupName(dnsTarget, namespace))
+				run("DNS", dnsTarget, "if command -v getent >/dev/null 2>&1; then getent hosts "+q+"; elif command -v nslookup >/dev/null 2>&1; then nslookup "+nslookupName+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
 			}
 			if tcpTarget != "" {
 				run("TCP", tcpTarget, "if command -v nc >/dev/null 2>&1; then nc -z -w "+strconv.Itoa(probeTimeout)+" "+shellQuote(tcpHost)+" "+shellQuote(tcpPort)+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
@@ -165,6 +166,16 @@ func newNetcheckCommand() *cobra.Command {
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Timeout per probe (maximum 2m)")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
 	return cmd
+}
+
+func dnsLookupName(target, namespace string) string {
+	// Avoid resolver search-list expansion in nslookup implementations such as
+	// BusyBox, which can return a non-zero status after a valid short-name
+	// answer because later search suffixes return NXDOMAIN.
+	if !strings.Contains(target, ".") {
+		return target + "." + namespace + ".svc.cluster.local."
+	}
+	return strings.TrimSuffix(target, ".") + "."
 }
 
 func execInPod(ctx context.Context, config *rest.Config, client kubernetes.Interface, namespace, pod, container, script string) (string, string, error) {
