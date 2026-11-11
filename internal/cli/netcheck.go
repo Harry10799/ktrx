@@ -99,6 +99,17 @@ func newNetcheckCommand() *cobra.Command {
 				if !found { return fmt.Errorf("container %q is not a regular container in Pod %s/%s", container, namespace, args[0]) }
 			}
 
+			containerRunning := false
+			for _, status := range pod.Status.ContainerStatuses {
+				if status.Name == container && status.State.Running != nil {
+					containerRunning = true
+					break
+				}
+			}
+			if !containerRunning {
+				return fmt.Errorf("container %q in Pod %s/%s is not running", container, namespace, args[0])
+			}
+
 			report := netcheckReport{Namespace: namespace, Pod: args[0], Container: container}
 			probeTimeout := int(timeout.Seconds())
 			if probeTimeout < 1 { probeTimeout = 1 }
