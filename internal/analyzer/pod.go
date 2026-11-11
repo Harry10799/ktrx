@@ -3,6 +3,7 @@ package analyzer
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -93,6 +94,39 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	if report.Restarts > 0 {
 		report.Evidence = append(report.Evidence, Evidence{Check: "container-restarts", Verdict: Unknown, Summary: fmt.Sprintf("Containers have restarted %d time(s)", report.Restarts), Suggestion: "Inspect previous container logs and pod events for OOMKilled, probe failures or process exits."})
 	}
+
+	// Explicitly mark important dimensions that this CLI does not actively test.
+	for _, container := range pod.Spec.Containers {
+		if container.ReadinessProbe == nil {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Unknown, Summary: "No readiness probe configured"})
+		} else if report.Ready {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Healthy, Summary: "Readiness probe is configured and Pod Ready condition is True"})
+		} else {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/readiness/" + container.Name, Verdict: Failed, Summary: "Readiness probe is configured but Pod Ready condition is not True", Suggestion: "Inspect probe path, port, thresholds and container logs."})
+		}
+		if container.LivenessProbe == nil {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Unknown, Summary: "No liveness probe configured"})
+		} else {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/liveness/" + container.Name, Verdict: Unknown, Summary: "Liveness probe is configured; current probe execution result is not directly exposed in Pod status"})
+		}
+		if container.StartupProbe == nil {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Unknown, Summary: "No startup probe configured"})
+		} else {
+			report.Evidence = append(report.Evidence, Evidence{Check: "probe/startup/" + container.Name, Verdict: Unknown, Summary: "Startup probe is configured; current probe execution result is not directly exposed in Pod status"})
+		}
+		if imageUsesMutableTag(container.Image) {
+			report.Evidence = append(report.Evidence, Evidence{Check: "image-tag/" + container.Name, Verdict: Warning, Summary: "Container image uses a mutable or implicit tag: " + container.Image, Suggestion: "Pin the image to an immutable digest or a controlled version tag."})
+		}
+	}
+	if pod.Status.QOSClass == corev1.PodQOSBestEffort {
+		report.Evidence = append(report.Evidence, Evidence{Check: "resource-qos", Verdict: Warning, Summary: "Pod QoS is BestEffort; containers have no CPU or memory requests/limits", Suggestion: "Define appropriate resource requests and limits to improve scheduling and resource isolation."})
+	}
+	report.Evidence = append(report.Evidence,
+		Evidence{Check: "dns", Verdict: Unknown, Summary: "DNS resolution was not checked from inside the container"},
+		Evidence{Check: "outbound-connectivity", Verdict: Unknown, Summary: "Outbound network connectivity was not checked"},
+		Evidence{Check: "log-analysis", Verdict: Unknown, Summary: "Container logs were collected but application errors and HTTP status patterns were not analyzed"},
+	)
+
 	report.Verdict = aggregate(report.Evidence)
 	return report, nil
 }
@@ -140,6 +174,14 @@ func quantities(values corev1.ResourceList) map[string]string {
 		out[string(name)] = value.String()
 	}
 	return out
+}
+
+func imageUsesMutableTag(image string) bool {
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon <= lastSlash { return true }
+	tag := image[lastColon+1:]
+	return tag == "" || tag == "latest"
 }
 
 func aggregate(items []Evidence) Verdict {
