@@ -143,7 +143,7 @@ ktrx netcheck nginx-pod -n production --http https://api.example.com/health
 ktrx netcheck nginx-pod -n production --dns api.example.com --tcp api.example.com:443 --http https://api.example.com/health --output json
 ```
 
-The container must contain `/bin/sh` and the required utility: `getent` or `nslookup` for DNS, `nc` for TCP, and `curl` or `wget` for HTTP. Specify `--container` for multi-container Pods. Each probe has a 10-second default timeout; configure it with `--timeout` (maximum 2 minutes). Missing utilities are reported as `UNAVAILABLE`, not as network failures. Probes execute inside the selected container and may generate DNS queries or outbound traffic; use only approved destinations.
+The container must contain `/bin/sh` and the required utility: `getent` or `nslookup` for DNS, `nc` for TCP, and `curl` or `wget` for HTTP. Specify `--container` for multi-container Pods. Each probe has a 10-second default timeout; configure it with `--timeout` (maximum 2 minutes). Missing utilities are reported as `UNAVAILABLE`, not as network failures. HTTP 4xx/5xx responses are treated as failed HTTP checks. Probes execute inside the selected container and may generate DNS queries or outbound traffic; use only approved destinations.
 
 ### Compare Pods
 
