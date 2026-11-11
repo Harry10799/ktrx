@@ -59,3 +59,25 @@ func TestPromoteRoutedSelectorMismatch(t *testing.T) {
 		t.Fatalf("Ingress-routed selector mismatch should fail, got %+v", evidence[0])
 	}
 }
+
+
+func TestListIngressControllerPodsExcludesUnrelatedPods(t *testing.T) {
+	controller := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "ingress-controller", Namespace: "ingress-system", Labels: map[string]string{"app.kubernetes.io/component": "controller"}},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+	}
+	app := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "application", Namespace: "default", Labels: map[string]string{"app": "web"}}}
+	worker := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "worker", Namespace: "jobs", Labels: map[string]string{"role": "worker"}}}
+	client := fake.NewSimpleClientset(controller, app, worker)
+
+	controllers, err := listIngressControllerPods(context.Background(), client)
+	if err != nil {
+		t.Fatalf("listIngressControllerPods returned error: %v", err)
+	}
+	if len(controllers) != 1 {
+		t.Fatalf("expected exactly 1 controller Pod, got %d: %+v", len(controllers), controllers)
+	}
+	if controllers[0].Name != "ingress-controller" {
+		t.Fatalf("unexpected controller Pod: %s", controllers[0].Name)
+	}
+}
