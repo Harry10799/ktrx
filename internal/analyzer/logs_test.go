@@ -10,6 +10,8 @@ func TestLogStatusDetectionRequiresExplicitHTTPContext(t *testing.T) {
 		wantServer bool
 	}{
 		{name: "HTTP 503", line: "upstream returned HTTP/1.1 503", wantMatch: true, wantServer: true},
+		{name: "nginx access log 404", line: `"GET /x HTTP/1.1" 404 153`, wantMatch: true},
+		{name: "nginx access log 502", line: `"POST /api HTTP/1.1" 502 157`, wantMatch: true, wantServer: true},
 		{name: "status equals 404", line: "request status=404", wantMatch: true},
 		{name: "bare number 500", line: "processed 500 records", wantMatch: false},
 		{name: "number embedded in identifier", line: "build-503 completed", wantMatch: false},
