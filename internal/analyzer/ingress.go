@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -129,8 +130,12 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 				if route.Class == "" {
 					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Unknown, Summary: "Ingress does not specify ingressClassName; default class resolution was not verified"})
 				} else if _, classErr := client.NetworkingV1().IngressClasses().Get(ctx, route.Class, metav1.GetOptions{}); classErr != nil {
-					route.ClassExists = boolPointer(false)
-					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Failed, Summary: "Referenced IngressClass " + route.Class + " does not exist", Details: []string{classErr.Error()}, Suggestion: "Create the IngressClass or correct spec.ingressClassName."})
+					if apierrors.IsNotFound(classErr) {
+						route.ClassExists = boolPointer(false)
+						evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Failed, Summary: "Referenced IngressClass " + route.Class + " does not exist", Details: []string{classErr.Error()}, Suggestion: "Create the IngressClass or correct spec.ingressClassName."})
+					} else {
+						evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Unknown, Summary: "Could not verify referenced IngressClass", Details: []string{classErr.Error()}})
+					}
 				} else {
 					route.ClassExists = boolPointer(true)
 					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Healthy, Summary: "IngressClass " + route.Class + " exists"})
