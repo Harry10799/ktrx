@@ -1,93 +1,152 @@
-# kubetrace
+# KubeTrace
 
-**kubetrace** is a pod-centric Kubernetes troubleshooting CLI. It starts with one pod and builds an evidence-backed picture of its runtime health and related Kubernetes resources.
+**KubeTrace** is a pod-centric Kubernetes troubleshooting CLI. Give it a Pod name and it builds an evidence-backed view of that Pod's health, ownership, inbound traffic path, outbound network policy and recent activity.
 
-> Early development — v0.2 diagnostics. Some checks intentionally remain UNKNOWN until active in-container network and application analysis is implemented.
+> **Development status:** early development (v0.2 diagnostics). KubeTrace is read-only. Checks that require an in-container probe or deeper application correlation are reported as `UNKNOWN` rather than guessed.
 
-## Implemented
+## Features
 
-- Go CLI built with Cobra.
-- Kubernetes client using the current kubeconfig, optional kubeconfig path and context.
-- Pod overview: phase, readiness, restarts, node, IP, QoS, age, ServiceAccount and labels.
-- Container overview: image, state, readiness, restart count, resource requests and limits.
-- Controller owner chain: Pod → ReplicaSet → Deployment.
-- Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
-- Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.\n- Outbound trace: Pod DNS policy/configuration and matching namespace NetworkPolicies, including egress isolation, destinations and ports. This is declarative policy inspection, not a live connectivity test.
-- Pod Events timeline, ordered by timestamp, including reason, message, count and reporting source.
-- Log analysis: detect common error/fatal/exception patterns and HTTP 4xx/5xx lines; `--logs` displays full current and previous logs. Cross-service dependency-failure correlation is not implemented yet.
-- Warning Events by default; include Normal Events with `--verbose`.
-- Relative timestamps (for example, `31m ago`) in terminal and Markdown output.
-- Deployment replica selection prioritizes not-ready Pods and higher restart counts; `--all` inspects every matching replica. Terminal output deduplicates shared findings and shows only per-Pod differences.
-- Service targetPort and probe-port checks against declared container ports; undeclared ports remain UNKNOWN rather than being assumed broken, while a mismatch against declared ports is WARN.
-- Evidence-based verdict precedence: FAILED > WARN > UNKNOWN > HEALTHY, with a summary of warning, unchecked and failed findings.
-- Explicit UNKNOWN finding for live outbound connectivity and cross-service dependency-failure correlation; DNS settings and egress NetworkPolicies are inspected declaratively. Missing readiness probes are WARN; missing liveness/startup probes are INFO.
-- Ingress diagnostics: IngressClass existence, controller Pod discovery/readiness and assigned load-balancer addresses.
-- Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
+### Pod and workload health
+
+- Pod phase, readiness, restart count, node, IP, QoS, age, ServiceAccount and labels.
+- Container image, state, readiness, restart count, resource requests and limits.
+- Owner chain: Pod → ReplicaSet → Deployment.
+- Probe configuration checks. Missing readiness probes are WARN; missing liveness/startup probes are INFO.
+- Evidence-based verdicts: `FAILED`, `WARN`, `UNKNOWN`, and `HEALTHY`.
+
+### Inbound traffic
+
+- Service selector matching and backend discovery through EndpointSlices, with legacy Endpoints fallback.
+- Endpoint readiness and Service port → targetPort → declared container-port inspection.
+- Ingress host/path backend tracing.
+- IngressClass lookup, controller Pod discovery/readiness and load-balancer address status.
+
+### Outbound diagnostics
+
+- Pod DNS policy and configured nameservers, search domains and options.
+- Namespace NetworkPolicies that select the Pod.
+- Egress isolation status, declared destination selectors/CIDRs and ports.
+- Live DNS resolution and outbound TCP/HTTP connectivity are **not** tested yet and remain `UNKNOWN`.
+
+NetworkPolicy allow rules are additive across all policies selecting a Pod. KubeTrace reports the declared policy configuration; it does not infer that a destination is blocked from one policy in isolation. Actual enforcement also depends on the cluster's networking plugin (CNI).
+
+### Events and logs
+
+- Pod Events timeline with timestamps, reasons, messages, counts and reporting source.
+- Warning Events by default; use `--verbose` to include Normal Events.
+- Log analysis for common error/fatal/exception patterns and HTTP 4xx/5xx responses.
+- Use `--logs` to display full current and previous container logs.
+- Cross-service dependency-failure correlation is not implemented yet.
+
+### Output and Deployment inspection
+
+- Colored terminal output with verdict-aware status colors; disable colors with `--no-color` or `NO_COLOR`.
 - Terminal, JSON and Markdown output formats.
+- Deployment targets select the least healthy matching Pod first (not-ready Pods, then higher restart counts).
+- Use `--all` to inspect every matching replica. Shared findings are shown once, followed by Pod-specific differences.
 
-## Outbound diagnostics scope\n\nKubeTrace reports NetworkPolicies that select the Pod and whether those policies apply egress isolation. It summarizes declared destination selectors, CIDRs and ports. Kubernetes NetworkPolicy allows are additive across matching policies; the report therefore does not claim a destination is blocked based on one policy alone. Actual enforcement depends on the cluster CNI. DNS policy, nameservers, search domains and options are displayed, but name resolution is not executed inside the container.\n\n## v0.1 roadmap
+## Install
 
-- Environment and ConfigMap reference discovery (names only; never Secret values).
-- Mounted ConfigMap, Secret and PVC status.
-- NetworkPolicies selecting the pod (inventory only, not policy evaluation).
-- Evidence and suggested fix for every check.
+**Requirements:** Go 1.23 or later and access to a Kubernetes cluster through a kubeconfig.
 
-## Later
-
-- DNS resolution from inside the pod (UNKNOWN when permissions prevent the check).
-- Healthy-vs-broken diff.
-- Gateway API HTTPRoute support.
-- Node conditions and resource usage when metrics-server is available.
-- NetworkPolicy blocked-by analysis and Hubble integration.
-
-## Install / build
-
-Requires Go 1.23+.
+### Build from source
 
 ```bash
 git clone https://github.com/Harry10799/kubetrace.git
 cd kubetrace
-go mod tidy
 go build -o kubetrace ./cmd/kubetrace
+```
 
-# Install into $(go env GOPATH)/bin (add it to PATH if needed)
+Run the local binary:
+
+```bash
+./kubetrace --help
+```
+
+### Install with Go
+
+```bash
 go install ./cmd/kubetrace
+```
 
-# Or use the Makefile
+Go installs the binary into `$(go env GOPATH)/bin`. Add that directory to your `PATH` if the shell cannot find `kubetrace`:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+Add the export to `~/.bashrc` or `~/.zshrc` to make it persistent.
+
+### Install with Make
+
+```bash
+make build
 make install
 ```
 
 ## Usage
 
-If `kubetrace` returns `command not found`, add the Go bin directory to your PATH (for example, `export PATH="$(go env GOPATH)/bin:$PATH"`; persist it in `~/.bashrc` or `~/.zshrc`). The shortest form is the recommended command. The `pod` subcommand is also available, and Deployment targets resolve to one matching Pod.
+The recommended syntax is to pass the Pod name directly:
 
 ```bash
 # Inspect a Pod
 kubetrace POD_NAME -n NAMESPACE
 
-# Explicit Pod subcommand
-kubetrace pod POD_NAME -n NAMESPACE
-
-# Inspect one Pod selected from a Deployment
+# Inspect a Deployment (select the least healthy matching Pod)
 kubetrace deploy/DEPLOYMENT_NAME -n NAMESPACE
 
-# Output formats and options
+# Inspect every Pod belonging to a Deployment
+kubetrace deploy/DEPLOYMENT_NAME -n NAMESPACE --all
+```
+
+### Options
+
+```bash
+# JSON or Markdown output
 kubetrace POD_NAME -n NAMESPACE --output json
 kubetrace POD_NAME -n NAMESPACE --output markdown
-kubetrace POD_NAME -n NAMESPACE --no-color
+
+# Logs, verbose Events and color control
 kubetrace POD_NAME -n NAMESPACE --logs
 kubetrace POD_NAME -n NAMESPACE --verbose
-kubetrace deploy/DEPLOYMENT_NAME -n NAMESPACE --all
+kubetrace POD_NAME -n NAMESPACE --no-color
+
+# Use a specific Kubernetes context
 kubetrace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
-The older `kubetrace trace POD_NAME` syntax remains supported as a backward-compatible alias, but the direct Pod form above is preferred.
+### Subcommands and compatibility
 
-The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints, Ingresses (`networking.k8s.io`) and Events in the namespace, plus permission to read pod logs (`pods/log`). Ingress diagnostics also need `get` on cluster-scoped IngressClasses and `list` on Pods across namespaces to discover controller Pods. Event and log retrieval failures are reported as UNKNOWN evidence; warning Events are displayed as diagnostic context and do not independently change the overall verdict. Deployment targets select the least healthy matching Pod first (not-ready, then higher restart count); `--all` inspects every matching replica.
+The explicit `pod` subcommand is also supported:
+
+```bash
+kubetrace pod POD_NAME -n NAMESPACE
+```
+
+The older `trace` syntax remains available as a backward-compatible alias:
+
+```bash
+kubetrace trace POD_NAME -n NAMESPACE
+```
+
+For full per-Pod logs when inspecting a Deployment, run the direct Pod command with `--logs`.
+
+## Kubernetes permissions
+
+KubeTrace uses the current kubeconfig, or an explicitly supplied kubeconfig/context. The caller needs read access to the resources used by the checks:
+
+- Pods and, when applicable, ReplicaSets.
+- Services, EndpointSlices (`discovery.k8s.io`) and legacy Endpoints.
+- Ingresses and IngressClasses (`networking.k8s.io`).
+- NetworkPolicies (`networking.k8s.io`) in the Pod namespace.
+- Events and Pod logs (`pods/log`).
+- Pods across namespaces for Ingress controller discovery.
+
+Some checks may return `UNKNOWN` if the caller lacks the required permissions or the cluster does not expose the information. KubeTrace does not read or print Secret values.
 
 ## Project layout
 
-```
+```text
 cmd/kubetrace/       CLI entry point
 internal/cli/        Cobra commands and output formats
 internal/kube/       Kubernetes client construction
@@ -96,8 +155,15 @@ internal/analyzer/   Pod inspection and evidence/verdict rules
 
 ## Design principles
 
-1. **Pod-centric:** inspect one requested pod and follow only directly related resources.
-2. **Evidence first:** verdicts are based on observed Kubernetes state.
-3. **Safe by default:** read-only API calls; never print Secret values.
-4. **Honest uncertainty:** unavailable permissions or unsupported checks produce UNKNOWN rather than guesses.
-5. **No cluster-wide scan:** kubetrace complements tools such as Popeye; it does not replace them.
+1. **Pod-centric:** start with one Pod and follow directly related resources.
+2. **Evidence first:** base findings on observed Kubernetes API state.
+3. **Read-only by default:** do not mutate cluster resources.
+4. **Honest uncertainty:** report unsupported or inaccessible checks as `UNKNOWN`.
+5. **No cluster-wide scan:** complement tools such as Popeye rather than replace them.
+
+## Current limitations
+
+- Live DNS resolution and outbound TCP/HTTP probes are not implemented.
+- Cross-service dependency-failure correlation is not implemented.
+- NetworkPolicy inspection is declarative; runtime enforcement is not verified.
+- Gateway API HTTPRoute support, healthy-vs-broken comparison, and Hubble integration are future enhancements.
