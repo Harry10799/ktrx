@@ -100,6 +100,8 @@ func newNetcheckCommand() *cobra.Command {
 			}
 
 			report := netcheckReport{Namespace: namespace, Pod: args[0], Container: container}
+			probeTimeout := int(timeout.Seconds())
+			if probeTimeout < 1 { probeTimeout = 1 }
 			run := func(kind, target, script string) {
 				start := time.Now()
 				ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
@@ -123,11 +125,11 @@ func newNetcheckCommand() *cobra.Command {
 				run("DNS", dnsTarget, "if command -v getent >/dev/null 2>&1; then getent hosts "+q+"; elif command -v nslookup >/dev/null 2>&1; then nslookup "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
 			}
 			if tcpTarget != "" {
-				run("TCP", tcpTarget, "if command -v nc >/dev/null 2>&1; then nc -z -w 5 "+shellQuote(tcpHost)+" "+shellQuote(tcpPort)+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
+				run("TCP", tcpTarget, "if command -v nc >/dev/null 2>&1; then nc -z -w "+strconv.Itoa(probeTimeout)+" "+shellQuote(tcpHost)+" "+shellQuote(tcpPort)+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
 			}
 			if httpTarget != "" {
 				q := shellQuote(httpTarget)
-				run("HTTP", httpTarget, "if command -v curl >/dev/null 2>&1; then curl -sS -o /dev/null -w 'HTTP_STATUS=%{http_code}\\n' --max-time 8 "+q+"; elif command -v wget >/dev/null 2>&1; then wget --spider -T 8 -S "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
+				run("HTTP", httpTarget, "if command -v curl >/dev/null 2>&1; then curl -fSs -o /dev/null -w 'HTTP_STATUS=%{http_code}\\n' --max-time "+strconv.Itoa(probeTimeout)+" +"+q+"; elif command -v wget >/dev/null 2>&1; then wget --spider -T "+strconv.Itoa(probeTimeout)+" -S "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
 			}
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  ")
