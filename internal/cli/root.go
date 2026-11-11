@@ -137,6 +137,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 	fmt.Println("\n"+section("Containers:")); for _,v:=range r.Containers { fmt.Printf("  • %s image=%s state=%s ready=%s restarts=%d\n",style("39",true,v.Name),v.Image,v.State,boolean(v.Ready),v.RestartCount) }
 	fmt.Println("\n"+section("Inbound Services:")); if len(r.InboundServices)==0 { fmt.Println("  • No matching Services") }
 	for _,v:=range r.InboundServices { fmt.Printf("  • %s type=%s endpoint=%s ready=%s ports=%s\n",style("39",true,v.Name),v.Type,boolean(v.EndpointFound),endpointReadyLabel(v),strings.Join(v.Ports,", ")) }
+	fmt.Println("\n"+section("Dependencies:")); if len(r.Dependencies)==0 { fmt.Println("  • No explicit same-namespace Service dependencies discovered") }; for _,d:=range r.Dependencies { fmt.Printf("  • %s [%s] %d/%d backends ready — %s\n",style("39",true,d.Service),verdict(d.Verdict),d.ReadyPods,d.SelectedPods,d.Summary); if len(d.References)>0 { fmt.Printf("      Referenced by: %s\n",strings.Join(d.References,", ")) }; if len(d.UnreadyPods)>0 { fmt.Printf("      Unready: %s\n",strings.Join(d.UnreadyPods,", ")) } }
 	fmt.Println("\n"+section("Ingress Routes:")); if len(r.IngressRoutes)==0 { fmt.Println("  • No matching Ingress routes") }
 	for _,v:=range r.IngressRoutes { fmt.Printf("  • %s host=%s path=%s service=%s:%s class=%s classExists=%s controller=%d/%d addresses=%s\n",style("39",true,v.Name),v.Host,v.Path,v.Service,v.ServicePort,value(v.Class),boolLabel(v.ClassExists),v.ControllerReady,v.ControllerPods,strings.Join(v.Addresses,", ")) }
 	fmt.Println("\n"+section("Outbound / DNS:"))
@@ -167,7 +168,7 @@ func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
 	fmt.Println("\n## Details"); fmt.Printf("- Phase: %s; Ready: %t; Restarts: %d; Node: %s; Pod IP: %s; QoS: %s; Age: %s\n",r.Phase,r.Ready,r.Restarts,value(r.Node),value(r.PodIP),value(r.QOSClass),r.Age)
 	fmt.Println("\n### Containers"); for _,v:=range r.Containers { fmt.Printf("- **%s** — %s; state: %s; ready: %t; restarts: %d\n",v.Name,v.Image,v.State,v.Ready,v.RestartCount) }
 	fmt.Println("\n### Inbound Services"); for _,v:=range r.InboundServices { fmt.Printf("- **%s** (%s): endpoint=%t, ready=%s; ports: %s\n",v.Name,v.Type,v.EndpointFound,endpointReadyLabel(v),strings.Join(v.Ports,", ")) }
-	fmt.Println("\n### Ingress Routes");fmt.Println("\n### Outbound / DNS")
+	fmt.Println("\n### Dependencies"); for _,d:=range r.Dependencies { fmt.Printf("- **%s** — %s (%d/%d ready); references: %s\n",d.Service,d.Summary,d.ReadyPods,d.SelectedPods,strings.Join(d.References,", ")) }; fmt.Println("\n### Ingress Routes");fmt.Println("\n### Outbound / DNS")
 	fmt.Printf("- DNS policy: %s; hostNetwork: %t\n", value(r.Outbound.DNSPolicy), r.Outbound.HostNetwork)
 	for _, p := range r.Outbound.Policies { fmt.Printf("- **%s** — egress isolation: %t; rules: %d; destinations: %s; ports: %s\n", p.Name, p.EgressIsolating, p.RuleCount, strings.Join(p.Destinations, ", "), strings.Join(p.Ports, ", ")) }
 	 for _,v:=range r.IngressRoutes { fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s; class exists: %s; controller ready: %d/%d; addresses: %s\n",v.Name,v.Host,v.Path,v.Service,v.ServicePort,value(v.Class),boolLabel(v.ClassExists),v.ControllerReady,v.ControllerPods,strings.Join(v.Addresses,", ")) }
