@@ -50,16 +50,26 @@ go build -o kubetrace ./cmd/kubetrace
 
 ## Usage
 
+The shortest form is the recommended command. The `pod` subcommand is also available, and Deployment targets resolve to one matching Pod.
+
 ```bash
+# Inspect a Pod
 kubetrace POD_NAME -n NAMESPACE
+
+# Explicit Pod subcommand
 kubetrace pod POD_NAME -n NAMESPACE
+
+# Inspect one Pod selected from a Deployment
 kubetrace deploy/DEPLOYMENT_NAME -n NAMESPACE
-kubetrace trace POD_NAME -n NAMESPACE
-kubetrace trace POD_NAME -n NAMESPACE --output json
-kubetrace trace POD_NAME -n NAMESPACE --output markdown
-kubetrace trace POD_NAME -n NAMESPACE --no-color
-kubetrace trace POD_NAME -n NAMESPACE --context CONTEXT_NAME
+
+# Output formats and options
+kubetrace POD_NAME -n NAMESPACE --output json
+kubetrace POD_NAME -n NAMESPACE --output markdown
+kubetrace POD_NAME -n NAMESPACE --no-color
+kubetrace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
+
+The older `kubetrace trace POD_NAME` syntax remains supported as a backward-compatible alias, but the direct Pod form above is preferred.
 
 The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints, Ingresses (`networking.k8s.io`) and Events in the namespace, plus permission to read pod logs (`pods/log`). Ingress diagnostics also need `get` on cluster-scoped IngressClasses and `list` on Pods across namespaces to discover controller Pods. Event and log retrieval failures are reported as UNKNOWN evidence; warning Events are displayed as diagnostic context and do not independently change the overall verdict. Deployment targets resolve to one matching Pod (the CLI reports which replica it selected).
 
