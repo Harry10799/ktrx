@@ -118,11 +118,10 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	if pod.Status.QOSClass == corev1.PodQOSBestEffort {
 		report.Evidence = append(report.Evidence, Evidence{Check: "resource-qos", Verdict: Warning, Summary: "Pod QoS is BestEffort; containers have no CPU or memory requests/limits", Suggestion: "Define appropriate resource requests and limits to improve scheduling and resource isolation."})
 	}
-	report.Evidence = append(report.Evidence,
-		Evidence{Check: "dns", Verdict: Unknown, Summary: "DNS resolution was not checked from inside the container"},
-		Evidence{Check: "outbound-connectivity", Verdict: Unknown, Summary: "Outbound network connectivity was not checked"},
-		Evidence{Check: "dependency-failures", Verdict: Unknown, Summary: "Cross-service dependency failure patterns are not analyzed yet"},
-	)
+	outbound, outboundEvidence := traceOutbound(ctx, a.Client, pod)
+	report.Outbound = outbound
+	report.Evidence = append(report.Evidence, outboundEvidence...)
+	report.Evidence = append(report.Evidence, Evidence{Check: "dependency-failures", Verdict: Unknown, Summary: "Cross-service dependency failure patterns are not analyzed yet"})
 
 	checkServicePortChain(pod, report)
 	report.WarningCount, report.UnknownCount, report.FailedCount = countVerdicts(report.Evidence)
