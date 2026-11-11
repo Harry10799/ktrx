@@ -19,7 +19,6 @@
 
 ## v0.1 roadmap
 
-- Ingress → Service path.
 - Environment and ConfigMap reference discovery (names only; never Secret values).
 - Pod DNS configuration.
 - Current and previous container logs, grouped errors and dependency context.
