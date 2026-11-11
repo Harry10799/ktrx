@@ -14,7 +14,8 @@
 - Container image, state, readiness, restart count, resource requests and limits.
 - Owner chain: Pod → ReplicaSet → Deployment.
 - Probe configuration checks. Missing readiness probes are WARN; missing liveness/startup probes are INFO.
-- Evidence-based verdicts: `FAILED`, `WARN`, `UNKNOWN`, and `HEALTHY`.
+- Evidence-based verdicts: `FAILED`, `UNKNOWN`, `WARN`, and `HEALTHY`.
+- Headline precedence: `FAILED > UNKNOWN (critical evidence unavailable) > WARN > HEALTHY`. Explicitly optional observations (such as probe-port declaration, default Ingress class resolution, Ingress status, and unavailable previous-container logs) remain visible as evidence but do not downgrade the headline.
 
 ### Inbound traffic
 
