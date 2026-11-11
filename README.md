@@ -182,7 +182,7 @@ Generate or refresh the report from your own Kubernetes cluster:
 bash scripts/generate-demo.sh
 ```
 
-The script builds KTRX, creates an isolated `ktrx-demo` namespace with sample workloads, runs the commands, and writes their commands and output to `docs/DEMO.md`. It deletes the demo namespace automatically. Set `KEEP_DEMO=1` to retain the resources for inspection. Requirements: Bash, Go, kubectl and a reachable cluster.
+The script verifies Kubernetes connectivity, builds KTRX, creates an isolated `ktrx-demo` namespace with sample workloads, runs the commands, and writes their commands and output to `docs/DEMO.md`. The comparison uses matching container names and settings so the image change is easy to identify. Transient scheduling Events from initial placement are cleared after the reference Deployment is ready; readiness is configured while liveness/startup probes are intentionally omitted. It deletes the demo namespace automatically. Set `KEEP_DEMO=1` to retain the resources for inspection. Requirements: Bash, Go, kubectl and a reachable cluster.
 
 ## Kubernetes permissions
 
