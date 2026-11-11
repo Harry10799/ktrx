@@ -73,8 +73,8 @@ func printTerminal(r *analyzer.PodReport) error {
 		fmt.Println("  • No matching Services")
 	}
 	for _, svc := range r.InboundServices {
-		fmt.Printf("  • %s  type=%s  endpoint=%t  ready=%t  source=%s  ports=%s\n",
-			svc.Name, svc.Type, svc.EndpointFound, svc.EndpointReady, value(svc.EndpointSource), strings.Join(svc.Ports, ", "))
+		fmt.Printf("  • %s  type=%s  endpoint=%t  ready=%s  source=%s  ports=%s  addresses=%s\n",
+			svc.Name, svc.Type, svc.EndpointFound, endpointReadyLabel(svc), value(svc.EndpointSource), strings.Join(svc.Ports, ", "), strings.Join(svc.EndpointAddresses, ", "))
 	}
 	fmt.Println("\nEvidence:")
 	for _, e := range r.Evidence {
@@ -98,8 +98,8 @@ func printMarkdown(r *analyzer.PodReport) error {
 		fmt.Println("- No matching Services")
 	}
 	for _, svc := range r.InboundServices {
-		fmt.Printf("- **%s** (%s): endpoint found=%t, ready=%t, source=%s; ports: %s\n",
-			svc.Name, svc.Type, svc.EndpointFound, svc.EndpointReady, value(svc.EndpointSource), strings.Join(svc.Ports, ", "))
+		fmt.Printf("- **%s** (%s): endpoint found=%t, ready=%s, source=%s; ports: %s; addresses: %s\n",
+			svc.Name, svc.Type, svc.EndpointFound, endpointReadyLabel(svc), value(svc.EndpointSource), strings.Join(svc.Ports, ", "), strings.Join(svc.EndpointAddresses, ", "))
 	}
 	fmt.Println("\n## Evidence")
 	for _, e := range r.Evidence {
@@ -109,6 +109,12 @@ func printMarkdown(r *analyzer.PodReport) error {
 		}
 	}
 	return nil
+}
+
+func endpointReadyLabel(svc analyzer.ServiceTrace) string {
+	if !svc.EndpointReadyKnown { return "unknown" }
+	if svc.EndpointReady { return "true" }
+	return "false"
 }
 
 func value(s string) string {
