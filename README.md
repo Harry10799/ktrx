@@ -38,7 +38,7 @@ NetworkPolicy allow rules are additive across all policies selecting a Pod. KTRX
 - Warning Events by default; use `--verbose` to include Normal Events.
 - Log analysis for common error/fatal/exception patterns and HTTP 4xx/5xx responses.
 - Use `--logs` to display full current and previous container logs.
-- Direct dependency correlation identifies same-namespace Services explicitly referenced in literal container environment values or commands, then inspects only their selected backend Pods.
+- Direct dependency correlation identifies same-namespace Services explicitly referenced in literal container environment values or commands, then inspects only their selected backend Pods. It reports selected/Ready counts, unready Pod names, container waiting/termination reasons and restart counts; inspection is capped at 20 Services per source Pod. Services configured with `publishNotReadyAddresses` remain `UNKNOWN` because Pod readiness does not determine endpoint eligibility.
 
 ### Output and Deployment inspection
 
@@ -206,6 +206,6 @@ internal/analyzer/   Pod inspection and evidence/verdict rules
 
 ## Current limitations
 
-- Dependency correlation is limited to explicit same-namespace Service references; values stored only in Secrets/ConfigMaps and cross-namespace/external dependencies are not inspected.
+- Dependency correlation is limited to explicit same-namespace Service references in literal environment values and command arguments; values stored only in Secrets/ConfigMaps and cross-namespace/external dependencies are not inspected. A backend health finding is a correlation clue, not proof that the dependency caused the source workload's symptoms.
 - NetworkPolicy inspection is declarative; runtime checks provide path-specific evidence but cannot attribute a failure to NetworkPolicy alone.
 - Gateway API HTTPRoute support and Hubble integration are future enhancements.
