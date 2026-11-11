@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 
+	corev1 "k8s.io/api/core/v1"
+
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -21,6 +23,10 @@ type IngressTrace struct {
 	PathType    string   `json:"pathType,omitempty" yaml:"pathType,omitempty"`
 	Service     string   `json:"service" yaml:"service"`
 	ServicePort string   `json:"servicePort" yaml:"servicePort"`
+	ClassExists *bool `json:"classExists,omitempty" yaml:"classExists,omitempty"`
+	ControllerPods int `json:"controllerPods,omitempty" yaml:"controllerPods,omitempty"`
+	ControllerReady int `json:"controllerReady,omitempty" yaml:"controllerReady,omitempty"`
+	Addresses []string `json:"addresses,omitempty" yaml:"addresses,omitempty"`
 }
 
 type ingressBackend struct {
@@ -106,8 +112,52 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 			Summary: "No Ingress routes reference Services selecting this pod",
 		}}
 	}
-	evidence := make([]Evidence, 0, len(routes))
-	for _, route := range routes {
+	evidence := make([]Evidence, 0, len(routes)*3)
+	checked := map[string]bool{}
+	for i := range routes {
+		route := &routes[i]
+		if !checked[route.Name] {
+			checked[route.Name] = true
+			ing, getErr := client.NetworkingV1().Ingresses(namespace).Get(ctx, route.Name, metav1.GetOptions{})
+			if getErr != nil {
+				evidence = append(evidence, Evidence{Check: "ingress-status/" + route.Name, Verdict: Unknown, Summary: "Could not inspect Ingress status", Details: []string{getErr.Error()}})
+			} else {
+				for _, item := range ing.Status.LoadBalancer.Ingress {
+					if item.IP != "" { route.Addresses = append(route.Addresses, item.IP) }
+					if item.Hostname != "" { route.Addresses = append(route.Addresses, item.Hostname) }
+				}
+				if route.Class == "" {
+					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Unknown, Summary: "Ingress does not specify ingressClassName; default class resolution was not verified"})
+				} else if _, classErr := client.NetworkingV1().IngressClasses().Get(ctx, route.Class, metav1.GetOptions{}); classErr != nil {
+					route.ClassExists = boolPointer(false)
+					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Failed, Summary: "Referenced IngressClass " + route.Class + " does not exist", Details: []string{classErr.Error()}, Suggestion: "Create the IngressClass or correct spec.ingressClassName."})
+				} else {
+					route.ClassExists = boolPointer(true)
+					evidence = append(evidence, Evidence{Check: "ingress-class/" + route.Name, Verdict: Healthy, Summary: "IngressClass " + route.Class + " exists"})
+				}
+				if len(route.Addresses) == 0 {
+					evidence = append(evidence, Evidence{Check: "ingress-address/" + route.Name, Verdict: Unknown, Summary: "Ingress has no load-balancer address assigned", Suggestion: "Check the Ingress controller and its Service; some local controllers do not publish an address."})
+				} else {
+					evidence = append(evidence, Evidence{Check: "ingress-address/" + route.Name, Verdict: Healthy, Summary: "Ingress has an assigned load-balancer address", Details: route.Addresses})
+				}
+				controllers, listErr := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{LabelSelector: "app.kubernetes.io/component=controller"})
+				if listErr != nil {
+					evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "Could not inspect Ingress controller pods", Details: []string{listErr.Error()}})
+				} else {
+					route.ControllerPods = len(controllers.Items)
+					for _, controller := range controllers.Items {
+						if controller.Status.Phase == corev1.PodRunning && podReady(controller) { route.ControllerReady++ }
+					}
+					if route.ControllerPods == 0 {
+						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "No controller pods found with the standard controller label; controller discovery may be implementation-specific"})
+					} else if route.ControllerReady == 0 {
+						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Failed, Summary: "Ingress controller pods were found but none are Ready"})
+					} else {
+						evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Healthy, Summary: fmt.Sprintf("%d/%d discovered Ingress controller pods are Ready", route.ControllerReady, route.ControllerPods)})
+					}
+				}
+			}
+		}
 		evidence = append(evidence, Evidence{
 			Check: "ingress-route/" + route.Name,
 			Verdict: Healthy,
@@ -116,6 +166,15 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, namespace st
 		})
 	}
 	return routes, evidence
+}
+
+func boolPointer(v bool) *bool { return &v }
+
+func podReady(pod corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady { return condition.Status == corev1.ConditionTrue }
+	}
+	return false
 }
 
 func ingressServiceBackend(backend *networkingv1.IngressServiceBackend) ingressBackend {
