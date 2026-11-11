@@ -39,6 +39,7 @@ func NewRootCommand() *cobra.Command {
 	root.Flags().BoolVar(&verbose, "verbose", false, "Include Normal events")
 	root.Flags().BoolVar(&all, "all", false, "Inspect every Pod selected by a Deployment")
 	root.AddCommand(newTraceCommand())
+	root.AddCommand(newCompareCommand())
 	return root
 }
 
