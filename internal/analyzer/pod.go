@@ -102,7 +102,7 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 		report.Evidence = append(report.Evidence, Evidence{Check: "pod-readiness", Verdict: Healthy, Summary: "Pod Ready condition is True"})
 	}
 	if report.Restarts > 0 {
-		report.Evidence = append(report.Evidence, Evidence{Check: "container-restarts", Verdict: Unknown, Summary: fmt.Sprintf("Containers have restarted %d time(s)", report.Restarts), Suggestion: "Inspect previous container logs and pod events for OOMKilled, probe failures or process exits."})
+		report.Evidence = append(report.Evidence, Evidence{Check: "container-restarts", Verdict: Warning, Summary: fmt.Sprintf("Containers have restarted %d time(s)", report.Restarts), Suggestion: "Inspect previous container logs and pod events for OOMKilled, probe failures or process exits."})
 	}
 
 	// Group probe recommendations to avoid inflating warning counts.
@@ -272,22 +272,41 @@ func imageUsesMutableTag(image string) bool {
 }
 
 func aggregate(items []Evidence) Verdict {
-	// Confirmed failures and actionable warnings take precedence. Unknown checks
-	// affect the headline only when they prevent a core diagnostic conclusion.
 	result := Healthy
 	for _, item := range items {
 		switch item.Verdict {
 		case Failed:
 			return Failed
-		case Warning:
-			result = Warning
 		case Unknown:
-			if result != Warning && isCriticalUnknown(item.Check) {
+			if !isOptionalUnknown(item.Check) {
 				result = Unknown
+			}
+		case Warning:
+			if result != Unknown {
+				result = Warning
 			}
 		}
 	}
 	return result
+}
+
+// Unknown is conservative by default. Only explicitly informational or
+// non-blocking checks may be omitted from the headline verdict.
+func isOptionalUnknown(check string) bool {
+	optionalPrefixes := []string{
+		"probe/liveness/",
+		"probe/startup/",
+		"outbound-",
+		"dependency-discovery",
+		"dns",
+		"ingress-address/",
+	}
+	for _, prefix := range optionalPrefixes {
+		if strings.HasPrefix(check, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func countVerdicts(items []Evidence) (warnings, unknown, failed int) {
