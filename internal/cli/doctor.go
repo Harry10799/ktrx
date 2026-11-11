@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,7 +37,7 @@ type doctorReport struct {
 }
 
 type accessRequirement struct {
-	name, verb, group, resource, namespace string
+	name, verb, group, resource, namespace, subresource string
 }
 
 func newDoctorCommand() *cobra.Command {
@@ -104,7 +105,7 @@ func newDoctorCommand() *cobra.Command {
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	cmd.Flags().StringVar(&contextName, "context", "", "Kubeconfig context")
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal or json")
-	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Maximum time for each preflight request")
+	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Overall timeout for the preflight")
 	return cmd
 }
 
@@ -118,7 +119,7 @@ func ktrxAccessRequirements(namespace string) []accessRequirement {
 		{name: "Read IngressClasses", verb: "get", group: "networking.k8s.io", resource: "ingressclasses"},
 		{name: "List NetworkPolicies", verb: "list", group: "networking.k8s.io", resource: "networkpolicies", namespace: namespace},
 		{name: "List Events", verb: "list", resource: "events", namespace: namespace},
-		{name: "Read container logs", verb: "get", resource: "pods", namespace: namespace, name: "unused"},
+		{name: "Read container logs", verb: "get", resource: "pods", subresource: "log", namespace: namespace},
 		{name: "Read ReplicaSets", verb: "get", group: "apps", resource: "replicasets", namespace: namespace},
 		{name: "Discover Ingress controller Pods across namespaces", verb: "list", resource: "pods"},
 	}
@@ -127,10 +128,7 @@ func ktrxAccessRequirements(namespace string) []accessRequirement {
 func checkAccess(ctx context.Context, client kubernetes.Interface, req accessRequirement) accessCheck {
 	result := accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Namespace: req.namespace}
 	attrs := &authv1.ResourceAttributes{Verb: req.verb, Group: req.group, Resource: req.resource, Namespace: req.namespace}
-	if req.name == "Read container logs" {
-		attrs.Subresource = "log"
-		attrs.Verb = "get"
-	}
+	attrs.Subresource = req.subresource
 	review, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, &authv1.SelfSubjectAccessReview{
 		Spec: authv1.SelfSubjectAccessReviewSpec{ResourceAttributes: attrs},
 	}, metav1.CreateOptions{})
@@ -174,6 +172,7 @@ func printDoctorTerminal(cmd *cobra.Command, report doctorReport, colorEnabled b
 		case "DENIED": color, symbol = "196", "✖"
 		}
 		target := check.Resource
+		if check.Name == "Read container logs" { target += "/log" }
 		if check.Group != "" { target = check.Group + "/" + target }
 		if check.Namespace != "" { target += " (namespace " + check.Namespace + ")" } else if check.Resource == "pods" { target += " (all namespaces)" }
 		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-8s %-48s %s\n", style(color, symbol), check.Status, check.Name, target)
