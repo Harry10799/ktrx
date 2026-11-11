@@ -277,7 +277,7 @@ func serviceNameRelated(serviceName, workloadName string) bool {
 func closeLabelValue(a, b string) bool {
 	a, b = strings.ToLower(strings.TrimSpace(a)), strings.ToLower(strings.TrimSpace(b))
 	if a == b { return true }
-	if a == "" || b == "" || len(a) > 64 || len(b) > 64 { return false }
+	if a == "" || b == "" || len(a) < 5 || len(b) < 5 || len(a) > 64 || len(b) > 64 { return false }
 	previous := make([]int, len(b)+1)
 	for j := range previous { previous[j] = j }
 	for i := 1; i <= len(a); i++ {
