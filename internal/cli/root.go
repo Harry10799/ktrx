@@ -111,11 +111,11 @@ func printTerminal(r *analyzer.PodReport, colorEnabled bool) error {
 	for _, event := range r.Events {
 		color := "214"
 		if strings.EqualFold(event.Type, "Warning") { color = "196" } else if strings.EqualFold(event.Type, "Normal") { color = "42" }
-		fmt.Printf("  • %s  %s  count=%d  %s  %s\\n", style(color, true, value(event.Type)), event.Timestamp, event.Count, event.Reason, event.Message)
+		fmt.Printf("  • %s  %s  count=%d  %s  %s\n", style(color, true, value(event.Type)), event.Timestamp, event.Count, event.Reason, event.Message)
 	}
-	fmt.Println("\\n" + section("Container Logs (last 20 lines):"))
+	fmt.Println("\n" + section("Container Logs (last 20 lines):"))
 	for _, logs := range r.Logs {
-		fmt.Printf("  %s\\n", style("39", true, logs.Name))
+		fmt.Printf("  %s\n", style("39", true, logs.Name))
 		printLogLines("    current: ", logs.Current, logs.CurrentError)
 		if logs.Previous != "" || logs.PreviousError != "" { printLogLines("    previous: ", logs.Previous, logs.PreviousError) }
 	}
@@ -152,15 +152,15 @@ func printMarkdown(r *analyzer.PodReport) error {
 	fmt.Println("\n## Events Timeline")
 	if len(r.Events) == 0 { fmt.Println("- No events found for this Pod") }
 	for _, event := range r.Events {
-		fmt.Printf("- **%s %s** — %s (count: %d): %s\\n", event.Type, event.Timestamp, event.Reason, event.Count, event.Message)
+		fmt.Printf("- **%s %s** — %s (count: %d): %s\n", event.Type, event.Timestamp, event.Reason, event.Count, event.Message)
 	}
-	fmt.Println("\\n## Container Logs (last 20 lines)")
+	fmt.Println("\n## Container Logs (last 20 lines)")
 	for _, logs := range r.Logs {
-		fmt.Printf("\\n### %s — current\\n\\n\x60\x60\x60text\\n%s\\n\x60\x60\x60\\n", logs.Name, logs.Current)
-		if logs.CurrentError != "" { fmt.Printf("> Log retrieval error: %s\\n", logs.CurrentError) }
+		fmt.Printf("\n### %s — current\n\n\x60\x60\x60text\n%s\n\x60\x60\x60\n", logs.Name, logs.Current)
+		if logs.CurrentError != "" { fmt.Printf("> Log retrieval error: %s\n", logs.CurrentError) }
 		if logs.Previous != "" || logs.PreviousError != "" {
-			fmt.Printf("\\n### %s — previous\\n\\n\x60\x60\x60text\\n%s\\n\x60\x60\x60\\n", logs.Name, logs.Previous)
-			if logs.PreviousError != "" { fmt.Printf("> Previous log retrieval error: %s\\n", logs.PreviousError) }
+			fmt.Printf("\n### %s — previous\n\n\x60\x60\x60text\n%s\n\x60\x60\x60\n", logs.Name, logs.Previous)
+			if logs.PreviousError != "" { fmt.Printf("> Previous log retrieval error: %s\n", logs.PreviousError) }
 		}
 	}
 	fmt.Println("\n## Evidence")
@@ -175,15 +175,15 @@ func printMarkdown(r *analyzer.PodReport) error {
 
 func printLogLines(label, content, errText string) {
 	if errText != "" {
-		fmt.Printf("%s%s\\n", label, errText)
+		fmt.Printf("%s%s\n", label, errText)
 		return
 	}
 	if strings.TrimSpace(content) == "" {
-		fmt.Printf("%s<empty>\\n", label)
+		fmt.Printf("%s<empty>\n", label)
 		return
 	}
-	for i, line := range strings.Split(content, "\\n") {
-		if i == 0 { fmt.Printf("%s%s\\n", label, line) } else { fmt.Printf("%s\\n", strings.Repeat(" ", len(label))+line) }
+	for i, line := range strings.Split(content, "\n") {
+		if i == 0 { fmt.Printf("%s%s\n", label, line) } else { fmt.Printf("%s\n", strings.Repeat(" ", len(label))+line) }
 	}
 }
 
