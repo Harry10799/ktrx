@@ -201,6 +201,7 @@ EOF
 
 run_required "Create candidate Pod with matching configuration and a different image" kubectl apply -f "$TMP_DIR/candidate.yaml"
 run_required "Wait for candidate Pod" kubectl wait --for=condition=Ready pod/ktrx-demo-candidate -n "$NAMESPACE" --timeout=90s
+run_section "Clear transient scheduling Events after candidate is ready" kubectl delete events -n "$NAMESPACE" --field-selector reason=FailedScheduling --ignore-not-found || true
 run_section "Compare reference Pod with candidate (terminal)" "$BINARY" compare "$REF_POD" ktrx-demo-candidate -n "$NAMESPACE" --no-color || true
 run_section "Compare reference Pod with candidate (JSON)" "$BINARY" compare "$REF_POD" ktrx-demo-candidate -n "$NAMESPACE" --output json || true
 
