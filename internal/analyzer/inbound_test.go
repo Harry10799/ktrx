@@ -38,4 +38,6 @@ func TestTraceInboundNearMatchRequiresStrongSignal(t *testing.T) {
 func TestCloseLabelValue(t *testing.T) {
 	if !closeLabelValue("nginxx", "nginx") { t.Fatal("expected one-character typo to match") }
 	if closeLabelValue("redis", "nginx") { t.Fatal("unrelated values must not match") }
+	if closeLabelValue("v1", "v2") { t.Fatal("short values must not fuzzy-match") }
+	if closeLabelValue("fe", "be") { t.Fatal("short values must not fuzzy-match") }
 }
