@@ -61,6 +61,8 @@ func traceOutbound(ctx context.Context, client kubernetes.Interface, pod *corev1
 			Summary: "Could not list NetworkPolicies to inspect egress restrictions",
 			Details: []string{err.Error()},
 			Suggestion: "Grant list access to networking.k8s.io NetworkPolicies in the Pod namespace."})
+		evidence = append(evidence, Evidence{Check: "outbound-connectivity", Verdict: Unknown,
+			Summary: "Live outbound connections have not been tested"})
 		return trace, evidence
 	}
 
