@@ -90,7 +90,7 @@ func traceDependencies(ctx context.Context, client kubernetes.Interface, pod *co
 		trace.SelectedPods = len(pods.Items)
 		for i := range pods.Items {
 			target := &pods.Items[i]
-			if podReady(target) { trace.ReadyPods++ } else {
+			if dependencyPodReady(target) { trace.ReadyPods++ } else {
 				trace.UnreadyPods = append(trace.UnreadyPods, target.Name+" ("+string(target.Status.Phase)+")")
 			}
 		}
@@ -154,7 +154,7 @@ func referencedServices(raw, key, namespace string, services map[string]*corev1.
 	return found
 }
 
-func podReady(pod *corev1.Pod) bool {
+func dependencyPodReady(pod *corev1.Pod) bool {
 	if pod.Status.Phase != corev1.PodRunning { return false }
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodReady { return condition.Status == corev1.ConditionTrue }
