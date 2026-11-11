@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -238,9 +237,13 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 						route.ControllerPods = 0
 						route.ControllerReady = 0
 						for _, controller := range controllers {
-							if !isIngressControllerPod(controller) { continue }
+							if !isIngressControllerPod(controller) {
+								continue
+							}
 							route.ControllerPods++
-							if controller.Status.Phase == corev1.PodRunning && podReady(controller) { route.ControllerReady++ }
+							if controller.Status.Phase == corev1.PodRunning && podReady(controller) {
+								route.ControllerReady++
+							}
 						}
 						switch {
 						case route.ControllerPods == 0:
