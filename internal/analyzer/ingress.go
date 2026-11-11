@@ -204,12 +204,14 @@ func traceIngress(ctx context.Context, client kubernetes.Interface, pod *corev1.
 				} else {
 					evidence = append(evidence, Evidence{Check: "ingress-address/" + route.Name, Verdict: Healthy, Summary: "Ingress has an assigned load-balancer address", Details: route.Addresses})
 				}
-				controllers, listErr := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{LabelSelector: "app.kubernetes.io/component=controller"})
+				controllers, listErr := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 				if listErr != nil {
 					evidence = append(evidence, Evidence{Check: "ingress-controller/" + route.Name, Verdict: Unknown, Summary: "Could not inspect Ingress controller pods", Details: []string{listErr.Error()}})
 				} else {
 					route.ControllerPods = len(controllers.Items)
 					for _, controller := range controllers.Items {
+						if !isIngressControllerPod(controller) { continue }
+						route.ControllerPods++
 						if controller.Status.Phase == corev1.PodRunning && podReady(controller) { route.ControllerReady++ }
 					}
 					if route.ControllerPods == 0 {
@@ -266,6 +268,14 @@ func promoteRoutedSelectorMismatches(ctx context.Context, client kubernetes.Inte
 }
 
 func boolPointer(v bool) *bool { return &v }
+
+
+func isIngressControllerPod(pod corev1.Pod) bool {
+	labels := pod.Labels
+	return labels["app.kubernetes.io/component"] == "controller" ||
+		labels["component"] == "controller" ||
+		(labels["app"] == "ingress-nginx" && (labels["app.kubernetes.io/name"] == "" || labels["app.kubernetes.io/name"] == "ingress-nginx"))
+}
 
 func podReady(pod corev1.Pod) bool {
 	for _, condition := range pod.Status.Conditions {
