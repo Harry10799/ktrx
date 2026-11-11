@@ -305,8 +305,7 @@ func boolPointer(v bool) *bool { return &v }
 // charts; results are de-duplicated because a Pod may carry both labels.
 func listIngressControllerPods(ctx context.Context, client kubernetes.Interface) ([]corev1.Pod, error) {
 	selectors := []string{
-		"app.kubernetes.io/component=controller",
-		"component=controller",
+		"app.kubernetes.io/name=ingress-nginx,app.kubernetes.io/component=controller",
 		"app=ingress-nginx",
 	}
 	seen := make(map[string]struct{})
@@ -341,9 +340,8 @@ func listIngressControllerPods(ctx context.Context, client kubernetes.Interface)
 
 func isIngressControllerPod(pod corev1.Pod) bool {
 	labels := pod.Labels
-	return labels["app.kubernetes.io/component"] == "controller" ||
-		labels["component"] == "controller" ||
-		(labels["app"] == "ingress-nginx" && (labels["app.kubernetes.io/name"] == "" || labels["app.kubernetes.io/name"] == "ingress-nginx"))
+	return labels["app"] == "ingress-nginx" ||
+		(labels["app.kubernetes.io/name"] == "ingress-nginx" && labels["app.kubernetes.io/component"] == "controller")
 }
 
 func podReady(pod corev1.Pod) bool {
