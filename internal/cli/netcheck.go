@@ -129,7 +129,7 @@ func newNetcheckCommand() *cobra.Command {
 			}
 			if httpTarget != "" {
 				q := shellQuote(httpTarget)
-				run("HTTP", httpTarget, "if command -v curl >/dev/null 2>&1; then curl -fSs -o /dev/null -w 'HTTP_STATUS=%{http_code}\\n' --max-time "+strconv.Itoa(probeTimeout)+" +"+q+"; elif command -v wget >/dev/null 2>&1; then wget --spider -T "+strconv.Itoa(probeTimeout)+" -S "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
+				run("HTTP", httpTarget, "if command -v curl >/dev/null 2>&1; then curl -fSs -o /dev/null -w 'HTTP_STATUS=%{http_code}\\n' --max-time "+strconv.Itoa(probeTimeout)+" "+q+"; elif command -v wget >/dev/null 2>&1; then wget --spider -T "+strconv.Itoa(probeTimeout)+" -S "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
 			}
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  ")
