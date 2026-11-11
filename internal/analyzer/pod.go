@@ -224,7 +224,8 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 			if len(parts) != 2 { continue }
 			target := strings.SplitN(parts[1], "/", 2)[0]
 			var targetPort int32
-			numeric := fmt.Sscanf(target, "%d", &targetPort) == nil
+			_, scanErr := fmt.Sscanf(target, "%d", &targetPort)
+			numeric := scanErr == nil
 			matched := false
 			for _, container := range pod.Spec.Containers {
 				for _, cp := range container.Ports {
