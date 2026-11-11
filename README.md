@@ -12,6 +12,7 @@
 - Container overview: image, state, readiness, restart count, resource requests and limits.
 - Controller owner chain: Pod → ReplicaSet → Deployment.
 - Inbound trace: selector-matching Services → EndpointSlices (legacy Endpoints fallback) → Pod, including backend readiness and service port mappings.
+- Ingress trace: matching Ingress host/path rules → backend Services selecting the Pod.
 - Evidence-based HEALTHY / FAILED / UNKNOWN verdict.
 - Colored terminal output with verdict-aware status colors and a `--no-color` / `NO_COLOR` option.
 - Terminal, JSON and Markdown output formats.
@@ -56,7 +57,7 @@ kubetrace trace POD_NAME -n NAMESPACE --no-color
 kubetrace trace POD_NAME -n NAMESPACE --context CONTEXT_NAME
 ```
 
-The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`) and legacy Endpoints in the namespace. Inbound tracing reports UNKNOWN when the required endpoint APIs cannot be inspected.
+The caller needs permission to read the target pod, its ReplicaSet owner when applicable, Services, EndpointSlices (`discovery.k8s.io`), legacy Endpoints and Ingresses (`networking.k8s.io`) in the namespace. Inbound tracing reports UNKNOWN when the required endpoint APIs cannot be inspected.
 
 ## Project layout
 
