@@ -29,6 +29,23 @@ type ContainerInfo struct {
 	Limits       map[string]string `json:"limits,omitempty" yaml:"limits,omitempty"`
 }
 
+type EventInfo struct {
+	Type      string `json:"type" yaml:"type"`
+	Reason    string `json:"reason" yaml:"reason"`
+	Message   string `json:"message" yaml:"message"`
+	Count     int32  `json:"count,omitempty" yaml:"count,omitempty"`
+	Timestamp string `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	Source    string `json:"source,omitempty" yaml:"source,omitempty"`
+}
+
+type ContainerLogs struct {
+	Name         string `json:"name" yaml:"name"`
+	Current      string `json:"current,omitempty" yaml:"current,omitempty"`
+	Previous     string `json:"previous,omitempty" yaml:"previous,omitempty"`
+	CurrentError string `json:"currentError,omitempty" yaml:"currentError,omitempty"`
+	PreviousError string `json:"previousError,omitempty" yaml:"previousError,omitempty"`
+}
+
 type PodReport struct {
 	Namespace      string          `json:"namespace" yaml:"namespace"`
 	Name           string          `json:"name" yaml:"name"`
@@ -45,6 +62,8 @@ type PodReport struct {
 	Containers     []ContainerInfo `json:"containers" yaml:"containers"`
 	InboundServices []ServiceTrace `json:"inboundServices,omitempty" yaml:"inboundServices,omitempty"`
 	IngressRoutes   []IngressTrace `json:"ingressRoutes,omitempty" yaml:"ingressRoutes,omitempty"`
+	Events          []EventInfo    `json:"events,omitempty" yaml:"events,omitempty"`
+	Logs            []ContainerLogs `json:"logs,omitempty" yaml:"logs,omitempty"`
 	Evidence       []Evidence      `json:"evidence" yaml:"evidence"`
 	Verdict        Verdict         `json:"verdict" yaml:"verdict"`
 }
