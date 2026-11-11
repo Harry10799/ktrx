@@ -82,6 +82,9 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 	case "markdown":
 		for i, r := range reports { if i > 0 { fmt.Println("\n---\n") }; if e := printMarkdown(r, includeLogs); e != nil { return e } }; return nil
 	case "terminal", "text":
+		if all && len(reports) > 1 && (strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/")) {
+			return printDeploymentTerminal(strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == "")
+		}
 		for i, r := range reports { if i > 0 { fmt.Println("\n" + strings.Repeat("─", 72)) }; if e := printTerminal(r, !noColor && os.Getenv("NO_COLOR") == "", includeLogs); e != nil { return e } }; return nil
 	default: return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 	}
@@ -121,6 +124,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 	fmt.Println("\n"+section("Issues:")); n:=0
 	for _,e:=range r.Evidence { if e.Verdict==analyzer.Failed || e.Verdict==analyzer.Warning { n++; fmt.Printf("  • [%s] %s: %s\n",verdict(e.Verdict),e.Check,e.Summary); if e.Suggestion!="" { fmt.Printf("      Suggestion: %s\n",e.Suggestion) } } }
 	if n==0 { fmt.Println("  • No failures or warnings detected") }
+	fmt.Println("\n"+section("Info:")); n=0; for _,e:=range r.Evidence { if e.Verdict==analyzer.Info { n++; fmt.Printf("  • %s: %s\n",e.Check,e.Summary) } }; if n==0 { fmt.Println("  • None") }
 	fmt.Println("\n"+section("Not checked:")); n=0
 	for _,e:=range r.Evidence { if e.Verdict==analyzer.Unknown { n++; fmt.Printf("  • %s: %s\n",e.Check,e.Summary) } }; if n==0 { fmt.Println("  • None") }
 	fmt.Println("\n"+section("Details:"))
@@ -133,7 +137,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 	fmt.Println("\n"+section("Ingress Routes:")); if len(r.IngressRoutes)==0 { fmt.Println("  • No matching Ingress routes") }
 	for _,v:=range r.IngressRoutes { fmt.Printf("  • %s host=%s path=%s service=%s:%s class=%s classExists=%s controller=%d/%d addresses=%s\n",style("39",true,v.Name),v.Host,v.Path,v.Service,v.ServicePort,value(v.Class),boolLabel(v.ClassExists),v.ControllerReady,v.ControllerPods,strings.Join(v.Addresses,", ")) }
 	fmt.Println("\n"+section("Events:")); if len(r.Events)==0 { if includeLogs { fmt.Println("  • No events found") } else { fmt.Println("  • No Warning events (use --verbose to include Normal events)") } }
-	for _,v:=range r.Events { fmt.Printf("  • %s %s count=%d %s %s\n",v.Type,v.Timestamp,v.Count,v.Reason,v.Message) }
+	for _,v:=range r.Events { fmt.Printf("  • %s %s count=%d %s %s\n",v.Type,v.Timestamp,v.Count,v.Reason,strings.ReplaceAll(v.Message,"bytes"," bytes")) }
 	fmt.Println("\n"+section("Logs:")); if !includeLogs { fmt.Println("  • Error/non-2xx matches only; use --logs for full logs") }
 	found:=false
 	for _,v:=range r.Logs { if v.Current!="" || v.Previous!="" || v.CurrentError!="" || v.PreviousError!="" { found=true }; if v.Current!="" { fmt.Printf("  %s current:\n%s\n",v.Name,indent(v.Current,"    ")) }; if v.Previous!="" { fmt.Printf("  %s previous:\n%s\n",v.Name,indent(v.Previous,"    ")) }; if v.CurrentError!="" { fmt.Printf("  %s current log error: %s\n",v.Name,v.CurrentError) }; if v.PreviousError!="" { fmt.Printf("  %s previous log error: %s\n",v.Name,v.PreviousError) } }
@@ -180,4 +184,53 @@ func value(s string) string {
 		return "—"
 	}
 	return s
+}
+
+func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEnabled bool) error {
+	style := func(color, value string) string { if !colorEnabled { return value }; return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value) }
+	fmt.Printf("%s %s (%d pods)\n", style("39", "Deployment"), name, len(reports))
+	common := map[string]int{}
+	for _, e := range reports[0].Evidence { common[evidenceKey(e)] = 1 }
+	for _, r := range reports[1:] {
+		present := map[string]bool{}
+		for _, e := range r.Evidence { present[evidenceKey(e)] = true }
+		for k := range common { if !present[k] { delete(common, k) } }
+	}
+	fmt.Println("\nShared findings:")
+	printed := 0
+	for _, e := range reports[0].Evidence {
+		if !common[evidenceKey(e)] { continue }
+		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning {
+			fmt.Printf("  • [%s] %s: %s\n", e.Verdict, e.Check, e.Summary)
+			if e.Suggestion != "" { fmt.Printf("    Suggestion: %s\n", e.Suggestion) }
+			printed++
+		}
+	}
+	if printed == 0 { fmt.Println("  • No shared failures or warnings") }
+	for _, r := range reports {
+		fmt.Printf("\nPod %s: ", shortPodName(r.Name))
+		unique := 0
+		for _, e := range r.Evidence {
+			if common[evidenceKey(e)] { continue }
+			if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info || e.Verdict == analyzer.Unknown {
+				if unique == 0 { fmt.Println() }
+				fmt.Printf("  • [%s] %s: %s\n", e.Verdict, e.Check, e.Summary)
+				unique++
+			}
+		}
+		if unique == 0 { fmt.Println("no differences") }
+		fmt.Printf("  State: phase=%s ready=%t restarts=%d node=%s IP=%s\n", r.Phase, r.Ready, r.Restarts, value(r.Node), value(r.PodIP))
+	}
+	fmt.Println("\nUse kubetrace POD_NAME -n NAMESPACE --logs for full per-Pod logs.")
+	return nil
+}
+
+func evidenceKey(e analyzer.Evidence) string {
+	return string(e.Verdict) + "|" + e.Check + "|" + e.Summary
+}
+
+func shortPodName(name string) string {
+	parts := strings.Split(name, "-")
+	if len(parts) > 2 { return "-" + parts[len(parts)-1] }
+	return name
 }
