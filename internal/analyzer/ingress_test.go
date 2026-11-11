@@ -40,3 +40,22 @@ func TestTraceIngressScopesMissingBackendToPod(t *testing.T) {
 		})
 	}
 }
+
+func TestPromoteRoutedSelectorMismatch(t *testing.T) {
+	path := networkingv1.HTTPIngressPath{Backend: networkingv1.IngressBackend{
+		Service: &networkingv1.IngressServiceBackend{Name: "web"},
+	}}
+	ing := &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
+		Spec: networkingv1.IngressSpec{Rules: []networkingv1.IngressRule{{
+			IngressRuleValue: networkingv1.IngressRuleValue{HTTP: &networkingv1.HTTPIngressRuleValue{Paths: []networkingv1.HTTPIngressPath{path}}},
+		}}},
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web-abc", Namespace: "default"}}
+	evidence := []Evidence{{Check: "inbound-service-selector", Verdict: Warning,
+		Details: []string{"Service web selector mismatch: app=web (pod has app=api) (Service currently has no endpoints)"}}}
+	client := fake.NewSimpleClientset(ing)
+	promoteRoutedSelectorMismatches(context.Background(), client, pod, evidence)
+	if evidence[0].Verdict != Failed {
+		t.Fatalf("Ingress-routed selector mismatch should fail, got %+v", evidence[0])
+	}
+}
