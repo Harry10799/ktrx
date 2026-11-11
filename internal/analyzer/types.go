@@ -43,6 +43,7 @@ type PodReport struct {
 	OwnerChain     []string        `json:"ownerChain,omitempty" yaml:"ownerChain,omitempty"`
 	Labels         map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 	Containers     []ContainerInfo `json:"containers" yaml:"containers"`
+	InboundServices []ServiceTrace `json:"inboundServices,omitempty" yaml:"inboundServices,omitempty"`
 	Evidence       []Evidence      `json:"evidence" yaml:"evidence"`
 	Verdict        Verdict         `json:"verdict" yaml:"verdict"`
 }
