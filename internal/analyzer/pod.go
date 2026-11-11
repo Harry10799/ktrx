@@ -223,25 +223,21 @@ func checkServicePortChain(pod *corev1.Pod, report *PodReport) {
 			parts := strings.SplitN(sp, " -> ", 2)
 			if len(parts) != 2 { continue }
 			target := strings.SplitN(parts[1], "/", 2)[0]
-			if _, err := fmt.Sscanf(target, "%d", new(int32)); err != nil {
-				report.Evidence = append(report.Evidence, Evidence{
-					Check: "port-chain/" + svc.Name, Verdict: Unknown,
-					Summary: fmt.Sprintf("Service %s uses named targetPort %q; declared container port mapping could not be confirmed from this summary", svc.Name, target),
-				})
-				continue
-			}
 			var targetPort int32
-			_, _ = fmt.Sscanf(target, "%d", &targetPort)
-			declared := false
-			for _, c := range pod.Spec.Containers {
-				for _, cp := range c.Ports {
-					if cp.ContainerPort == targetPort { declared = true }
+			numeric := fmt.Sscanf(target, "%d", &targetPort) == nil
+			matched := false
+			for _, container := range pod.Spec.Containers {
+				for _, cp := range container.Ports {
+					if (numeric && cp.ContainerPort == targetPort) || (!numeric && cp.Name == target) {
+						matched = true
+						targetPort = cp.ContainerPort
+					}
 				}
 			}
-			if declared {
-				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Healthy, Summary: fmt.Sprintf("Service %s targetPort %d matches a declared containerPort", svc.Name, targetPort)})
+			if matched {
+				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Healthy, Summary: fmt.Sprintf("Service %s targetPort %q resolves to declared containerPort %d", svc.Name, target, targetPort)})
 			} else {
-				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Unknown, Summary: fmt.Sprintf("Service %s targetPort %d has no matching declared containerPort; the application may still listen on it, but Kubernetes spec does not confirm it", svc.Name, targetPort)})
+				report.Evidence = append(report.Evidence, Evidence{Check: "port-chain/" + svc.Name, Verdict: Unknown, Summary: fmt.Sprintf("Service %s targetPort %q has no matching declared containerPort; the application may still listen on it, but Kubernetes spec does not confirm it", svc.Name, target)})
 			}
 		}
 	}
