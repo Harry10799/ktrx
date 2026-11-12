@@ -325,6 +325,24 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 	for _, v := range r.Events {
 		fmt.Printf("  • %s %s count=%d %s %s\n", v.Type, v.Timestamp, v.Count, v.Reason, strings.ReplaceAll(v.Message, "bytes", " bytes"))
 	}
+	fmt.Printf("\n%s\n", section("Recent Deployment Changes:"))
+	if r.RecentFailureStartedAt != "" {
+		fmt.Printf("  Failure started: %s (current unhealthy evidence)\\n", r.RecentFailureStartedAt)
+	}
+	if len(r.RecentChanges) == 0 {
+		fmt.Printf("  • No recent changes found. %s\\n", r.RecentChangesNote)
+	} else {
+		for _, change := range r.RecentChanges {
+			fmt.Printf("  • %s [%s] %s — %s\\n", change.Timestamp, change.Type, change.Resource, change.Summary)
+		}
+	}
+	if len(r.RecentCorrelations) > 0 {
+		fmt.Println("  Potential correlations (not causation):")
+		for _, item := range r.RecentCorrelations {
+			fmt.Printf("    #%d %s %s — %s\\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
+		}
+	}
+	if r.RecentChangesNote != "" { fmt.Printf("  Note: %s\\n", r.RecentChangesNote) }
 	fmt.Printf("\n%s\n", section("Logs:"))
 	if !includeLogs {
 		fmt.Println("  • Error/non-2xx matches only; use --logs for full logs")
@@ -406,6 +424,18 @@ func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
 	for _, v := range r.Events {
 		fmt.Printf("- **%s %s** — %s (count: %d): %s\n", v.Type, v.Timestamp, v.Reason, v.Count, strings.ReplaceAll(v.Message, "bytes", " bytes"))
 	}
+	fmt.Println("\n### Recent Deployment Changes")
+	if r.RecentFailureStartedAt != "" { fmt.Printf("- Failure started: %s (current unhealthy evidence)\\n", r.RecentFailureStartedAt) }
+	for _, change := range r.RecentChanges {
+		fmt.Printf("- %s [%s] %s — %s\\n", change.Timestamp, change.Type, change.Resource, change.Summary)
+	}
+	if len(r.RecentCorrelations) > 0 {
+		fmt.Println("\n#### Potential correlations (not causation)")
+		for _, item := range r.RecentCorrelations {
+			fmt.Printf("- #%d %s %s — %s\\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
+		}
+	}
+	if r.RecentChangesNote != "" { fmt.Printf("\n%s\\n", r.RecentChangesNote) }
 	fmt.Println("\n### Logs")
 	if !includeLogs {
 		fmt.Println("Error/non-2xx matches only; use --logs for full logs.")
@@ -511,6 +541,16 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 		fmt.Println("  ✓ No shared findings")
 	}
 
+	if len(reports[0].RecentChanges) > 0 || reports[0].RecentChangesNote != "" {
+		fmt.Printf("\\n%s\\n", style("99", "RECENT DEPLOYMENT CHANGES"))
+		for _, change := range reports[0].RecentChanges {
+			fmt.Printf("  • %s [%s] %s — %s\\n", change.Timestamp, change.Type, change.Resource, change.Summary)
+		}
+		if reports[0].RecentChangesNote != "" { fmt.Printf("  Note: %s\\n", reports[0].RecentChangesNote) }
+		for _, item := range reports[0].RecentCorrelations {
+			fmt.Printf("  #%d %s %s — %s (potential correlation, not causation)\\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
+		}
+	}
 	for _, r := range reports {
 		fmt.Printf("\n%s %s\n", style("39", "POD"), shortPodName(r.Name))
 		unique := 0
