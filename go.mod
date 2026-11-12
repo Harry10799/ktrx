@@ -3,6 +3,9 @@ module github.com/Harry10799/ktrx
 go 1.23.0
 
 require (
+	github.com/aws/aws-sdk-go-v2 v1.36.3
+	github.com/aws/aws-sdk-go-v2/config v1.29.9
+	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.39.1
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/spf13/cobra v1.9.1
 	k8s.io/api v0.32.3
