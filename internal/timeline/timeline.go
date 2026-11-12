@@ -380,7 +380,7 @@ func earlierTime(current, candidate *time.Time) *time.Time {
 
 func warningIndicatesActiveFailure(reason string) bool {
 	switch reason {
-	case "Unhealthy", "FailedScheduling", "FailedCreate", "SuccessfulCreate", "SuccessfulDelete":
+	case "Unhealthy", "FailedScheduling", "SuccessfulCreate", "SuccessfulDelete":
 		return false
 	default:
 		return true
