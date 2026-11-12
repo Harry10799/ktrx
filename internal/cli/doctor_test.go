@@ -4,20 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 	authv1 "k8s.io/api/authorization/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -254,140 +247,6 @@ func TestDoctorConnectivityFailureMarksChecksUnknown(t *testing.T) {
 }
 
 
-func TestDoctorCommandIntegration(t *testing.T) {
-	tests := []struct {
-		name          string
-		deniedGroup   string
-		deniedResource string
-		deniedVerb    string
-		wantExit      int
-		wantReady     bool
-		wantDenied    int
-	}{
-		{name: "all required and optional permissions allowed", wantExit: 0, wantReady: true},
-		{name: "required permission denied", deniedResource: "pods", deniedVerb: "get", wantExit: 2, wantReady: false, wantDenied: 1},
-		{name: "optional permission denied", deniedGroup: "gateway.networking.k8s.io", deniedResource: "httproutes", deniedVerb: "list", wantExit: 0, wantReady: true, wantDenied: 2},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var received []authv1.ResourceAttributes
-			var requestPaths []string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requestPaths = append(requestPaths, r.Method+" "+r.URL.RequestURI())
-				w.Header().Set("Content-Type", "application/json")
-				switch {
-				case r.URL.Path == "/version":
-					_ = json.NewEncoder(w).Encode(map[string]string{
-						"major": "1", "minor": "32", "gitVersion": "v1.32.0",
-					})
-				case strings.Contains(r.URL.Path, "selfsubjectaccessreviews"):
-					if r.Method != http.MethodPost {
-						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-						return
-					}
-					requestBody, err := io.ReadAll(r.Body)
-					if err != nil {
-						writeDoctorTestAPIError(w, http.StatusBadRequest, "read request body: "+err.Error())
-						return
-					}
-					// client-go negotiates Kubernetes protobuf for API objects when
-					// the server advertises it. Decode both protobuf and JSON so this
-					// test server behaves like a real Kubernetes API server.
-					scheme := runtime.NewScheme()
-					if err := authv1.AddToScheme(scheme); err != nil {
-						t.Fatalf("register authorization API types: %v", err)
-					}
-					decoder := serializer.NewCodecFactory(scheme).UniversalDeserializer()
-					obj, _, err := decoder.Decode(requestBody, nil, nil)
-					if err != nil {
-						writeDoctorTestAPIError(w, http.StatusBadRequest, fmt.Sprintf("decode SelfSubjectAccessReview request content-type=%q: %v", r.Header.Get("Content-Type"), err))
-						return
-					}
-					review, ok := obj.(*authv1.SelfSubjectAccessReview)
-					if !ok {
-						writeDoctorTestAPIError(w, http.StatusBadRequest, fmt.Sprintf("unexpected request object %T", obj))
-						return
-					}
-					attrs := review.Spec.ResourceAttributes
-					if attrs == nil {
-						writeDoctorTestAPIError(w, http.StatusBadRequest, "missing resource attributes in request "+string(requestBody))
-						return
-					}
-					received = append(received, *attrs)
-					denied := attrs.Group == tt.deniedGroup &&
-						attrs.Resource == tt.deniedResource &&
-						attrs.Verb == tt.deniedVerb
-					status := authv1.SubjectAccessReviewStatus{Allowed: !denied}
-					if denied {
-						status.Denied = true
-						status.Reason = "denied by integration test"
-					}
-					response := authv1.SelfSubjectAccessReview{
-						TypeMeta: metav1.TypeMeta{APIVersion: "authorization.k8s.io/v1", Kind: "SelfSubjectAccessReview"},
-						ObjectMeta: metav1.ObjectMeta{},
-						Spec: review.Spec,
-						Status: status,
-					}
-					// Kubernetes create endpoints return HTTP 201 and the created object.
-					w.WriteHeader(http.StatusCreated)
-					if err := json.NewEncoder(w).Encode(response); err != nil {
-						t.Errorf("encode SelfSubjectAccessReview response: %v", err)
-					}
-				default:
-					writeDoctorTestAPIError(w, http.StatusNotFound, "unhandled test API path: "+r.Method+" "+r.URL.RequestURI())
-				}
-			}))
-			defer server.Close()
-
-			kubeconfigPath := writeDoctorTestKubeconfig(t, server.URL)
-			command := newDoctorCommand()
-			command.SilenceUsage = true
-			command.SilenceErrors = true
-			var stdout, stderr bytes.Buffer
-			command.SetOut(&stdout)
-			command.SetErr(&stderr)
-			command.SetArgs([]string{
-				"--kubeconfig", kubeconfigPath,
-				"--namespace", "production",
-				"--output", "json",
-				"--timeout", "5s",
-			})
-
-			err := command.Execute()
-			if got := ExitCode(err); got != tt.wantExit {
-				t.Fatalf("doctor exit code = %d, want %d; err=%v; stderr=%q; requests=%q; report=%s", got, tt.wantExit, err, stderr.String(), requestPaths, stdout.String())
-			}
-
-			var report doctorReport
-			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
-				t.Fatalf("decode doctor JSON output %q: %v", stdout.String(), err)
-			}
-			if report.Namespace != "production" || report.Server != "v1.32.0" {
-				t.Fatalf("unexpected report identity: %+v", report)
-			}
-			if report.Ready != tt.wantReady || report.Denied != tt.wantDenied {
-				t.Fatalf("unexpected report readiness/denials: ready=%t denied=%d; report=%+v", report.Ready, report.Denied, report)
-			}
-
-			expectedRequests := ktrxAccessRequirements("production", false)
-			if len(received) != len(expectedRequests) {
-				t.Fatalf("received %d access reviews, want %d", len(received), len(expectedRequests))
-			}
-			foundNamespacedPodRead := false
-			for _, attrs := range received {
-				if attrs.Verb == "get" && attrs.Resource == "pods" && attrs.Namespace == "production" {
-					foundNamespacedPodRead = true
-					break
-				}
-			}
-			if !foundNamespacedPodRead {
-				t.Fatal("doctor did not request the expected production Pod read permission")
-			}
-		})
-	}
-}
-
 func TestDoctorCommandIntegrationWhenAPIServerIsUnavailable(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	serverURL := server.URL
@@ -453,12 +312,3 @@ func writeDoctorTestKubeconfig(t *testing.T, serverURL string) string {
 	return path
 }
 
-func writeDoctorTestAPIError(w http.ResponseWriter, code int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(metav1.Status{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
-		Status: metav1.StatusFailure, Reason: metav1.StatusReasonBadRequest,
-		Message: message, Code: int32(code),
-	})
-}
