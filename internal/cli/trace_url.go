@@ -197,7 +197,7 @@ func newTraceURLCommand() *cobra.Command {
 
 func applyURLExternalCheckVerdict(report *urlTraceReport) {
 	if report.DNS != nil {
-		if report.DNS.Error != "" || len(report.DNS.Resolved) == 0 { report.Verdict = "FAILED" } else if !report.DNS.MatchesALB && report.Verdict != "FAILED" { report.Verdict = "WARN" }
+		if report.DNS.Error != "" || len(report.DNS.Resolved) == 0 { report.Verdict = "FAILED" } else if report.DNS.MatchMethod != "" && !report.DNS.MatchesALB && report.Verdict != "FAILED" { report.Verdict = "WARN" }
 	}
 	if report.TLS != nil {
 		if report.TLS.Error != "" || report.TLS.DaysRemaining < 0 { report.Verdict = "FAILED" } else if report.TLS.DaysRemaining <= 14 && report.Verdict != "FAILED" { report.Verdict = "WARN" }
