@@ -68,3 +68,29 @@ func TestAddGitOpsEventsReadsKustomizationAndGitCommit(t *testing.T) {
 		t.Fatalf("commit URL missing from GitOps event: %s", details)
 	}
 }
+
+func TestArgoCDHistoryMatchesDeploymentAndResolvesCommit(t *testing.T) {
+	app := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "argoproj.io/v1alpha1",
+		"kind": "Application",
+		"metadata": map[string]interface{}{"name": "orders", "namespace": "argocd"},
+		"spec": map[string]interface{}{"source": map[string]interface{}{"repoURL": "https://github.com/example/orders.git"}},
+		"status": map[string]interface{}{
+			"resources": []interface{}{map[string]interface{}{"group": "apps", "kind": "Deployment", "namespace": "production", "name": "orders"}},
+			"history": []interface{}{map[string]interface{}{
+				"id": int64(3), "revision": "0123456789abcdef0123456789abcdef01234567",
+				"deployedAt": "2026-11-12T09:45:00Z",
+			}},
+		},
+	}}
+	client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), app)
+	report := &Report{Namespace: "production", Target: "Deployment/orders"}
+	addArgoCDHistory(context.Background(), client, report, map[string]string{})
+	if len(report.Events) != 1 {
+		t.Fatalf("got %d Argo events, want 1: %+v", len(report.Events), report.Events)
+	}
+	event := report.Events[0]
+	if event.Source != "argocd-application-history" || !strings.Contains(event.Details, "commitURL=https://github.com/example/orders/commit/0123456789abcdef0123456789abcdef01234567") {
+		t.Fatalf("Argo commit history not resolved: %+v", event)
+	}
+}
