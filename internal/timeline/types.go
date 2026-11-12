@@ -20,6 +20,7 @@ type TimelineEvent struct {
 	Type       EventType `json:"type"`
 	Resource   string    `json:"resource"`
 	Revision   string    `json:"revision,omitempty"`
+	Current    bool      `json:"current,omitempty"`
 	Action     string    `json:"action"`
 	Changes    []Change  `json:"changes,omitempty"`
 	Source     string    `json:"source"`
