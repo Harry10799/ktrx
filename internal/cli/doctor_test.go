@@ -47,3 +47,52 @@ func TestDoctorIncludesTimelineAndOptionalGitOpsPermissions(t *testing.T) {
 		}
 	}
 }
+
+
+func TestDoctorExitErrorIgnoresOptionalPermissionGaps(t *testing.T) {
+	tests := []struct {
+		name   string
+		report doctorReport
+		want   int
+	}{
+		{
+			name: "optional denied does not fail readiness",
+			report: doctorReport{Ready: true, Denied: 2, Checks: []accessCheck{
+				{Name: "required read", Status: "PASS"},
+				{Name: "optional CRD", Status: "DENIED", Optional: true},
+				{Name: "optional GitOps", Status: "UNKNOWN", Optional: true},
+			}},
+			want: 0,
+		},
+		{
+			name: "required denied returns failure",
+			report: doctorReport{Ready: false, Checks: []accessCheck{
+				{Name: "required read", Status: "DENIED"},
+				{Name: "optional CRD", Status: "DENIED", Optional: true},
+			}},
+			want: 2,
+		},
+		{
+			name: "required unknown returns incomplete",
+			report: doctorReport{Ready: false, Checks: []accessCheck{
+				{Name: "API connectivity", Status: "UNKNOWN"},
+				{Name: "optional CRD", Status: "UNKNOWN", Optional: true},
+			}},
+			want: 3,
+		},
+		{
+			name: "healthy report returns success",
+			report: doctorReport{Ready: true, Checks: []accessCheck{
+				{Name: "required read", Status: "PASS"},
+			}},
+			want: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ExitCode(doctorExitError(tt.report)); got != tt.want {
+				t.Fatalf("doctorExitError() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
