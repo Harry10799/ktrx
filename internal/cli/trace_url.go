@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
+	"net"
+	"strconv"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -19,6 +22,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/Harry10799/ktrx/internal/analyzer"
 	"github.com/Harry10799/ktrx/internal/kube"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +33,9 @@ type urlTracePod struct {
 	Ready bool `json:"ready"`
 	Restarts int32 `json:"restarts"`
 	EndpointReady bool `json:"endpointReady"`
+	ReadinessProbePaths []string `json:"readinessProbePaths,omitempty"`
+	Findings []string `json:"findings,omitempty"`
+	NextCommand string `json:"nextCommand,omitempty"`
 }
 
 type urlTraceBackend struct {
@@ -42,6 +49,8 @@ type urlTraceBackend struct {
 	TargetGroupBindings []urlTraceTargetGroupBinding `json:"targetGroupBindings,omitempty"`
 	Pods          []urlTracePod `json:"pods,omitempty"`
 	Notes         []string `json:"notes,omitempty"`
+	ReadinessProbePaths []string `json:"readinessProbePaths,omitempty"`
+	HealthcheckMismatch bool `json:"healthcheckMismatch,omitempty"`
 }
 
 type urlTraceTargetGroupBinding struct {
@@ -58,6 +67,9 @@ type urlTraceRoute struct {
 	Path      string           `json:"path"`
 	Match     string           `json:"match"`
 	IngressClass string `json:"ingressClass,omitempty"`
+	Selected bool `json:"selected,omitempty"`
+	ALBHealthcheckPath string `json:"albHealthcheckPath,omitempty"`
+	RouteStatus string `json:"routeStatus,omitempty"`
 	LoadBalancerHosts []string `json:"loadBalancerHosts,omitempty"`
 	Backends  []urlTraceBackend `json:"backends,omitempty"`
 	Notes     []string         `json:"notes,omitempty"`
@@ -71,11 +83,16 @@ type urlTraceReport struct {
 	Verdict     string          `json:"verdict"`
 	Routes      []urlTraceRoute `json:"routes,omitempty"`
 	Limitations []string        `json:"limitations,omitempty"`
+	DNS *urlTraceDNS `json:"dns,omitempty"`
+	TLS *urlTraceTLS `json:"tls,omitempty"`
 }
+
+type urlTraceDNS struct { Resolved []string `json:"resolved,omitempty"`; Error string `json:"error,omitempty"` }
+type urlTraceTLS struct { ServerName string `json:"serverName"`; NotAfter string `json:"notAfter,omitempty"`; DaysRemaining int `json:"daysRemaining,omitempty"`; Error string `json:"error,omitempty"` }
 
 func newTraceURLCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output, ingressClass string
-	var allNamespaces bool
+	var allNamespaces, checkDNS, checkTLS bool
 	cmd := &cobra.Command{
 		Use:   "trace-url URL",
 		Short: "Trace an HTTP(S) URL through Kubernetes routes to Services and Pods",
@@ -94,6 +111,8 @@ func newTraceURLCommand() *cobra.Command {
 			if dynErr != nil { return fmt.Errorf("create Kubernetes dynamic client: %w", dynErr) }
 
 			report := urlTraceReport{URL: target.String(), Namespace: namespace, Host: target.Hostname(), Path: target.Path, Verdict: "UNKNOWN"}
+			if checkDNS { report.DNS = lookupURLDNS(cmd.Context(), target.Hostname()) }
+			if checkTLS && target.Scheme == "https" { report.TLS = checkURLTLS(cmd.Context(), target.Hostname(), target.Port()) }
 			if allNamespaces { report.Namespace = "*" }
 			if report.Path == "" { report.Path = "/" }
 			routes, notes := discoverIngressRoutesFiltered(cmd.Context(), client, namespace, allNamespaces, ingressClass, target)
@@ -114,6 +133,10 @@ func newTraceURLCommand() *cobra.Command {
 				if report.Routes[i].Namespace != report.Routes[j].Namespace { return report.Routes[i].Namespace < report.Routes[j].Namespace }
 				return report.Routes[i].Name < report.Routes[j].Name
 			})
+			for i := range report.Routes {
+				report.Routes[i].Selected = i == 0
+				for j := range report.Routes[i].Backends { b := &report.Routes[i].Backends[j]; if report.Routes[i].ALBHealthcheckPath != "" && len(b.ReadinessProbePaths) > 0 { for _, path := range b.ReadinessProbePaths { if path != report.Routes[i].ALBHealthcheckPath { b.HealthcheckMismatch = true; b.Notes = append(b.Notes, fmt.Sprintf("ALB healthcheck path %q differs from Pod readiness probe path %q.", report.Routes[i].ALBHealthcheckPath, path)); break } } } }
+			}
 			switch {
 			case len(report.Routes) == 0 && len(report.Limitations) == 0:
 				report.Verdict = "UNKNOWN"
@@ -121,19 +144,25 @@ func newTraceURLCommand() *cobra.Command {
 			case len(report.Routes) == 0:
 				report.Verdict = "UNKNOWN"
 			default:
-				report.Verdict = "DISCOVERED"
+				report.Verdict = "HEALTHY"
 				for _, route := range report.Routes {
+					if route.RouteStatus == "FAILED" { report.Verdict = "FAILED" }
 					for _, backend := range route.Backends {
-						if backend.ServiceStatus == "MISSING" || backend.ServiceStatus == "MISSING_PORT" || backend.ServiceStatus == "NO_READY_ENDPOINTS" || backend.ServiceStatus == "PARTIALLY_READY" { report.Verdict = "DEGRADED" }
-						if backend.ServiceStatus == "UNKNOWN" && report.Verdict == "DISCOVERED" { report.Verdict = "UNKNOWN" }
+						switch backend.ServiceStatus {
+						case "MISSING", "MISSING_PORT", "NO_READY_ENDPOINTS": report.Verdict = "FAILED"
+						case "PARTIALLY_READY": if report.Verdict != "FAILED" { report.Verdict = "WARN" }
+						case "UNKNOWN", "PENDING": if report.Verdict == "HEALTHY" { report.Verdict = "UNKNOWN" }
+						}
+						if backend.HealthcheckMismatch && report.Verdict == "HEALTHY" { report.Verdict = "WARN" }
 					}
 				}
 			}
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  "); return enc.Encode(report)
 			}
+			if strings.EqualFold(output, "markdown") { return printURLTraceMarkdown(report) }
 			if !strings.EqualFold(output, "terminal") && !strings.EqualFold(output, "text") {
-				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
+				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 			}
 			printURLTrace(report)
 			return nil
@@ -144,7 +173,9 @@ func newTraceURLCommand() *cobra.Command {
 	cmd.Flags().StringVar(&ingressClass, "ingress-class", "", "Only inspect Ingresses using this IngressClass")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	cmd.Flags().StringVar(&contextName, "context", "", "Kubeconfig context")
-	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal or json")
+	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal, json or markdown")
+	cmd.Flags().BoolVar(&checkDNS, "check-dns", false, "Perform an opt-in DNS lookup for the URL hostname")
+	cmd.Flags().BoolVar(&checkTLS, "check-tls", false, "Perform an opt-in TLS/SNI handshake and certificate expiry check")
 	return cmd
 }
 
@@ -170,7 +201,7 @@ func discoverIngressRoutesFiltered(ctx context.Context, client kubernetes.Interf
 		routeStart := len(routes)
 		add := func(host, path, match, service, port string) {
 			if !urlHostMatches(host, target.Hostname()) || !urlPathMatches(path, target.Path, match) { return }
-			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:routeNamespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match, IngressClass:ingressClassName(ing), LoadBalancerHosts:ingressLoadBalancerHosts(ing),
+			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:routeNamespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match, IngressClass:ingressClassName(ing), LoadBalancerHosts:ingressLoadBalancerHosts(ing), ALBHealthcheckPath:ing.Annotations["alb.ingress.kubernetes.io/healthcheck-path"],
 				Backends:[]urlTraceBackend{{Namespace:routeNamespace, Service:service, Port:port, ServiceStatus:"PENDING"}}})
 		}
 		for _, rule := range ing.Spec.Rules {
@@ -242,14 +273,16 @@ func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, names
 					service, _, _ := unstructured.NestedString(b, "name")
 					port, _, _ := unstructured.NestedInt64(b, "port")
 					backendNamespace, _, _ := unstructured.NestedString(b, "namespace")
-					if backendNamespace != "" && backendNamespace != route.GetNamespace() {
-						notes = append(notes, fmt.Sprintf("HTTPRoute %s references cross-namespace Service %s/%s; cross-namespace backend resolution is not supported yet.", route.GetName(), backendNamespace, service))
+					if backendNamespace == "" { backendNamespace = route.GetNamespace() }
+					if backendNamespace != route.GetNamespace() && !httpRouteReferenceAllowed(ctx, dyn, route.GetNamespace(), backendNamespace, service) {
+						notes = append(notes, fmt.Sprintf("HTTPRoute %s cross-namespace backend %s/%s has no matching ReferenceGrant; backend was not resolved.", route.GetName(), backendNamespace, service))
 						continue
 					}
 					if service == "" { continue }
-					resolved = append(resolved, urlTraceBackend{Namespace:route.GetNamespace(), Service:service, Port:fmt.Sprint(port), ServiceStatus:"PENDING"})
+					resolved = append(resolved, urlTraceBackend{Namespace:backendNamespace, Service:service, Port:fmt.Sprint(port), ServiceStatus:"PENDING"})
 				}
-				routes = append(routes, urlTraceRoute{Kind:"HTTPRoute", Namespace:route.GetNamespace(), Name:route.GetName(), Host:matchedHost, Path:pathMatch, Match:matchName, Backends:resolved, Notes:[]string{"Parent Gateway listener attachment and readiness are not verified yet."}})
+				routeStatus, statusNotes := httpRouteStatus(route)
+				routes = append(routes, urlTraceRoute{Kind:"HTTPRoute", Namespace:route.GetNamespace(), Name:route.GetName(), Host:matchedHost, Path:pathMatch, Match:matchName, RouteStatus:routeStatus, Backends:resolved, Notes:statusNotes})
 			}
 		}
 		return routes, notes
@@ -300,6 +333,10 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 		}
 	}
 	sort.Slice(backend.Pods, func(i, j int) bool { return backend.Pods[i].Name < backend.Pods[j].Name })
+	for _, pod := range backend.Pods { if !pod.Ready || !pod.EndpointReady { diagnoseURLPod(ctx, client, namespace, &pod); } }
+	if len(backend.ReadinessProbePaths) > 0 { /* route-level ALB healthcheck comparison is applied after backend resolution */ }
+	for _, pod := range backend.Pods { backend.ReadinessProbePaths = append(backend.ReadinessProbePaths, pod.ReadinessProbePaths...) }
+	backend.ReadinessProbePaths = uniqueSorted(backend.ReadinessProbePaths)
 	backend.NotReadyEndpoints = backend.EndpointCount - backend.ReadyEndpoints
 	if backend.ReadyEndpoints == 0 { backend.ServiceStatus = "NO_READY_ENDPOINTS"; backend.Notes = append(backend.Notes, "Service has no ready EndpointSlice endpoints.") } else if backend.NotReadyEndpoints > 0 { backend.ServiceStatus = "PARTIALLY_READY"; backend.Notes = append(backend.Notes, "One or more EndpointSlice targets are not ready.") } else { backend.ServiceStatus = "READY" }
 }
@@ -311,7 +348,9 @@ func summarizeURLPod(pod *corev1.Pod, endpointReady bool) urlTracePod {
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodReady { ready = condition.Status == corev1.ConditionTrue; break }
 	}
-	return urlTracePod{Name:pod.Name, Phase:string(pod.Status.Phase), Ready:ready, Restarts:restarts, EndpointReady:endpointReady}
+	var probePaths []string
+	for _, container := range pod.Spec.Containers { if p := container.ReadinessProbe; p != nil && p.HTTPGet != nil { probePaths = append(probePaths, p.HTTPGet.Path) } }
+	return urlTracePod{Name:pod.Name, Phase:string(pod.Status.Phase), Ready:ready, Restarts:restarts, EndpointReady:endpointReady, ReadinessProbePaths:uniqueSorted(probePaths)}
 }
 
 func appendURLTraceNote(notes []string, note string) []string {
@@ -418,6 +457,7 @@ func printURLTrace(report urlTraceReport) {
 	if len(report.Routes) == 0 { fmt.Println("No matching route was established.") }
 	for _, route := range report.Routes {
 		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
+		fmt.Printf("  Route selection: %s\\n", selection)
 		for _, host := range route.LoadBalancerHosts { fmt.Printf("  LoadBalancer hostname: %s\n", host) }
 		if len(route.Backends) == 0 { fmt.Println("  • No supported Service backend was discovered.") }
 		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\n", routeNote) }
