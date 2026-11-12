@@ -51,6 +51,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newDoctorCommand())
 	root.AddCommand(newNetcheckCommand())
 	root.AddCommand(newTimelineCommand())
+	root.AddCommand(newTraceURLCommand())
 	return root
 }
 
