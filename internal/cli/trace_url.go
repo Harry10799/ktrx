@@ -169,7 +169,11 @@ func newTraceURLCommand() *cobra.Command {
 					resolveURLBackendWithBudget(cmd.Context(), client, report.Routes[i].Namespace, &report.Routes[i].Backends[j], &diagnosisBudget)
 					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Backends[j].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
 					if checkAWS {
-						attachAWSTargetHealth(cmd.Context(), &report.Routes[i].Backends[j], awsRegion, awsHealthCache, &report.Limitations)
+						backend := &report.Routes[i].Backends[j]
+						attachAWSTargetHealth(cmd.Context(), backend, awsRegion, awsHealthCache, &report.Limitations)
+						if len(backend.TargetGroupBindings) == 0 {
+							report.Limitations = appendURLTraceNote(report.Limitations, "AWS target health was requested, but no matching TargetGroupBinding was found for Service "+backend.Namespace+"/"+backend.Service+".")
+						}
 					}
 				}
 			}
