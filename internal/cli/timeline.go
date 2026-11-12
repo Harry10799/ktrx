@@ -25,6 +25,7 @@ func newTimelineCommand() *cobra.Command {
 		Long:  "Build an evidence-based timeline from Deployment-owned ReplicaSets. Only revisions still present in the Kubernetes API are available.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if since < 0 { return fmt.Errorf("--since must be zero or a positive duration") }
 			target := args[0]
 			name := strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/")
 			if name == target || name == "" {
@@ -82,7 +83,8 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
 	fmt.Printf("%s  %s\n", style("39", "◆ KTRX CHANGE TIMELINE"), report.Namespace+"/"+report.Target)
-	fmt.Printf("Generated: %s\n\n", formatTimelineTime(&report.GeneratedAt))
+	fmt.Printf("Generated: %s\n", formatTimelineTime(&report.GeneratedAt))
+	fmt.Printf("Window start: %s\n\n", formatTimelineTime(&report.Since))
 	if report.FailureStartedAt != nil {
 		fmt.Printf("Failure started: %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
 	}
