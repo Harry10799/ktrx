@@ -221,3 +221,26 @@ Please do not attach kubeconfig files, Secret manifests, access tokens or unreda
 ## License
 
 KTRX is licensed under the [Apache License 2.0](LICENSE).
+
+
+## Deployment change timeline
+
+KTRX can correlate retained rollout revisions with Kubernetes operational events:
+
+```bash
+ktrx timeline deploy/my-app -n production
+ktrx timeline deploy/my-app -n production --output json
+ktrx timeline deploy/my-app -n production --output markdown
+```
+
+The timeline includes:
+
+- ReplicaSet revision and Pod-template diffs, including annotations such as `checksum/config`.
+- Deployment scaling events and relevant Pod Warning events when the Kubernetes Events API still retains them.
+- Pod restart counts, retained previous-termination timestamps, and the earliest available failure evidence.
+- Referenced ConfigMap and Secret metadata: resourceVersion, managedFields manager names, and managedFields timestamps. Secret and ConfigMap values are never printed.
+- Optional Flux Kustomization reconciliation revisions and Flux HelmRelease history when those CRDs are installed and readable. GitRepository revisions are shown as commit hashes; GitHub/GitLab commit URLs are included when the source URL can be resolved.
+
+Flux support is read-only and optional. Missing CRDs or insufficient RBAC are reported as limitations rather than treated as application failures.
+
+**History limitations:** Kubernetes Events may expire according to cluster configuration. ReplicaSet history can be pruned or reused during rollback. ConfigMap/Secret resourceVersions are opaque identifiers; the standard Kubernetes API does not provide historical object versions, so KTRX reports current metadata and managedFields timestamps rather than claiming a complete data-change audit trail. A GitOps revision is linked to a workload only when Flux labels or its Kustomization inventory provide a reliable association. Timeline correlation is evidence, not proof of causation.
