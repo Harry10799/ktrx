@@ -39,6 +39,7 @@ func TestPodReportsExitError(t *testing.T) {
 		{name: "unknown", reports: []*analyzer.PodReport{{Verdict: analyzer.Unknown}}, want: 3},
 		{name: "warning", reports: []*analyzer.PodReport{{Verdict: analyzer.Warning}}, want: 2},
 		{name: "failure wins over unknown", reports: []*analyzer.PodReport{{Verdict: analyzer.Unknown}, {Verdict: analyzer.Failed}}, want: 2},
+		{name: "unknown takes precedence over warning", reports: []*analyzer.PodReport{{Verdict: analyzer.Warning}, {Verdict: analyzer.Unknown}}, want: 3},
 		{name: "unknown when no confirmed findings", reports: []*analyzer.PodReport{{Verdict: analyzer.Healthy}, {Verdict: analyzer.Unknown}}, want: 3},
 		{name: "nil report ignored", reports: []*analyzer.PodReport{nil, {Verdict: analyzer.Healthy}}, want: 0},
 	}
