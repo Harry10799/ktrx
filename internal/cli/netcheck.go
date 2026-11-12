@@ -172,19 +172,7 @@ func newNetcheckCommand() *cobra.Command {
 			} else {
 				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
 			}
-			hasUnavailable := false
-			for _, result := range report.Results {
-				switch result.Status {
-				case "FAIL":
-					return exitCodeErrorf(2, "one or more network checks failed")
-				case "UNAVAILABLE":
-					hasUnavailable = true
-				}
-			}
-			if hasUnavailable {
-				return exitCodeErrorf(3, "one or more network checks could not run")
-			}
-			return nil
+			return netcheckExitError(report)
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Pod namespace")
@@ -260,4 +248,21 @@ func printNetcheck(w io.Writer, report netcheckReport, colorEnabled bool) {
 			fmt.Fprintf(w, "      %s\n", result.Error)
 		}
 	}
+}
+
+
+func netcheckExitError(report netcheckReport) error {
+	hasUnavailable := false
+	for _, result := range report.Results {
+		switch result.Status {
+		case "FAIL":
+			return exitCodeErrorf(2, "one or more network checks failed")
+		case "UNAVAILABLE":
+			hasUnavailable = true
+		}
+	}
+	if hasUnavailable {
+		return exitCodeErrorf(3, "one or more network checks could not run")
+	}
+	return nil
 }
