@@ -378,3 +378,70 @@ users:
 		t.Fatalf("JSON output does not contain requested URL: %s", stdout.String())
 	}
 }
+
+
+func TestTraceURLCommandIntegrationDiscoversIngressBackend(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/apis/networking.k8s.io/v1/namespaces/production/ingresses":
+			_, _ = w.Write([]byte(`{
+				"apiVersion":"networking.k8s.io/v1","kind":"IngressList",
+				"metadata":{"resourceVersion":"1"},
+				"items":[{
+					"apiVersion":"networking.k8s.io/v1","kind":"Ingress",
+					"metadata":{"name":"api-ingress","namespace":"production"},
+					"spec":{"rules":[{
+						"host":"api.example.com",
+						"http":{"paths":[{
+							"path":"/health","pathType":"Prefix",
+							"backend":{"service":{"name":"api","port":{"number":80}}}
+						}]}
+					}]}
+				}]
+			}`))
+		case "/apis/gateway.networking.k8s.io/v1/namespaces/production/httproutes",
+			"/apis/gateway.networking.k8s.io/v1beta1/namespaces/production/httproutes":
+			_, _ = w.Write([]byte(`{"apiVersion":"gateway.networking.k8s.io/v1","kind":"HTTPRouteList","metadata":{"resourceVersion":"1"},"items":[]}`))
+		case "/api/v1/namespaces/production/services/api":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"Status","status":"Failure","reason":"NotFound","code":404}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	kubeconfigPath := writeDoctorTestKubeconfig(t, server.URL)
+	command := newTraceURLCommand()
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	var stdout, stderr bytes.Buffer
+	command.SetOut(&stdout)
+	command.SetErr(&stderr)
+	command.SetArgs([]string{
+		"--kubeconfig", kubeconfigPath,
+		"--namespace", "production",
+		"--output", "json",
+		"https://api.example.com/health",
+	})
+
+	err := command.Execute()
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("trace-url exit code = %d, want 2; err=%v; stderr=%q; output=%s", got, err, stderr.String(), stdout.String())
+	}
+	var report urlTraceReport
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &report); decodeErr != nil {
+		t.Fatalf("decode trace-url JSON %q: %v", stdout.String(), decodeErr)
+	}
+	if len(report.Routes) != 1 {
+		t.Fatalf("got %d routes, want 1: %+v", len(report.Routes), report.Routes)
+	}
+	route := report.Routes[0]
+	if route.Name != "api-ingress" || len(route.Backends) != 1 {
+		t.Fatalf("unexpected discovered route/backend: %+v", route)
+	}
+	if route.Backends[0].ServiceStatus != "MISSING" {
+		t.Fatalf("backend Service status = %q, want MISSING; backend=%+v", route.Backends[0].ServiceStatus, route.Backends[0])
+	}
+}
