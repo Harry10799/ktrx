@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"strconv"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -87,7 +88,7 @@ type urlTraceReport struct {
 	TLS *urlTraceTLS `json:"tls,omitempty"`
 }
 
-type urlTraceDNS struct { Resolved []string `json:"resolved,omitempty"`; Error string `json:"error,omitempty"` }
+type urlTraceDNS struct { Resolved []string `json:"resolved,omitempty"`; CNAME string `json:"cname,omitempty"`; MatchesALB bool `json:"matchesALB,omitempty"`; Error string `json:"error,omitempty"` }
 type urlTraceTLS struct { ServerName string `json:"serverName"`; NotAfter string `json:"notAfter,omitempty"`; DaysRemaining int `json:"daysRemaining,omitempty"`; Error string `json:"error,omitempty"` }
 
 func newTraceURLCommand() *cobra.Command {
@@ -120,6 +121,7 @@ func newTraceURLCommand() *cobra.Command {
 			report.Limitations = append(report.Limitations, notes...)
 			gatewayRoutes, gatewayNotes := discoverHTTPRoutesInScope(cmd.Context(), dyn, namespace, allNamespaces, target)
 			report.Routes = append(report.Routes, gatewayRoutes...)
+			if report.DNS != nil { report.DNS.MatchesALB = dnsMatchesALB(report.DNS, report.Routes) }
 			report.Limitations = append(report.Limitations, gatewayNotes...)
 			for i := range report.Routes {
 				for j := range report.Routes[i].Backends {
@@ -154,7 +156,7 @@ func newTraceURLCommand() *cobra.Command {
 					case "PARTIALLY_READY": if report.Verdict != "FAILED" { report.Verdict = "WARN" }
 					case "UNKNOWN", "PENDING": if report.Verdict == "HEALTHY" { report.Verdict = "UNKNOWN" }
 					}
-					if backend.HealthcheckMismatch && report.Verdict == "HEALTHY" { report.Verdict = "WARN" }
+					if backend.HealthcheckMismatch { /* Different ALB and readiness paths can be intentional; informational only. */ }
 				}
 			}
 			if strings.EqualFold(output, "json") {
@@ -314,7 +316,7 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 	for _, slice := range slices.Items {
 		for _, endpoint := range slice.Endpoints {
 			backend.EndpointCount++
-			endpointReady := endpoint.Conditions.Ready != nil && *endpoint.Conditions.Ready
+			endpointReady := endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready
 			if endpointReady { backend.ReadyEndpoints++ }
 			if endpoint.TargetRef != nil && endpoint.TargetRef.Kind == "Pod" {
 				name := endpoint.TargetRef.Name
@@ -387,6 +389,12 @@ func resolveTargetGroupBindings(ctx context.Context, dyn dynamic.Interface, name
 	for _, item := range list.Items {
 		service, _, _ := unstructured.NestedString(item.Object, "spec", "serviceRef", "name")
 		if service != backend.Service { continue }
+		refPort, hasPort, _ := unstructured.NestedInt64(item.Object, "spec", "serviceRef", "port")
+		if hasPort && backend.Port != "" && backend.Port != "0" {
+			servicePortMatches := false
+			if n, err := strconv.ParseInt(backend.Port, 10, 32); err == nil { servicePortMatches = int64(n) == refPort }
+			if !servicePortMatches { continue }
+		}
 		arn, _, _ := unstructured.NestedString(item.Object, "spec", "targetGroupARN")
 		targetType, _, _ := unstructured.NestedString(item.Object, "spec", "targetType")
 		backend.TargetGroupBindings = append(backend.TargetGroupBindings, urlTraceTargetGroupBinding{Name:item.GetName(), TargetGroupARN:arn, TargetType:targetType})
@@ -465,8 +473,16 @@ func lookupURLDNS(ctx context.Context, host string) *urlTraceDNS {
 	defer cancel()
 	ips, err := net.DefaultResolver.LookupHost(lookupCtx, host)
 	result := &urlTraceDNS{Resolved: uniqueSorted(ips)}
+	cname, cnameErr := net.DefaultResolver.LookupCNAME(lookupCtx, host)
+	if cnameErr == nil { result.CNAME = strings.TrimSuffix(strings.ToLower(cname), ".") }
 	if err != nil { result.Error = err.Error() }
 	return result
+}
+
+func dnsMatchesALB(dns *urlTraceDNS, routes []urlTraceRoute) bool {
+	if dns == nil || dns.CNAME == "" { return false }
+	for _, route := range routes { for _, lbHost := range route.LoadBalancerHosts { if strings.EqualFold(strings.TrimSuffix(lbHost, "."), dns.CNAME) { return true } } }
+	return false
 }
 
 func checkURLTLS(ctx context.Context, host, port string) *urlTraceTLS {
@@ -476,8 +492,10 @@ func checkURLTLS(ctx context.Context, host, port string) *urlTraceTLS {
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
 	if err != nil { result.Error = err.Error(); return result }
 	defer conn.Close()
+	handshakeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	tlsConn := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
-	if err := tlsConn.HandshakeContext(ctx); err != nil { result.Error = err.Error(); return result }
+	if err := tlsConn.HandshakeContext(handshakeCtx); err != nil { result.Error = err.Error(); return result }
 	state := tlsConn.ConnectionState()
 	if len(state.PeerCertificates) == 0 { result.Error = "TLS peer did not present a certificate"; return result }
 	notAfter := state.PeerCertificates[0].NotAfter
@@ -486,7 +504,11 @@ func checkURLTLS(ctx context.Context, host, port string) *urlTraceTLS {
 	return result
 }
 
+var urlTracePodDiagnosisCount int
+
 func diagnoseURLPod(ctx context.Context, client kubernetes.Interface, namespace string, pod *urlTracePod) {
+	if urlTracePodDiagnosisCount >= 3 { pod.NextCommand = fmt.Sprintf("ktrx %s -n %s", pod.Name, namespace); pod.Findings = []string{"Automatic diagnosis limit reached (3 Pods); run the suggested command for full analysis."}; return }
+	urlTracePodDiagnosisCount++
 	pod.NextCommand = fmt.Sprintf("ktrx %s -n %s", pod.Name, namespace)
 	report, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(ctx, namespace, pod.Name)
 	if err != nil { pod.Findings = []string{"Pod analyzer could not complete: " + err.Error()}; return }
