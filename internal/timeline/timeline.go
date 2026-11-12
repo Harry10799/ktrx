@@ -176,6 +176,9 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	}
 
 	rolloutStart := currentRolloutStart(deployment, owned, currentRevision)
+	if currentRevisionUsesOlderReplicaSet(owned, currentRevision) && rolloutStart.Equal(latestReplicaSetTime(owned)) {
+		report.Limitations = appendUnique(report.Limitations, "Rollback time was unavailable; the latest retained ReplicaSet creation time is used as a conservative failure window boundary.")
+	}
 	addConfigResourceEvents(ctx, a.Metadata, report, owned, currentRevision, since)
 	labels := map[string]string{}
 	for key, value := range deployment.Labels { labels[key] = value }
@@ -442,8 +445,9 @@ func currentRolloutStart(deployment *appsv1.Deployment, replicaSets []appsv1.Rep
 		if condition.LastUpdateTime.Time.After(conditionUpdate) { conditionUpdate = condition.LastUpdateTime.Time }
 	}
 	newestCreation := latestReplicaSetTime(replicaSets)
-	if !revisionCreation.IsZero() && revisionCreation.Before(newestCreation) && conditionUpdate.After(newestCreation) {
-		return conditionUpdate
+	if !revisionCreation.IsZero() && revisionCreation.Before(newestCreation) {
+		if conditionUpdate.After(newestCreation) { return conditionUpdate }
+		return newestCreation
 	}
 	if revisionCreation.IsZero() { return conditionUpdate }
 	return revisionCreation
@@ -464,4 +468,14 @@ func currentReplicaSetUIDs(replicaSets []appsv1.ReplicaSet, currentRevision stri
 		result[string(latest.UID)] = struct{}{}
 	}
 	return result
+}
+
+func currentRevisionUsesOlderReplicaSet(replicaSets []appsv1.ReplicaSet, currentRevision string) bool {
+	newest := latestReplicaSetTime(replicaSets)
+	for _, rs := range replicaSets {
+		if currentRevision != "" && rs.Annotations[revisionAnnotation] == currentRevision {
+			return rs.CreationTimestamp.Time.Before(newest)
+		}
+	}
+	return false
 }
