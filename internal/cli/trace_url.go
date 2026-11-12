@@ -96,7 +96,7 @@ func newTraceURLCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trace-url URL",
 		Short: "Trace an HTTP(S) URL through Kubernetes routes to Services and Pods",
-		Long:  "Read-only discovery of matching Ingress and Gateway API HTTPRoute rules, Service backends, EndpointSlices and target Pods. This is configuration-path tracing; it does not send an HTTP request or prove external reachability.",
+		Long:  "Read-only discovery of matching Ingress and Gateway API HTTPRoute rules, Service backends, EndpointSlices and target Pods. Optional --check-dns and --check-tls flags perform explicit live DNS/TLS checks; no HTTP request is sent.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target, err := url.ParseRequestURI(args[0])
@@ -146,6 +146,7 @@ func newTraceURLCommand() *cobra.Command {
 			default:
 				report.Verdict = "HEALTHY"
 				selected := report.Routes[0]
+				if len(selected.Backends) == 0 { report.Verdict = "UNKNOWN" }
 				if selected.RouteStatus == "FAILED" { report.Verdict = "FAILED" } else if selected.RouteStatus == "UNKNOWN" { report.Verdict = "UNKNOWN" }
 				for _, backend := range selected.Backends {
 					switch backend.ServiceStatus {
