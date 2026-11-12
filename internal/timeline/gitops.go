@@ -45,7 +45,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			if sourceNamespace == "" { sourceNamespace = object.GetNamespace() }
 			timestamp := fluxKustomizationTime(object)
 			details := "sourceRef=" + sourceKind + "/" + sourceName
-			if timestamp != nil { details += " timestamp=lastHandledReconcileAt" } else { details += " reconcile timestamp unavailable; stale Ready condition timestamps are not used" }
+			details += " successful reconcile Event timestamp unavailable from status; status timestamps are not treated as deployment time"
 			if revision != "" { details += " revision=" + revision }
 			if hash := commitHash(revision); hash != "" {
 				details += " commit=" + hash
@@ -176,17 +176,10 @@ func latestConditionTime(object unstructured.Unstructured) *time.Time {
 }
 
 func fluxKustomizationTime(object unstructured.Unstructured) *time.Time {
-	// lastHandledReconcileAt is the controller's reconciliation timestamp. Do not
-	// substitute an old Ready condition transition time: it can remain unchanged
-	// across many later reconciliations and look like a stale deployment event.
-	lastApplied, _, _ := unstructured.NestedString(object.Object, "status", "lastAppliedRevision")
-	lastAttempted, _, _ := unstructured.NestedString(object.Object, "status", "lastAttemptedRevision")
-	if lastApplied == "" || (lastAttempted != "" && lastApplied != lastAttempted) {
-		return nil
-	}
-	value, _, _ := unstructured.NestedString(object.Object, "status", "lastHandledReconcileAt")
-	if value == "" { value, _, _ = unstructured.NestedString(object.Object, "status", "lastAppliedAt") }
-	return parseHistoryTime(value)
+	// lastHandledReconcileAt echoes reconcile.fluxcd.io/requestedAt and is not
+	// evidence of when a revision was successfully applied. Flux status has no
+	// reliable applied-at timestamp; successful Kustomization Events are needed.
+	return nil
 }
 
 func parseHistoryTime(value string) *time.Time {
