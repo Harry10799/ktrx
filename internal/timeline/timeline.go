@@ -473,6 +473,15 @@ func buildCorrelations(report *Report, maxResults int) {
 		})
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
+		confidenceRank := func(value string) int {
+			switch value {
+			case "high temporal relevance": return 3
+			case "medium temporal relevance": return 2
+			default: return 1
+			}
+		}
+		leftRank, rightRank := confidenceRank(candidates[i].Confidence), confidenceRank(candidates[j].Confidence)
+		if leftRank != rightRank { return leftRank > rightRank }
 		if candidates[i].Score != candidates[j].Score { return candidates[i].Score > candidates[j].Score }
 		return candidates[i].Timestamp.After(*candidates[j].Timestamp)
 	})
