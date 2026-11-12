@@ -101,6 +101,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			}
 		}
 	}
+	addArgoCDHistory(ctx, client, report, labels)
 }
 
 func listFirstAvailable(ctx context.Context, client dynamic.Interface, namespace string, resources []schema.GroupVersionResource) ([]unstructured.Unstructured, error) {
@@ -218,4 +219,105 @@ func fluxInventoryMatchesDeployment(id, namespace, name string) bool {
 		return parts[0] == "Deployment" && parts[1] == namespace && parts[2] == name
 	}
 	return false
+}
+
+func addArgoCDHistory(ctx context.Context, client dynamic.Interface, report *Report, labels map[string]string) {
+	gvr := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}
+	namespaces := []string{"argocd"}
+	if report.Namespace != "argocd" { namespaces = append(namespaces, report.Namespace) }
+	seen := map[string]struct{}{}
+	foundAPI := false
+	for _, namespace := range namespaces {
+		applications, err := client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil { continue }
+		foundAPI = true
+		for _, app := range applications.Items {
+			if _, ok := seen[app.GetNamespace()+"/"+app.GetName()]; ok { continue }
+			if !argoApplicationTargetsDeployment(app, report.Namespace, report.Target, labels) { continue }
+			seen[app.GetNamespace()+"/"+app.GetName()] = struct{}{}
+			repoURL, _, _ := unstructured.NestedString(app.Object, "spec", "source", "repoURL")
+			history, _, _ := unstructured.NestedSlice(app.Object, "status", "history")
+			if len(history) == 0 {
+				revision, _, _ := unstructured.NestedString(app.Object, "status", "sync", "revision")
+				appendArgoHistoryEvent(report, app, revision, latestConditionTime(app), repoURL, "current sync status")
+				continue
+			}
+			for _, raw := range history {
+				entry, ok := raw.(map[string]interface{})
+				if !ok { continue }
+				revision := nestedString(entry, "revision")
+				timestamp := parseHistoryTime(nestedString(entry, "deployedAt"))
+				details := "historyID=" + fmt.Sprint(entry["id"])
+				if source, ok := entry["source"].(map[string]interface{}); ok {
+					if targetRevision := nestedString(source, "targetRevision"); targetRevision != "" { details += " targetRevision=" + targetRevision }
+				}
+				appendArgoHistoryEvent(report, app, revision, timestamp, repoURL, details)
+			}
+		}
+	}
+	if !foundAPI {
+		report.Limitations = appendUnique(report.Limitations, "Argo CD Application history is unavailable (Application CRD missing or list permission denied in argocd/workload namespaces).")
+	}
+}
+
+func argoApplicationTargetsDeployment(app unstructured.Unstructured, namespace, target string, labels map[string]string) bool {
+	appName := app.GetName()
+	appNamespace := app.GetNamespace()
+	instance := labels["argocd.argoproj.io/instance"]
+	if instance == appName || instance == appNamespace+"_"+appName || instance == appNamespace+"/"+appName { return true }
+	deploymentName := strings.TrimPrefix(target, "Deployment/")
+	resources, _, _ := unstructured.NestedSlice(app.Object, "status", "resources")
+	for _, raw := range resources {
+		resource, ok := raw.(map[string]interface{})
+		if !ok { continue }
+		if nestedString(resource, "kind") == "Deployment" &&
+			nestedString(resource, "namespace") == namespace &&
+			nestedString(resource, "name") == deploymentName {
+			group := nestedString(resource, "group")
+			if group == "" || group == "apps" { return true }
+		}
+	}
+	return false
+}
+
+func appendArgoHistoryEvent(report *Report, app unstructured.Unstructured, revision string, timestamp *time.Time, repoURL, details string) {
+	if revision != "" { details += " revision=" + revision }
+	if hash := normalizeCommitHash(revision); hash != "" {
+		details += " commit=" + hash
+		if link := gitRepositoryCommitURL(repoURL, hash); link != "" { details += " commitURL=" + link }
+	}
+	report.Events = append(report.Events, TimelineEvent{
+		Timestamp: timestamp, Type: EventGitOps,
+		Resource: "ArgoCD Application/" + app.GetNamespace() + "/" + app.GetName(),
+		Revision: revision, Action: "Argo CD deployment history observed",
+		Source: "argocd-application-history", Confidence: "controller-status",
+		Details: details,
+	})
+}
+
+func normalizeCommitHash(revision string) string {
+	hash := commitHash(revision)
+	if hash != "" { return hash }
+	value := strings.TrimSpace(revision)
+	if len(value) == 40 || len(value) == 64 {
+		for _, char := range value {
+			if !strings.ContainsRune("0123456789abcdefABCDEF", char) { return "" }
+		}
+		return value
+	}
+	return ""
+}
+
+func gitRepositoryCommitURL(repositoryURL, hash string) string {
+	parsed, err := url.Parse(repositoryURL)
+	if err != nil || parsed.Host == "" || hash == "" { return "" }
+	repositoryPath := strings.TrimSuffix(parsed.Path, ".git")
+	switch strings.ToLower(parsed.Host) {
+	case "github.com":
+		return "https://github.com" + repositoryPath + "/commit/" + hash
+	case "gitlab.com":
+		return "https://gitlab.com" + repositoryPath + "/-/commit/" + hash
+	default:
+		return ""
+	}
 }
