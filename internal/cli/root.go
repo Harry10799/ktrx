@@ -44,6 +44,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newCompareCommand())
 	root.AddCommand(newDoctorCommand())
 	root.AddCommand(newNetcheckCommand())
+	root.AddCommand(newTimelineCommand())
 	return root
 }
 
