@@ -3,6 +3,7 @@ package timeline
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -43,7 +44,12 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			timestamp := latestConditionTime(object)
 			details := "sourceRef=" + sourceKind + "/" + sourceName
 			if revision != "" { details += " revision=" + revision }
-			if hash := commitHash(revision); hash != "" { details += " commit=" + hash }
+			if hash := commitHash(revision); hash != "" {
+				details += " commit=" + hash
+				if commitURL := gitCommitURL(ctx, client, report.Namespace, sourceKind, sourceName, hash); commitURL != "" {
+					details += " commitURL=" + commitURL
+				}
+			}
 			report.Events = append(report.Events, TimelineEvent{
 				Timestamp: timestamp, Type: EventGitOps,
 				Resource: "Kustomization/" + object.GetName(),
@@ -163,4 +169,39 @@ func commitHash(revision string) string {
 		}
 	}
 	return ""
+}
+
+func gitCommitURL(ctx context.Context, client dynamic.Interface, namespace, kind, name, hash string) string {
+	if client == nil || !strings.EqualFold(kind, "GitRepository") || name == "" || hash == "" {
+		return ""
+	}
+	resources := []schema.GroupVersionResource{
+		{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "gitrepositories"},
+		{Group: "source.toolkit.fluxcd.io", Version: "v1beta2", Resource: "gitrepositories"},
+	}
+	var source *unstructured.Unstructured
+	for _, resource := range resources {
+		object, err := client.Resource(resource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err == nil {
+			source = object
+			break
+		}
+	}
+	if source == nil {
+		return ""
+	}
+	repositoryURL, _, _ := unstructured.NestedString(source.Object, "spec", "url")
+	parsed, err := url.Parse(repositoryURL)
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	repositoryPath := strings.TrimSuffix(parsed.Path, ".git")
+	switch strings.ToLower(parsed.Host) {
+	case "github.com":
+		return "https://github.com" + repositoryPath + "/commit/" + hash
+	case "gitlab.com":
+		return "https://gitlab.com" + repositoryPath + "/-/commit/" + hash
+	default:
+		return ""
+	}
 }
