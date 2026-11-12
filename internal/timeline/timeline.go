@@ -11,16 +11,19 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 )
 
 const revisionAnnotation = "deployment.kubernetes.io/revision"
 
 type Analyzer struct {
-	Client  kubernetes.Interface
-	Dynamic dynamic.Interface
-	Now     func() time.Time
+	Client   kubernetes.Interface
+	Dynamic  dynamic.Interface
+	Metadata metadata.Interface
+	Since    time.Duration
+	Now      func() time.Time
 }
 
 func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string) (*Report, error) {
@@ -73,8 +76,11 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	if a.Now != nil {
 		now = a.Now()
 	}
+	sinceDuration := a.Since
+	if sinceDuration <= 0 { sinceDuration = 24 * time.Hour }
+	since := now.Add(-sinceDuration)
 	report := &Report{
-		Namespace: namespace, Target: "Deployment/" + name, GeneratedAt: now,
+		Namespace: namespace, Target: "Deployment/" + name, GeneratedAt: now, Since: since,
 		Events: make([]TimelineEvent, 0, len(owned)),
 		Limitations: []string{
 			"Only ReplicaSets still present in the Kubernetes API can be compared; deleted revision history is unavailable.",
@@ -83,6 +89,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			"ConfigMap/Secret resourceVersions are opaque; only current metadata and managedFields timestamps are available, not historical object versions.",
 			"Environment variable values, Secret data, command contents, and argument contents are never included.",
 			"This timeline reports observed changes and potential correlations; it does not establish causation.",
+			"Timeline history is filtered to the selected --since window; older evidence is intentionally omitted.",
 		},
 	}
 	currentRevision := deployment.Annotations[revisionAnnotation]
@@ -164,11 +171,12 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		}
 	}
 
-	addConfigResourceEvents(ctx, a.Client, report, owned)
+	addConfigResourceEvents(ctx, a.Metadata, report, owned, since)
 	labels := map[string]string{}
 	for key, value := range deployment.Labels { labels[key] = value }
 	for key, value := range deployment.Spec.Template.Labels { labels[key] = value }
 	addGitOpsEvents(ctx, a.Dynamic, report, labels)
+	filterTimelineSince(report, since)
 
 	pods, podErr := a.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 	podItems := []corev1.Pod{}
@@ -195,6 +203,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 				})
 			}
 			failureTime := podFailureStart(pod)
+			if !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(latestReplicaSetTime(owned)) { failureTime = nil }
 			if failureTime != nil {
 				report.Events = append(report.Events, TimelineEvent{
 					Timestamp: failureTime, Type: EventFailure, Resource: "Pod/" + pod.Name,
@@ -216,13 +225,9 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	} else {
 		for _, item := range events.Items {
 			_, relevant := ownedUIDs[string(item.InvolvedObject.UID)]
-			if !relevant && item.InvolvedObject.Kind != "Pod" {
-				continue
-			}
-			if item.InvolvedObject.Kind == "Pod" && !podMatchesDeployment(item.InvolvedObject.Name, podItems) {
-				continue
-			}
-			if item.Type != corev1.EventTypeWarning && item.Reason != "ScalingReplicaSet" && item.Reason != "SuccessfulCreate" && item.Reason != "SuccessfulDelete" {
+			if !relevant && item.InvolvedObject.Kind != "Pod" { continue }
+			if item.InvolvedObject.Kind == "Pod" && !podEventBelongsToDeployment(item, podItems, owned) { continue }
+			if !isRelevantDeploymentEvent(item) {
 				continue
 			}
 			timestamp := eventTimestamp(&item)
@@ -232,8 +237,8 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			if item.Type == corev1.EventTypeWarning {
 				eventType = EventFailure
 				action = "Warning event: " + item.Reason
-				if report.FailureStartedAt == nil || (timestamp != nil && timestamp.Before(*report.FailureStartedAt)) {
-					report.FailureStartedAt = timestamp
+				if timestamp != nil && !timestamp.Before(latestReplicaSetTime(owned)) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) {
+					report.FailureStartedAt = earlierTime(report.FailureStartedAt, timestamp)
 				}
 			}
 			report.Events = append(report.Events, TimelineEvent{
@@ -244,6 +249,8 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			})
 		}
 	}
+	filterTimelineSince(report, since)
+	buildCorrelations(report)
 	sort.SliceStable(report.Events, func(i, j int) bool {
 		if report.Events[i].Timestamp == nil { return false }
 		if report.Events[j].Timestamp == nil { return true }
@@ -273,9 +280,12 @@ func podOwnedByReplicaSet(pod corev1.Pod, owners map[string]struct{}) bool {
 	return false
 }
 
-func podMatchesDeployment(name string, pods []corev1.Pod) bool {
+func podEventBelongsToDeployment(event corev1.Event, pods []corev1.Pod, replicaSets []appsv1.ReplicaSet) bool {
 	for _, pod := range pods {
-		if pod.Name == name { return true }
+		if event.InvolvedObject.Name == pod.Name || (event.InvolvedObject.UID != "" && event.InvolvedObject.UID == pod.UID) { return true }
+	}
+	for _, rs := range replicaSets {
+		if strings.HasPrefix(event.InvolvedObject.Name, rs.Name+"-") { return true }
 	}
 	return false
 }
@@ -295,7 +305,7 @@ func podFailureStart(pod corev1.Pod) *time.Time {
 		}
 	}
 	for _, status := range pod.Status.ContainerStatuses {
-		if terminated := status.LastTerminationState.Terminated; terminated != nil && !terminated.FinishedAt.IsZero() {
+		if terminated := status.LastTerminationState.Terminated; terminated != nil && !terminated.FinishedAt.IsZero() && status.RestartCount > 0 {
 			if earliest.IsZero() || terminated.FinishedAt.Time.Before(earliest) { earliest = terminated.FinishedAt.Time }
 		}
 	}
@@ -321,4 +331,75 @@ func appendUnique(items []string, value string) []string {
 		if item == value { return items }
 	}
 	return append(items, value)
+}
+
+func latestReplicaSetTime(replicaSets []appsv1.ReplicaSet) time.Time {
+	var latest time.Time
+	for _, rs := range replicaSets {
+		if rs.CreationTimestamp.Time.After(latest) { latest = rs.CreationTimestamp.Time }
+	}
+	return latest
+}
+
+func podCurrentlyUnhealthy(pod corev1.Pod) bool {
+	return pod.Status.Phase == corev1.PodFailed || !podReady(pod)
+}
+
+func earlierTime(current, candidate *time.Time) *time.Time {
+	if candidate == nil { return current }
+	if current == nil || candidate.Before(*current) { return candidate }
+	return current
+}
+
+func warningIndicatesActiveFailure(reason string) bool {
+	switch reason {
+	case "Unhealthy", "FailedScheduling", "FailedCreate", "SuccessfulCreate", "SuccessfulDelete":
+		return false
+	default:
+		return true
+	}
+}
+
+func isRelevantDeploymentEvent(event corev1.Event) bool {
+	if event.Type == corev1.EventTypeWarning { return warningIndicatesActiveFailure(event.Reason) }
+	switch event.Reason {
+	case "ScalingReplicaSet", "SuccessfulCreate", "SuccessfulDelete":
+		return true
+	default:
+		return false
+	}
+}
+
+func filterTimelineSince(report *Report, since time.Time) {
+	filtered := report.Events[:0]
+	for _, event := range report.Events {
+		if event.Timestamp == nil || !event.Timestamp.Before(since) { filtered = append(filtered, event) }
+	}
+	report.Events = filtered
+}
+
+func buildCorrelations(report *Report) {
+	report.Correlations = nil
+	if report.FailureStartedAt == nil { return }
+	candidates := make([]Correlation, 0)
+	for _, event := range report.Events {
+		if event.Timestamp == nil || !event.Timestamp.Before(*report.FailureStartedAt) { continue }
+		if event.Type != EventRollout && event.Type != EventConfig && event.Type != EventGitOps { continue }
+		summary := event.Action
+		if len(event.Changes) > 0 {
+			summary += ": "
+			for i, change := range event.Changes {
+				if i > 0 { summary += "; " }
+				summary += change.Field + " " + change.Before + " -> " + change.After
+			}
+		}
+		candidates = append(candidates, Correlation{
+			Timestamp: event.Timestamp, Type: event.Type, Resource: event.Resource,
+			Summary: summary, Confidence: "temporal proximity",
+			Disclaimer: "Potential correlation only; causation is not established.",
+		})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].Timestamp.After(*candidates[j].Timestamp) })
+	for i := range candidates { candidates[i].Rank = i + 1 }
+	report.Correlations = candidates
 }
