@@ -7,6 +7,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -91,4 +94,36 @@ func TestResolveURLBackendIncludesNotReadyEndpointPods(t *testing.T) {
 		if pod.Name == "api-unready" && !pod.EndpointReady && !pod.Ready { foundNotReady = true }
 	}
 	if !foundNotReady { t.Fatalf("not-ready endpoint Pod was not surfaced: %+v", backend.Pods) }
+}
+
+func TestHTTPRouteStatusConditions(t *testing.T) {
+	route := &unstructured.Unstructured{Object: map[string]interface{}{
+		"status": map[string]interface{}{"parents": []interface{}{map[string]interface{}{
+			"conditions": []interface{}{
+				map[string]interface{}{"type":"Accepted", "status":"True"},
+				map[string]interface{}{"type":"ResolvedRefs", "status":"False", "reason":"BackendNotFound"},
+			},
+		}}},
+	}}
+	status, notes := httpRouteStatus(route)
+	if status != "FAILED" || len(notes) == 0 { t.Fatalf("expected failed route condition, got status=%s notes=%v", status, notes) }
+}
+
+func TestHTTPRouteCrossNamespaceReferenceGrant(t *testing.T) {
+	grant := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion":"gateway.networking.k8s.io/v1",
+		"kind":"ReferenceGrant",
+		"metadata":map[string]interface{}{"name":"allow-frontend", "namespace":"backend"},
+		"spec":map[string]interface{}{
+			"from":[]interface{}{map[string]interface{}{"group":"gateway.networking.k8s.io", "kind":"HTTPRoute", "namespace":"frontend"}},
+			"to":[]interface{}{map[string]interface{}{"group":"", "kind":"Service", "name":"api"}},
+		},
+	}}
+	dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), grant)
+	if !httpRouteReferenceAllowed(context.Background(), dyn, "frontend", "backend", "api") {
+		t.Fatal("matching ReferenceGrant should allow the cross-namespace Service reference")
+	}
+	if httpRouteReferenceAllowed(context.Background(), dyn, "other", "backend", "api") {
+		t.Fatal("ReferenceGrant must not authorize a different source namespace")
+	}
 }
