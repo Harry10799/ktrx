@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
- corev1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -124,7 +123,7 @@ func fluxKustomizationEvent(ctx context.Context, client dynamic.Interface, objec
 		if kind != "Kustomization" || name != object.GetName() || (namespace != "" && namespace != object.GetNamespace()) { continue }
 		reason, _, _ := unstructured.NestedString(event.Object, "reason")
 		message, _, _ := unstructured.NestedString(event.Object, "message")
-		if !strings.Contains(strings.ToLower(reason+" "+message), "reconcil") && !strings.Contains(strings.ToLower(message), "applied revision") { continue }
+		if !strings.Contains(strings.ToLower(reason), "succeeded") && !strings.Contains(strings.ToLower(message), "applied revision") { continue }
 		timestamp := fluxEventTime(event)
 		if timestamp != nil && (latest == nil || timestamp.After(*latest)) { latest = timestamp; revision = fluxEventRevision(message) }
 	}
