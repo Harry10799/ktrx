@@ -16,7 +16,7 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 - **Dependency clues:** Correlates literal same-namespace Service references in container environment values/commands with selected backend Pod health.
 - **Runtime checks:** Explicit DNS, TCP and HTTP(S) probes from an existing Pod container.
 - **Comparison:** Compare a known-good Pod with a candidate to surface configuration and evidence differences.
-- **Change timeline (initial):** Compare retained Deployment-owned ReplicaSet revisions, including image, environment-variable names and resource request/limit changes. Environment variable values are never displayed.
+- **Change timeline:** Compare retained Deployment-owned ReplicaSet revisions, Pod-template annotations/checksums, Deployment scaling events, Pod Warning events and restarts. Optionally read Flux Kustomization and HelmRelease history, including Git revisions. Referenced ConfigMap/Secret metadata is shown without displaying values.
 - **Preflight:** Check Kubernetes API connectivity and the RBAC permissions KTRX uses.
 - **Output:** Colorized terminal, JSON and Markdown (command-specific output support is noted below).
 
@@ -177,7 +177,9 @@ The caller needs read permissions for the resources used by the selected checks,
 - Pods, Services, EndpointSlices and legacy Endpoints.
 - Ingresses and IngressClasses.
 - NetworkPolicies, Events and pods/log.
-- ReplicaSets for owner-chain inspection.
+- ReplicaSets for owner-chain inspection and Deployment timelines.
+- ConfigMaps and Secrets for metadata-only resourceVersion/managedFields inspection; KTRX never prints their data.
+- Flux Kustomizations, HelmReleases and GitRepositories (optional) for GitOps reconciliation and release history.
 - Pod listing across namespaces for Ingress controller discovery.
 - pods/exec create permission for ktrx netcheck.
 - SelfSubjectAccessReview creation for ktrx doctor.
