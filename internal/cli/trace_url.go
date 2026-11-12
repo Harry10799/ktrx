@@ -171,7 +171,7 @@ func discoverIngressRoutesFiltered(ctx context.Context, client kubernetes.Interf
 		add := func(host, path, match, service, port string) {
 			if !urlHostMatches(host, target.Hostname()) || !urlPathMatches(path, target.Path, match) { return }
 			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:routeNamespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match, IngressClass:ingressClassName(ing), LoadBalancerHosts:ingressLoadBalancerHosts(ing),
-				Backends:[]urlTraceBackend{{Service:service, Port:port, ServiceStatus:"PENDING"}}})
+				Backends:[]urlTraceBackend{{Namespace:routeNamespace, Service:service, Port:port, ServiceStatus:"PENDING"}}})
 		}
 		for _, rule := range ing.Spec.Rules {
 			if rule.HTTP == nil { continue }
@@ -331,10 +331,7 @@ func resolveTargetGroupBindings(ctx context.Context, dyn dynamic.Interface, name
 	if dyn == nil { return }
 	gvr := schema.GroupVersionResource{Group:"elbv2.k8s.aws", Version:"v1beta1", Resource:"targetgroupbindings"}
 	list, err := dyn.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
-	if apierrors.IsNotFound(err) {
-		*limitations = appendUnique(*limitations, "AWS TargetGroupBinding CRD is not installed; ALB-to-Service associations are unavailable.")
-		return
-	}
+	if apierrors.IsNotFound(err) { return }
 	if err != nil {
 		*limitations = appendUnique(*limitations, "AWS TargetGroupBinding discovery is unavailable (RBAC denied or API error).")
 		return
