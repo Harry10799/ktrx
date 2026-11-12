@@ -27,6 +27,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	if err != nil {
 		return nil, fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
 	}
+	if deployment.Spec.Selector == nil { return nil, fmt.Errorf("deployment %s/%s has no selector", namespace, name) }
 	selector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("deployment has invalid selector: %w", err)
@@ -80,6 +81,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		revision := current.Annotations[revisionAnnotation]
 		if revision == "" {
 			revision = "unknown"
+			report.Limitations = appendUnique(report.Limitations, "One or more ReplicaSets lack the revision annotation; their ordering uses creation timestamps.")
 		}
 		event := TimelineEvent{
 			Timestamp: current.CreationTimestamp.Time,
