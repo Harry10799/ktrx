@@ -68,7 +68,13 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			"This timeline reports observed changes and does not establish causation.",
 		},
 	}
+	currentRevision := deployment.Annotations[revisionAnnotation]
 	var previous *appsv1.ReplicaSet
+	var previousCreation time.Time
+	var lastConditionUpdate time.Time
+	for _, condition := range deployment.Status.Conditions {
+		if condition.LastUpdateTime.Time.After(lastConditionUpdate) { lastConditionUpdate = condition.LastUpdateTime.Time }
+	}
 	for i := range owned {
 		current := &owned[i]
 		revision := current.Annotations[revisionAnnotation]
@@ -80,11 +86,17 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			Type: EventRollout,
 			Resource: "ReplicaSet/" + current.Name,
 			Revision: revision,
+			Current: revision != "unknown" && revision == currentRevision,
 			Action: "Deployment revision observed",
 			Source: "replicaset-template",
 			Confidence: "observed",
 		}
 		if previous != nil {
+			if current.CreationTimestamp.Time.Before(previousCreation) {
+				event.Details = "Revision order conflicts with ReplicaSet creation time: older ReplicaSet reused (rollback likely). Exact rollback time is unavailable."
+				report.Limitations = appendUnique(report.Limitations, "Rollback reused an older ReplicaSet; its creation timestamp is historical, not the rollback time.")
+				if lastConditionUpdate.After(previousCreation) && !lastConditionUpdate.After(now) { event.Timestamp = lastConditionUpdate; event.Details += " Deployment condition lastUpdateTime is an approximation, not an audit timestamp." } else { event.Timestamp = time.Time{} }
+			}
 			event.Changes = compareTemplates(previous, current)
 			if len(event.Changes) == 0 {
 				event.Action = "Revision observed; no supported template differences"
@@ -95,7 +107,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			event.Details = "Earliest retained ReplicaSet; no earlier retained revision is available for comparison."
 		}
 		report.Events = append(report.Events, event)
-		previous = current
+		previous, previousCreation = current, current.CreationTimestamp.Time
 	}
 	if len(owned) == 0 {
 		report.Limitations = append(report.Limitations, "No ReplicaSets controlled by this Deployment were found.")
@@ -103,3 +115,8 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	return report, nil
 }
 
+
+func appendUnique(items []string, value string) []string {
+	for _, item := range items { if item == value { return items } }
+	return append(items, value)
+}
