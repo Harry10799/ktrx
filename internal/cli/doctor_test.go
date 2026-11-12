@@ -1,6 +1,6 @@
 package cli
 
-import (
+import (\n\t"context"\n\t"errors"\n\n\tauthv1 "k8s.io/api/authorization/v1"\n\t"k8s.io/apimachinery/pkg/runtime"\n\t"k8s.io/client-go/kubernetes/fake"\n\tk8stesting "k8s.io/client-go/testing"
 	"bytes"
 	"encoding/json"
 	"strings"
@@ -151,6 +151,59 @@ func TestDoctorReportOutputAndExitClassification(t *testing.T) {
 			}
 			if got := ExitCode(doctorExitError(tt.report)); got != tt.want {
 				t.Fatalf("doctorExitError() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckAccessSelfSubjectAccessReview(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     authv1.SubjectAccessReviewStatus
+		apiErr     error
+		wantStatus string
+	}{
+		{name: "allowed", status: authv1.SubjectAccessReviewStatus{Allowed: true, Reason: "RBAC allowed"}, wantStatus: "PASS"},
+		{name: "denied", status: authv1.SubjectAccessReviewStatus{Denied: true, Reason: "RBAC denied"}, wantStatus: "DENIED"},
+		{name: "inconclusive", status: authv1.SubjectAccessReviewStatus{EvaluationError: "authorizer unavailable"}, wantStatus: "UNKNOWN"},
+		{name: "api error", apiErr: errors.New("authorization API unavailable"), wantStatus: "UNKNOWN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset()
+			client.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if tt.apiErr != nil {
+					return true, nil, tt.apiErr
+				}
+				return true, &authv1.SelfSubjectAccessReview{Status: tt.status}, nil
+			})
+
+			req := accessRequirement{
+				name: "Read Pod logs", verb: "get", group: "", resource: "pods",
+				namespace: "production", subresource: "log",
+			}
+			got := checkAccess(context.Background(), client, req)
+			if got.Status != tt.wantStatus {
+				t.Fatalf("checkAccess() status = %q, want %q (reason: %s)", got.Status, tt.wantStatus, got.Reason)
+			}
+			if tt.name == "api error" && !strings.Contains(got.Reason, tt.apiErr.Error()) {
+				t.Fatalf("API error reason = %q, want it to contain %q", got.Reason, tt.apiErr)
+			}
+			if tt.name == "inconclusive" && !strings.Contains(got.Reason, "authorizer unavailable") {
+				t.Fatalf("inconclusive reason = %q, want evaluation error", got.Reason)
+			}
+
+			actions := client.Actions()
+			if len(actions) != 1 {
+				t.Fatalf("expected one SelfSubjectAccessReview request, got %d", len(actions))
+			}
+			review, ok := actions[0].(k8stesting.CreateAction).GetObject().(*authv1.SelfSubjectAccessReview)
+			if !ok {
+				t.Fatalf("request object has type %T, want *SelfSubjectAccessReview", actions[0].(k8stesting.CreateAction).GetObject())
+			}
+			attrs := review.Spec.ResourceAttributes
+			if attrs == nil || attrs.Verb != "get" || attrs.Resource != "pods" || attrs.Subresource != "log" || attrs.Namespace != "production" {
+				t.Fatalf("unexpected ResourceAttributes: %#v", attrs)
 			}
 		})
 	}
