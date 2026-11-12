@@ -3,20 +3,20 @@ package cli
 import (
 	"context"
 	"crypto/x509"
-	"errors"
 	"encoding/json"
+	"errors"
 	"net"
 	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
@@ -249,9 +249,9 @@ func TestHTTPRouteStatusConditions(t *testing.T) {
 
 func TestHTTPRouteStatusRequiresBothConditionsTrue(t *testing.T) {
 	tests := []struct {
-		name      string
-		parents   []interface{}
-		want      string
+		name    string
+		parents []interface{}
+		want    string
 	}{
 		{name: "missing parents", parents: nil, want: "UNKNOWN"},
 		{name: "missing resolved refs", parents: []interface{}{map[string]interface{}{"conditions": []interface{}{map[string]interface{}{"type": "Accepted", "status": "True"}}}}, want: "UNKNOWN"},
