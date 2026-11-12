@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
-	"strconv"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -334,7 +333,7 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 		}
 	}
 	sort.Slice(backend.Pods, func(i, j int) bool { return backend.Pods[i].Name < backend.Pods[j].Name })
-	for _, pod := range backend.Pods { if !pod.Ready || !pod.EndpointReady { diagnoseURLPod(ctx, client, namespace, &pod); } }
+	for i := range backend.Pods { if !backend.Pods[i].Ready || !backend.Pods[i].EndpointReady { diagnoseURLPod(ctx, client, namespace, &backend.Pods[i]); } }
 	if len(backend.ReadinessProbePaths) > 0 { /* route-level ALB healthcheck comparison is applied after backend resolution */ }
 	for _, pod := range backend.Pods { backend.ReadinessProbePaths = append(backend.ReadinessProbePaths, pod.ReadinessProbePaths...) }
 	backend.ReadinessProbePaths = uniqueSorted(backend.ReadinessProbePaths)
