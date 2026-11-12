@@ -271,8 +271,8 @@ func TestDoctorCommandIntegration(t *testing.T) {
 			var received []authv1.ResourceAttributes
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				switch r.URL.Path {
-				case "/version":
+				switch {
+				case r.URL.Path == "/version":
 					_ = json.NewEncoder(w).Encode(map[string]string{
 						"major": "1", "minor": "32", "gitVersion": "v1.32.0",
 					})
