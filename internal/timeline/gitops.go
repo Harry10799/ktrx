@@ -123,7 +123,7 @@ func kustomizationTargetsDeployment(object unstructured.Unstructured, namespace,
 		entry, ok := raw.(map[string]interface{})
 		if !ok { continue }
 		id := nestedString(entry, "id")
-		if id == "Deployment/"+namespace+"/"+deploymentName || id == "Deployment_"+namespace+"_"+deploymentName { return true }
+		if fluxInventoryMatchesDeployment(id, namespace, deploymentName) { return true }
 	}
 	return false
 }
@@ -204,4 +204,18 @@ func gitCommitURL(ctx context.Context, client dynamic.Interface, namespace, kind
 	default:
 		return ""
 	}
+}
+
+func fluxInventoryMatchesDeployment(id, namespace, name string) bool {
+	id = strings.Trim(id, "/")
+	parts := strings.Split(id, "_")
+	if len(parts) >= 4 {
+		// Flux inventory IDs use namespace_name_group_kind.
+		return parts[0] == namespace && parts[1] == name && strings.EqualFold(parts[len(parts)-1], "Deployment")
+	}
+	parts = strings.Split(id, "/")
+	if len(parts) == 3 {
+		return parts[0] == "Deployment" && parts[1] == namespace && parts[2] == name
+	}
+	return false
 }
