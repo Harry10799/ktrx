@@ -140,7 +140,7 @@ func TestDoctorReportOutputAndExitClassification(t *testing.T) {
 			if err := json.NewEncoder(&jsonOutput).Encode(tt.report); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(jsonOutput.String(), "\"namespace\": \"production\"") {
+			if !strings.Contains(jsonOutput.String(), "\"namespace\":\"production\"") {
 				t.Fatalf("JSON output missing namespace: %s", jsonOutput.String())
 			}
 			var terminal bytes.Buffer
