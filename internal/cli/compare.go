@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -52,13 +53,13 @@ func newCompareCommand() *cobra.Command {
 			result := comparePods(reference, candidate)
 			switch strings.ToLower(output) {
 			case "json":
-				enc := json.NewEncoder(os.Stdout)
+				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
 				return enc.Encode(result)
 			case "markdown":
-				return printComparisonMarkdown(result)
+				return printComparisonMarkdown(cmd.OutOrStdout(), result)
 			case "terminal", "text":
-				return printComparisonTerminal(result, !noColor && os.Getenv("NO_COLOR") == "")
+				return printComparisonTerminal(cmd.OutOrStdout(), result, !noColor && os.Getenv("NO_COLOR") == "")
 			default:
 				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 			}
@@ -228,25 +229,25 @@ func addEvidenceDifferences(result *podComparison, reference, candidate []analyz
 	}
 }
 
-func printComparisonTerminal(r podComparison, colorEnabled bool) error {
+func printComparisonTerminal(w io.Writer, r podComparison, colorEnabled bool) error {
 	style := func(color, value string) string {
 		if !colorEnabled {
 			return value
 		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Printf("%s  %s/%s\n", style("39", "◆ KTRX COMPARE"), r.Namespace, r.Candidate)
-	fmt.Printf("Reference: %s\nCandidate: %s\n", r.Reference, r.Candidate)
-	fmt.Println("\n" + style("99", "DIFFERENCES"))
+	fmt.Fprintf(w,"%s  %s/%s\n", style("39", "◆ KTRX COMPARE"), r.Namespace, r.Candidate)
+	fmt.Fprintf(w,"Reference: %s\nCandidate: %s\n", r.Reference, r.Candidate)
+	fmt.Fprintln(w,"\n" + style("99", "DIFFERENCES"))
 	if len(r.Differences) == 0 {
-		fmt.Println("  ✓ No differences found")
+		fmt.Fprintln(w,"  ✓ No differences found")
 	}
 	for _, d := range r.Differences {
-		fmt.Printf("  %s %s / %s\n", style("214", "Δ"), d.Area, d.Field)
-		fmt.Printf("      Reference: %s\n      Candidate: %s\n", value(d.Reference), value(d.Candidate))
+		fmt.Fprintf(w,"  %s %s / %s\n", style("214", "Δ"), d.Area, d.Field)
+		fmt.Fprintf(w,"      Reference: %s\n      Candidate: %s\n", value(d.Reference), value(d.Candidate))
 	}
-	fmt.Println("\n" + style("245", r.Summary))
-	fmt.Println(style("245", "Note: comparison highlights observed differences; it does not prove causation."))
+	fmt.Fprintln(w,"\n" + style("245", r.Summary))
+	fmt.Fprintln(w,style("245", "Note: comparison highlights observed differences; it does not prove causation."))
 	return nil
 }
 
@@ -257,13 +258,13 @@ func markdownCell(value string) string {
 	return strings.ReplaceAll(value, "\r", "<br>")
 }
 
-func printComparisonMarkdown(r podComparison) error {
-	fmt.Printf("# Pod comparison: %s vs %s\n\nNamespace: %s\n\n", r.Reference, r.Candidate, r.Namespace)
-	fmt.Println("| Area | Field | Reference | Candidate |")
-	fmt.Println("|---|---|---|---|")
+func printComparisonMarkdown(w io.Writer, r podComparison) error {
+	fmt.Fprintf(w,"# Pod comparison: %s vs %s\n\nNamespace: %s\n\n", r.Reference, r.Candidate, r.Namespace)
+	fmt.Fprintln(w,"| Area | Field | Reference | Candidate |")
+	fmt.Fprintln(w,"|---|---|---|---|")
 	for _, d := range r.Differences {
-		fmt.Printf("| %s | %s | %s | %s |\n", markdownCell(d.Area), markdownCell(d.Field), markdownCell(d.Reference), markdownCell(d.Candidate))
+		fmt.Fprintf(w,"| %s | %s | %s | %s |\n", markdownCell(d.Area), markdownCell(d.Field), markdownCell(d.Reference), markdownCell(d.Candidate))
 	}
-	fmt.Printf("\n**%s**\n\n> Differences are diagnostic clues, not proof of causation.\n", r.Summary)
+	fmt.Fprintf(w,"\n**%s**\n\n> Differences are diagnostic clues, not proof of causation.\n", r.Summary)
 	return nil
 }
