@@ -18,6 +18,7 @@ import (
 	authv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
@@ -285,14 +286,27 @@ func TestDoctorCommandIntegration(t *testing.T) {
 						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 						return
 					}
-					var review authv1.SelfSubjectAccessReview
 					requestBody, err := io.ReadAll(r.Body)
 					if err != nil {
 						writeDoctorTestAPIError(w, http.StatusBadRequest, "read request body: "+err.Error())
 						return
 					}
-					if err := json.Unmarshal(requestBody, &review); err != nil {
-						writeDoctorTestAPIError(w, http.StatusBadRequest, fmt.Sprintf("decode SelfSubjectAccessReview request %q: %v", string(requestBody), err))
+					// client-go negotiates Kubernetes protobuf for API objects when
+					// the server advertises it. Decode both protobuf and JSON so this
+					// test server behaves like a real Kubernetes API server.
+					scheme := runtime.NewScheme()
+					if err := authv1.AddToScheme(scheme); err != nil {
+						t.Fatalf("register authorization API types: %v", err)
+					}
+					decoder := serializer.NewCodecFactory(scheme).UniversalDeserializer()
+					obj, _, err := decoder.Decode(requestBody, nil, nil)
+					if err != nil {
+						writeDoctorTestAPIError(w, http.StatusBadRequest, fmt.Sprintf("decode SelfSubjectAccessReview request content-type=%q: %v", r.Header.Get("Content-Type"), err))
+						return
+					}
+					review, ok := obj.(*authv1.SelfSubjectAccessReview)
+					if !ok {
+						writeDoctorTestAPIError(w, http.StatusBadRequest, fmt.Sprintf("unexpected request object %T", obj))
 						return
 					}
 					attrs := review.Spec.ResourceAttributes
