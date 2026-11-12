@@ -267,7 +267,7 @@ KTRX is an aid for investigation, not an autonomous root-cause oracle.
 - Runtime probes require suitable utilities inside the chosen container and execute in that container's network context.
 - Ingress controller Pod discovery currently supports ingress-nginx. Other controllers can still have their Ingress routes inspected, but controller-Pod health discovery is not implemented for them.
 - Kubernetes API visibility and RBAC restrictions can cause checks to be reported as UNKNOWN.
-- Gateway API HTTPRoute discovery is supported, but parent/listener attachment and cross-namespace ReferenceGrant validation remain incomplete. Hubble integration is not currently implemented.
+- Gateway API HTTPRoute discovery includes parent `Accepted` / `ResolvedRefs` condition checks and cross-namespace Service `ReferenceGrant` validation. Full live Gateway listener data-plane verification and Hubble integration are not currently implemented.
 
 ## Contributing
 
