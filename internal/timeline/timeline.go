@@ -178,6 +178,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	addGitOpsEvents(ctx, a.Dynamic, report, labels)
 	filterTimelineSince(report, since)
 
+	activeUnhealthyPod := false
 	pods, podErr := a.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 	podItems := []corev1.Pod{}
 	if podErr == nil && pods != nil {
@@ -205,6 +206,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			failureTime := podFailureStart(pod)
 			if !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(latestReplicaSetTime(owned)) || failureTime.Before(since) { failureTime = nil }
 			if failureTime != nil {
+				activeUnhealthyPod = true
 				report.Events = append(report.Events, TimelineEvent{
 					Timestamp: failureTime, Type: EventFailure, Resource: "Pod/" + pod.Name,
 					Action: "Pod failure or degradation start observed", Source: "pod-status",
@@ -219,7 +221,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		report.Limitations = appendUnique(report.Limitations, "Pod status could not be read; failure-start and restart timeline entries are incomplete.")
 	}
 
-	activeFailure := report.FailureStartedAt != nil
+	activeFailure := activeUnhealthyPod
 	events, eventErr := a.Client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	if eventErr != nil {
 		report.Limitations = appendUnique(report.Limitations, "Kubernetes Events could not be read; scaling and warning-event timestamps are unavailable.")
