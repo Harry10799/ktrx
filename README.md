@@ -239,7 +239,7 @@ KTRX returns stable process exit codes so shell scripts and CI jobs can act on d
 | 2 | A confirmed FAILED condition or WARN finding was reported. |
 | 3 | The result is UNKNOWN or incomplete; required evidence or a requested check could not be verified. |
 
-For Deployment traces, the aggregate exit code follows the documented verdict precedence across the selected Pods. For `compare`, the candidate Pod's verdict determines the exit code; differences alone do not imply failure.
+For Deployment traces, the aggregate exit code follows the documented verdict precedence across the selected Pods. For `compare`, the candidate Pod's verdict determines the exit code; differences alone do not imply failure. For `doctor`, optional permission gaps are reported but do not affect the exit code; only denied or unknown required checks do.
 
 ## Safety and RBAC permissions
 
