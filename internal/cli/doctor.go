@@ -144,6 +144,7 @@ func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequ
 		{name: "List Flux Kustomizations (optional)", verb: "list", group: "kustomize.toolkit.fluxcd.io", resource: "kustomizations", namespace: namespace, optional: true},
 		{name: "List Flux HelmReleases (optional)", verb: "list", group: "helm.toolkit.fluxcd.io", resource: "helmreleases", namespace: namespace, optional: true},
 		{name: "Get Flux GitRepositories (optional)", verb: "get", group: "source.toolkit.fluxcd.io", resource: "gitrepositories", namespace: namespace, optional: true},
+		{name: "List Argo CD Applications (optional)", verb: "list", group: "argoproj.io", resource: "applications", namespace: "argocd", optional: true},
 	}
 	if includeNetcheck {
 		requirements = append(requirements, accessRequirement{name: "Execute explicit in-Pod network probes", verb: "create", resource: "pods", subresource: "exec", namespace: namespace})
