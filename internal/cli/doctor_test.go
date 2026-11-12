@@ -103,7 +103,6 @@ func TestDoctorExitErrorIgnoresOptionalPermissionGaps(t *testing.T) {
 	}
 }
 
-
 func TestDoctorReportOutputAndExitClassification(t *testing.T) {
 	tests := []struct {
 		name   string

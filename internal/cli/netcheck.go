@@ -250,7 +250,6 @@ func printNetcheck(w io.Writer, report netcheckReport, colorEnabled bool) {
 	}
 }
 
-
 func netcheckExitError(report netcheckReport) error {
 	hasUnavailable := false
 	for _, result := range report.Results {
