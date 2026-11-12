@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -20,13 +21,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type urlTracePod struct {
+	Name string `json:"name"`
+	Phase string `json:"phase"`
+	Ready bool `json:"ready"`
+	Restarts int32 `json:"restarts"`
+}
+
 type urlTraceBackend struct {
 	Service       string   `json:"service"`
 	Port          string   `json:"port,omitempty"`
 	ServiceStatus string   `json:"serviceStatus"`
 	EndpointCount int      `json:"endpointCount"`
 	ReadyEndpoints int     `json:"readyEndpoints"`
-	Pods          []string `json:"pods,omitempty"`
+	Pods          []urlTracePod `json:"pods,omitempty"`
 	Notes         []string `json:"notes,omitempty"`
 }
 
@@ -239,17 +247,31 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 			if endpoint.TargetRef != nil && endpoint.TargetRef.Kind == "Pod" {
 				name := endpoint.TargetRef.Name
 				if endpoint.TargetRef.Namespace != "" && endpoint.TargetRef.Namespace != namespace { continue }
-				if _, ok := seenPods[name]; !ok { backend.Pods = append(backend.Pods, name); seenPods[name] = struct{}{} }
+				if _, ok := seenPods[name]; !ok {
+					pod, getErr := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+					if getErr == nil { backend.Pods = append(backend.Pods, summarizeURLPod(pod)); seenPods[name] = struct{}{} }
+					if getErr != nil { backend.Notes = append(backend.Notes, "Could not read target Pod "+name+": "+getErr.Error()) }
+				}
 			} else {
 				for _, address := range endpoint.Addresses {
 					pods, listErr := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{FieldSelector:"status.podIP="+address})
-					if listErr == nil { for _, p := range pods.Items { if _, ok := seenPods[p.Name]; !ok { backend.Pods = append(backend.Pods,p.Name); seenPods[p.Name]=struct{}{} } } }
+					if listErr == nil { for _, p := range pods.Items { if _, ok := seenPods[p.Name]; !ok { backend.Pods = append(backend.Pods, summarizeURLPod(&p)); seenPods[p.Name]=struct{}{} } } }
 				}
 			}
 		}
 	}
-	sort.Strings(backend.Pods)
+	sort.Slice(backend.Pods, func(i, j int) bool { return backend.Pods[i].Name < backend.Pods[j].Name })
 	if backend.ReadyEndpoints == 0 { backend.ServiceStatus = "NO_READY_ENDPOINTS"; backend.Notes = append(backend.Notes, "Service has no ready EndpointSlice endpoints.") } else { backend.ServiceStatus = "READY" }
+}
+
+func summarizeURLPod(pod *corev1.Pod) urlTracePod {
+	var restarts int32
+	for _, status := range pod.Status.ContainerStatuses { restarts += status.RestartCount }
+	ready := false
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady { ready = condition.Status == corev1.ConditionTrue; break }
+	}
+	return urlTracePod{Name:pod.Name, Phase:string(pod.Status.Phase), Ready:ready, Restarts:restarts}
 }
 
 func urlHostMatches(pattern, host string) bool {
