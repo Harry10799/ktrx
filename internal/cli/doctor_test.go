@@ -308,7 +308,10 @@ func TestDoctorCommandIntegration(t *testing.T) {
 						Spec: review.Spec,
 						Status: status,
 					}
-					w.WriteHeader(http.StatusCreated)
+					// The client-go REST path accepts a normal successful JSON response.
+					// Use 200 here to keep this lightweight test server independent of
+					// Kubernetes API-server create-response negotiation.
+					w.WriteHeader(http.StatusOK)
 					_ = json.NewEncoder(w).Encode(response)
 				default:
 					w.WriteHeader(http.StatusNotFound)
