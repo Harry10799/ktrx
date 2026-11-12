@@ -15,6 +15,7 @@ func compareTemplates(before, after *appsv1.ReplicaSet) []Change {
  compareContainers(&changes,before.Spec.Template.Spec.Containers,after.Spec.Template.Spec.Containers,"containers")
  compareContainers(&changes,before.Spec.Template.Spec.InitContainers,after.Spec.Template.Spec.InitContainers,"initContainers")
  a,b:=before.Spec.Template.Spec,after.Spec.Template.Spec
+ addStringMapChanges(&changes,"pod.annotations",before.Spec.Template.Annotations,after.Spec.Template.Annotations)
  addChange(&changes,"pod.serviceAccountName",a.ServiceAccountName,b.ServiceAccountName)
  addChange(&changes,"pod.nodeSelector",formatMap(a.NodeSelector),formatMap(b.NodeSelector))
  if !reflect.DeepEqual(a.Tolerations,b.Tolerations) { addChange(&changes,"pod.tolerations",formatTolerations(a.Tolerations),formatTolerations(b.Tolerations)) }
@@ -98,4 +99,31 @@ func formatTolerations(items []corev1.Toleration) string {
 	}
 	sort.Strings(values)
 	return strings.Join(values, ",")
+}
+
+func addStringMapChanges(changes *[]Change, prefix string, before, after map[string]string) {
+ keys := map[string]struct{}{}
+ for key := range before { keys[key] = struct{}{} }
+ for key := range after { keys[key] = struct{}{} }
+ for _, key := range sortedKeys(keys) {
+  oldValue, oldOK := before[key]
+  newValue, newOK := after[key]
+  if oldOK == newOK && oldValue == newValue { continue }
+  if isSensitiveAnnotation(key) {
+   oldValue, newValue = "<redacted>", "<redacted>"
+  } else if !oldOK {
+   oldValue = "<absent>"
+  } else if !newOK {
+   newValue = "<absent>"
+  }
+  addChange(changes, prefix+"."+key, oldValue, newValue)
+ }
+}
+
+func isSensitiveAnnotation(key string) bool {
+ lower := strings.ToLower(key)
+ for _, marker := range []string{"secret", "password", "token", "credential", "private-key", "authorization"} {
+  if strings.Contains(lower, marker) { return true }
+ }
+ return false
 }
