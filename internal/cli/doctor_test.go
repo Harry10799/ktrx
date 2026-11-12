@@ -276,7 +276,7 @@ func TestDoctorCommandIntegration(t *testing.T) {
 					_ = json.NewEncoder(w).Encode(map[string]string{
 						"major": "1", "minor": "32", "gitVersion": "v1.32.0",
 					})
-				case "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews":
+				case strings.HasSuffix(r.URL.Path, "/selfsubjectaccessreviews"):
 					if r.Method != http.MethodPost {
 						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 						return
@@ -327,7 +327,7 @@ func TestDoctorCommandIntegration(t *testing.T) {
 
 			err := command.Execute()
 			if got := ExitCode(err); got != tt.wantExit {
-				t.Fatalf("doctor exit code = %d, want %d; err=%v; stderr=%q", got, tt.wantExit, err, stderr.String())
+				t.Fatalf("doctor exit code = %d, want %d; err=%v; stderr=%q; report=%s", got, tt.wantExit, err, stderr.String(), stdout.String())
 			}
 
 			var report doctorReport
