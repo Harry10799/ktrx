@@ -203,7 +203,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 				})
 			}
 			failureTime := podFailureStart(pod)
-			if !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(latestReplicaSetTime(owned)) { failureTime = nil }
+			if !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(latestReplicaSetTime(owned)) || failureTime.Before(since) { failureTime = nil }
 			if failureTime != nil {
 				report.Events = append(report.Events, TimelineEvent{
 					Timestamp: failureTime, Type: EventFailure, Resource: "Pod/" + pod.Name,
@@ -219,6 +219,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		report.Limitations = appendUnique(report.Limitations, "Pod status could not be read; failure-start and restart timeline entries are incomplete.")
 	}
 
+	activeFailure := report.FailureStartedAt != nil
 	events, eventErr := a.Client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	if eventErr != nil {
 		report.Limitations = appendUnique(report.Limitations, "Kubernetes Events could not be read; scaling and warning-event timestamps are unavailable.")
@@ -237,7 +238,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			if item.Type == corev1.EventTypeWarning {
 				eventType = EventFailure
 				action = "Warning event: " + item.Reason
-				if timestamp != nil && !timestamp.Before(latestReplicaSetTime(owned)) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) {
+				if activeFailure && timestamp != nil && !timestamp.Before(latestReplicaSetTime(owned)) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) {
 					report.FailureStartedAt = earlierTime(report.FailureStartedAt, timestamp)
 				}
 			}
@@ -342,7 +343,16 @@ func latestReplicaSetTime(replicaSets []appsv1.ReplicaSet) time.Time {
 }
 
 func podCurrentlyUnhealthy(pod corev1.Pod) bool {
-	return pod.Status.Phase == corev1.PodFailed || !podReady(pod)
+	if pod.Status.Phase == corev1.PodFailed { return true }
+	if pod.Status.Phase == corev1.PodRunning && !podReady(pod) { return true }
+	for _, status := range append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...), pod.Status.ContainerStatuses...) {
+		if status.State.Waiting == nil { continue }
+		switch status.State.Waiting.Reason {
+		case "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "RunContainerError":
+			return true
+		}
+	}
+	return false
 }
 
 func earlierTime(current, candidate *time.Time) *time.Time {
