@@ -99,7 +99,7 @@ func newTraceURLCommand() *cobra.Command {
 				report.Verdict = "DISCOVERED"
 				for _, route := range report.Routes {
 					for _, backend := range route.Backends {
-						if backend.ServiceStatus == "MISSING" || backend.ServiceStatus == "NO_READY_ENDPOINTS" { report.Verdict = "DEGRADED" }
+						if backend.ServiceStatus == "MISSING" || backend.ServiceStatus == "MISSING_PORT" || backend.ServiceStatus == "NO_READY_ENDPOINTS" { report.Verdict = "DEGRADED" }
 						if backend.ServiceStatus == "UNKNOWN" && report.Verdict == "DISCOVERED" { report.Verdict = "UNKNOWN" }
 					}
 				}
@@ -197,10 +197,15 @@ func discoverHTTPRoutes(ctx context.Context, dyn dynamic.Interface, namespace st
 					if kind != "" && kind != "Service" { continue }
 					service, _, _ := unstructured.NestedString(b, "name")
 					port, _, _ := unstructured.NestedInt64(b, "port")
+					backendNamespace, _, _ := unstructured.NestedString(b, "namespace")
+					if backendNamespace != "" && backendNamespace != namespace {
+						notes = append(notes, fmt.Sprintf("HTTPRoute %s references cross-namespace Service %s/%s; cross-namespace backend resolution is not supported yet.", route.GetName(), backendNamespace, service))
+						continue
+					}
 					if service == "" { continue }
 					resolved = append(resolved, urlTraceBackend{Service:service, Port:fmt.Sprint(port), ServiceStatus:"PENDING"})
 				}
-				routes = append(routes, urlTraceRoute{Kind:"HTTPRoute", Namespace:namespace, Name:route.GetName(), Host:matchedHost, Path:pathMatch, Match:matchName, Backends:resolved})
+				routes = append(routes, urlTraceRoute{Kind:"HTTPRoute", Namespace:namespace, Name:route.GetName(), Host:matchedHost, Path:pathMatch, Match:matchName, Backends:resolved, Notes:[]string{"Parent Gateway listener attachment and readiness are not verified yet."}})
 			}
 		}
 		return routes, notes
@@ -286,6 +291,7 @@ func printURLTrace(report urlTraceReport) {
 	for _, route := range report.Routes {
 		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s)\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match)
 		if len(route.Backends) == 0 { fmt.Println("  • No supported Service backend was discovered.") }
+		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\\n", routeNote) }
 		for _, b := range route.Backends {
 			fmt.Printf("  → Service %s port=%s status=%s endpoints=%d ready=%d\n", b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints)
 			for _, pod := range b.Pods { fmt.Printf("      → Pod %s\n", pod) }
