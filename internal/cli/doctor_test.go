@@ -23,6 +23,15 @@ func TestDoctorIncludesTimelineAndOptionalGitOpsPermissions(t *testing.T) {
 		}
 	}
 	for _, item := range []struct{ group, resource string }{
+		{"gateway.networking.k8s.io", "httproutes"},
+		{"elbv2.k8s.aws", "targetgroupbindings"},
+	} {
+		requirement, ok := find(item.group, item.resource, "list")
+		if !ok || !requirement.optional {
+			t.Errorf("expected %s %s permission to be optional", item.group, item.resource)
+		}
+	}
+	for _, item := range []struct{ group, resource string }{
 		{"kustomize.toolkit.fluxcd.io", "kustomizations"},
 		{"helm.toolkit.fluxcd.io", "helmreleases"},
 		{"source.toolkit.fluxcd.io", "gitrepositories"},
