@@ -290,7 +290,7 @@ func printURLTrace(report urlTraceReport) {
 	for _, route := range report.Routes {
 		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s)\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match)
 		if len(route.Backends) == 0 { fmt.Println("  • No supported Service backend was discovered.") }
-		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\\n", routeNote) }
+		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\n", routeNote) }
 		for _, b := range route.Backends {
 			fmt.Printf("  → Service %s port=%s status=%s endpoints=%d ready=%d\n", b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints)
 			for _, pod := range b.Pods { fmt.Printf("      → Pod %s\n", pod) }
