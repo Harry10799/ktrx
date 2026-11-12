@@ -1,6 +1,13 @@
 package cli
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+)
 
 func TestDoctorIncludesTimelineAndOptionalGitOpsPermissions(t *testing.T) {
 	requirements := ktrxAccessRequirements("production", false)
@@ -89,6 +96,60 @@ func TestDoctorExitErrorIgnoresOptionalPermissionGaps(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if got := ExitCode(doctorExitError(tt.report)); got != tt.want {
+				t.Fatalf("doctorExitError() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+
+func TestDoctorReportOutputAndExitClassification(t *testing.T) {
+	tests := []struct {
+		name   string
+		report doctorReport
+		want   int
+		status string
+	}{
+		{
+			name: "optional denial remains ready",
+			report: doctorReport{Namespace: "production", Ready: true, Denied: 1, Checks: []accessCheck{
+				{Name: "Read Pods", Resource: "pods", Verb: "get", Status: "PASS"},
+				{Name: "List HTTPRoutes", Resource: "httproutes", Status: "DENIED", Optional: true},
+			}},
+			want: 0, status: "READY",
+		},
+		{
+			name: "required denial is not ready",
+			report: doctorReport{Namespace: "production", Ready: false, Denied: 1, Checks: []accessCheck{
+				{Name: "Read Pods", Resource: "pods", Verb: "get", Status: "DENIED"},
+			}},
+			want: 2, status: "NOT READY",
+		},
+		{
+			name: "required unknown is incomplete",
+			report: doctorReport{Namespace: "production", Ready: false, Unknown: 1, Checks: []accessCheck{
+				{Name: "Read Pods", Resource: "pods", Verb: "get", Status: "UNKNOWN"},
+			}},
+			want: 3, status: "NOT READY",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var jsonOutput bytes.Buffer
+			if err := json.NewEncoder(&jsonOutput).Encode(tt.report); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(jsonOutput.String(), "\"namespace\": \"production\"") {
+				t.Fatalf("JSON output missing namespace: %s", jsonOutput.String())
+			}
+			var terminal bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&terminal)
+			printDoctorTerminal(cmd, tt.report, false)
+			if !strings.Contains(terminal.String(), "KTRX DOCTOR") || !strings.Contains(terminal.String(), tt.status) {
+				t.Fatalf("terminal output missing expected status: %s", terminal.String())
+			}
 			if got := ExitCode(doctorExitError(tt.report)); got != tt.want {
 				t.Fatalf("doctorExitError() = %d, want %d", got, tt.want)
 			}
