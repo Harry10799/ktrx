@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -124,7 +125,7 @@ func newTraceURLCommand() *cobra.Command {
 			for i := range report.Routes {
 				for j := range report.Routes[i].Backends {
 					resolveURLBackend(cmd.Context(), client, report.Routes[i].Namespace, &report.Routes[i].Backends[j])
-					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
+					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Backends[j].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
 				}
 			}
 			sort.SliceStable(report.Routes, func(i,j int) bool {
@@ -146,7 +147,7 @@ func newTraceURLCommand() *cobra.Command {
 			default:
 				report.Verdict = "HEALTHY"
 				for _, route := range report.Routes {
-					if route.RouteStatus == "FAILED" { report.Verdict = "FAILED" }
+					if route.RouteStatus == "FAILED" { report.Verdict = "FAILED" } else if route.RouteStatus == "UNKNOWN" && report.Verdict == "HEALTHY" { report.Verdict = "UNKNOWN" }
 					for _, backend := range route.Backends {
 						switch backend.ServiceStatus {
 						case "MISSING", "MISSING_PORT", "NO_READY_ENDPOINTS": report.Verdict = "FAILED"
@@ -451,20 +452,147 @@ func ingressPortString(name string, number int32) string {
 }
 func hostOrWildcard(host string) string { if host == "" { return "*" }; return host }
 
+
+func uniqueSorted(values []string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(values))
+	for _, value := range values { if value == "" { continue }; if _, ok := seen[value]; ok { continue }; seen[value] = struct{}{}; result = append(result, value) }
+	sort.Strings(result)
+	return result
+}
+
+func lookupURLDNS(ctx context.Context, host string) *urlTraceDNS {
+	ips, err := net.DefaultResolver.LookupHost(ctx, host)
+	result := &urlTraceDNS{Resolved: uniqueSorted(ips)}
+	if err != nil { result.Error = err.Error() }
+	return result
+}
+
+func checkURLTLS(ctx context.Context, host, port string) *urlTraceTLS {
+	if port == "" { port = "443" }
+	result := &urlTraceTLS{ServerName: host}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
+	if err != nil { result.Error = err.Error(); return result }
+	defer conn.Close()
+	tlsConn := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	if err := tlsConn.HandshakeContext(ctx); err != nil { result.Error = err.Error(); return result }
+	state := tlsConn.ConnectionState()
+	if len(state.PeerCertificates) == 0 { result.Error = "TLS peer did not present a certificate"; return result }
+	notAfter := state.PeerCertificates[0].NotAfter
+	result.NotAfter = notAfter.UTC().Format(time.RFC3339)
+	result.DaysRemaining = int(time.Until(notAfter).Hours() / 24)
+	return result
+}
+
+func diagnoseURLPod(ctx context.Context, client kubernetes.Interface, namespace string, pod *urlTracePod) {
+	pod.NextCommand = fmt.Sprintf("ktrx %s -n %s", pod.Name, namespace)
+	report, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(ctx, namespace, pod.Name)
+	if err != nil { pod.Findings = []string{"Pod analyzer could not complete: " + err.Error()}; return }
+	for _, evidence := range report.Evidence {
+		if evidence.Verdict == analyzer.Healthy || evidence.Verdict == analyzer.Info { continue }
+		pod.Findings = append(pod.Findings, string(evidence.Verdict)+": "+evidence.Check+" — "+evidence.Summary)
+		if len(pod.Findings) == 3 { break }
+	}
+	if len(pod.Findings) == 0 { pod.Findings = append(pod.Findings, "Pod analyzer found no additional non-healthy findings; inspect full Pod report for details.") }
+}
+
+func httpRouteStatus(route *unstructured.Unstructured) (string, []string) {
+	parents, _, _ := unstructured.NestedSlice(route.Object, "status", "parents")
+	if len(parents) == 0 { return "UNKNOWN", []string{"HTTPRoute has no status.parents entry; Gateway attachment is not confirmed."} }
+	status := "HEALTHY"
+	var notes []string
+	for _, rawParent := range parents {
+		parent, ok := rawParent.(map[string]interface{}); if !ok { continue }
+		conditions, _, _ := unstructured.NestedSlice(parent, "conditions")
+		for _, rawCondition := range conditions {
+			condition, ok := rawCondition.(map[string]interface{}); if !ok { continue }
+			typ, _, _ := unstructured.NestedString(condition, "type")
+			value, _, _ := unstructured.NestedString(condition, "status")
+			reason, _, _ := unstructured.NestedString(condition, "reason")
+			if typ == "Accepted" && value == "False" { status = "FAILED"; notes = append(notes, "HTTPRoute Accepted=False: "+reason) }
+			if typ == "ResolvedRefs" && value == "False" { status = "FAILED"; notes = append(notes, "HTTPRoute ResolvedRefs=False: "+reason) }
+			if (typ == "Accepted" || typ == "ResolvedRefs") && value == "Unknown" && status == "HEALTHY" { status = "UNKNOWN"; notes = append(notes, "HTTPRoute "+typ+" condition is Unknown: "+reason) }
+		}
+	}
+	if status == "HEALTHY" { notes = append(notes, "HTTPRoute parent status reports no Accepted/ResolvedRefs False condition.") }
+	return status, notes
+}
+
+func httpRouteReferenceAllowed(ctx context.Context, dyn dynamic.Interface, fromNamespace, toNamespace, serviceName string) bool {
+	for _, version := range []string{"v1", "v1beta1"} {
+		gvr := schema.GroupVersionResource{Group:"gateway.networking.k8s.io", Version:version, Resource:"referencegrants"}
+		list, err := dyn.Resource(gvr).Namespace(toNamespace).List(ctx, metav1.ListOptions{})
+		if apierrors.IsNotFound(err) { continue }
+		if err != nil { return false }
+		for _, grant := range list.Items {
+			from, _, _ := unstructured.NestedSlice(grant.Object, "spec", "from")
+			to, _, _ := unstructured.NestedSlice(grant.Object, "spec", "to")
+			fromAllowed, toAllowed := false, false
+			for _, raw := range from {
+				item, ok := raw.(map[string]interface{}); if !ok { continue }
+				group, _, _ := unstructured.NestedString(item, "group")
+				kind, _, _ := unstructured.NestedString(item, "kind")
+				ns, _, _ := unstructured.NestedString(item, "namespace")
+				if group == "gateway.networking.k8s.io" && kind == "HTTPRoute" && ns == fromNamespace { fromAllowed = true }
+			}
+			for _, raw := range to {
+				item, ok := raw.(map[string]interface{}); if !ok { continue }
+				group, _, _ := unstructured.NestedString(item, "group")
+				kind, _, _ := unstructured.NestedString(item, "kind")
+				name, _, _ := unstructured.NestedString(item, "name")
+				if group == "" && kind == "Service" && (name == "" || name == serviceName) { toAllowed = true }
+			}
+			if fromAllowed && toAllowed { return true }
+		}
+	}
+	return false
+}
+
+func printURLTraceMarkdown(report urlTraceReport) error {
+	fmt.Printf("# KTRX URL trace: %s\n\n", report.URL)
+	fmt.Printf("- **Verdict:** %s\n- **Namespace scope:** %s\n- **Host/path:** %s%s\n\n", report.Verdict, report.Namespace, report.Host, report.Path)
+	if report.DNS != nil { fmt.Printf("## DNS\n\nResolved: %s\nError: %s\n\n", strings.Join(report.DNS.Resolved, ", "), report.DNS.Error) }
+	if report.TLS != nil { fmt.Printf("## TLS/SNI\n\n- Server name: %s\n- Certificate expires: %s\n- Days remaining: %d\n- Error: %s\n\n", report.TLS.ServerName, report.TLS.NotAfter, report.TLS.DaysRemaining, report.TLS.Error) }
+	for i, route := range report.Routes {
+		label := "also matches"; if i == 0 { label = "SELECTED" }
+		fmt.Printf("## %s %s/%s — %s\n\n", route.Kind, route.Namespace, route.Name, label)
+		fmt.Printf("- Host/path: %s%s (%s %s)\n- Route status: %s\n", route.Host, route.Path, route.Match, route.IngressClass, route.RouteStatus)
+		if route.ALBHealthcheckPath != "" { fmt.Printf("- ALB healthcheck path: %s\n", route.ALBHealthcheckPath) }
+		for _, host := range route.LoadBalancerHosts { fmt.Printf("- Load balancer hostname: %s\n", host) }
+		for _, note := range route.Notes { fmt.Printf("- Note: %s\n", note) }
+		for _, backend := range route.Backends {
+			fmt.Printf("\n### Service %s/%s — %s\n\n- Port: %s\n- Endpoints: %d total, %d ready, %d not ready\n", backend.Namespace, backend.Service, backend.ServiceStatus, backend.Port, backend.EndpointCount, backend.ReadyEndpoints, backend.NotReadyEndpoints)
+			if backend.HealthcheckMismatch { fmt.Println("- **ALB healthcheck/readiness path mismatch detected.**") }
+			for _, binding := range backend.TargetGroupBindings { fmt.Printf("- TargetGroupBinding: %s (%s)\n", binding.Name, binding.TargetGroupARN) }
+			for _, pod := range backend.Pods {
+				fmt.Printf("- Pod %s: phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts)
+				for _, finding := range pod.Findings { fmt.Printf("  - %s\n", finding) }
+				if pod.NextCommand != "" { fmt.Printf("  - Next: %s\n", pod.NextCommand) }
+			}
+			for _, note := range backend.Notes { fmt.Printf("- Note: %s\n", note) }
+		}
+	}
+	if len(report.Limitations) > 0 { fmt.Println("\n## Limitations"); for _, note := range report.Limitations { fmt.Printf("- %s\n", note) } }
+	fmt.Println("\n> Route discovery is Kubernetes configuration evidence; DNS and TLS are opt-in live checks. This command does not send an HTTP request.")
+	return nil
+}
+
 func printURLTrace(report urlTraceReport) {
 	fmt.Printf("KTRX URL TRACE  %s\n", report.URL)
 	fmt.Printf("Verdict: %s  Namespace: %s\n", report.Verdict, report.Namespace)
 	if len(report.Routes) == 0 { fmt.Println("No matching route was established.") }
-	for _, route := range report.Routes {
+	for routeIndex, route := range report.Routes {
+		selection := "also matches"; if routeIndex == 0 { selection = "selected" }
 		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
-		fmt.Printf("  Route selection: %s\\n", selection)
+		fmt.Printf("  Route selection: %s\n", selection)
 		for _, host := range route.LoadBalancerHosts { fmt.Printf("  LoadBalancer hostname: %s\n", host) }
 		if len(route.Backends) == 0 { fmt.Println("  • No supported Service backend was discovered.") }
 		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\n", routeNote) }
 		for _, b := range route.Backends {
 			fmt.Printf("  → Service %s/%s port=%s status=%s endpoints=%d ready=%d notReady=%d\n", b.Namespace, b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints, b.NotReadyEndpoints)
 			for _, binding := range b.TargetGroupBindings { fmt.Printf("      → TargetGroupBinding %s targetGroup=%s targetType=%s\n", binding.Name, binding.TargetGroupARN, binding.TargetType) }
-			for _, pod := range b.Pods { fmt.Printf("      → Pod %s phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts) }
+			for _, pod := range b.Pods { fmt.Printf("      → Pod %s phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts); for _, finding := range pod.Findings { fmt.Printf("          ! %s\n", finding) }; if pod.NextCommand != "" { fmt.Printf("          Next: %s\n", pod.NextCommand) } }
 			for _, note := range b.Notes { fmt.Printf("      ! %s\n", note) }
 		}
 	}
