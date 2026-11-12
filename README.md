@@ -123,6 +123,17 @@ ktrx compare api-good-abc api-bad-xyz -n production
 
 **Argument order matters:** reference Pod first, candidate Pod second. Differences are investigation clues, not proof of causation.
 
+### 6. Trace a URL to Kubernetes workloads
+
+~~~bash
+ktrx trace-url https://api.example.com/health -n production
+ktrx trace-url https://api.example.com/health -n production --output json
+~~~
+
+KTRX performs read-only route discovery and follows matching Kubernetes Ingress or Gateway API HTTPRoute rules to their Service backends, EndpointSlices and referenced Pods. Host and path matching is applied before resolving backends. A missing Service or a Service with no ready endpoints is highlighted.
+
+This is **configuration-path tracing**, not a live HTTP probe: it does not resolve public DNS, validate TLS, contact an external load balancer, or prove that a client can reach the application. Gateway API parent/listener attachment readiness and cross-namespace backend references are not verified yet. HTTPRoute support is optional and requires the Gateway API CRD plus read permissions. If the API is absent or access is denied, KTRX reports a limitation rather than treating it as an application failure.
+
 ### 6. Inspect Deployment change history
 
 ~~~bash
