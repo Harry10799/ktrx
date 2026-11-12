@@ -32,11 +32,23 @@ type TimelineEvent struct {
 	Details    string     `json:"details,omitempty"`
 }
 
+type Correlation struct {
+	Timestamp  *time.Time `json:"timestamp,omitempty"`
+	Type       EventType  `json:"type"`
+	Resource   string     `json:"resource"`
+	Summary    string     `json:"summary"`
+	Rank       int        `json:"rank"`
+	Confidence string     `json:"confidence"`
+	Disclaimer string     `json:"disclaimer"`
+}
+
 type Report struct {
-	Namespace         string          `json:"namespace"`
-	Target            string          `json:"target"`
-	GeneratedAt       time.Time       `json:"generatedAt"`
-	FailureStartedAt  *time.Time      `json:"failureStartedAt,omitempty"`
-	Events            []TimelineEvent `json:"events"`
-	Limitations       []string        `json:"limitations,omitempty"`
+	Namespace        string          `json:"namespace"`
+	Target           string          `json:"target"`
+	GeneratedAt      time.Time       `json:"generatedAt"`
+	Since            time.Time       `json:"since"`
+	FailureStartedAt *time.Time      `json:"failureStartedAt,omitempty"`
+	Events           []TimelineEvent `json:"events"`
+	Correlations     []Correlation   `json:"potentialCorrelations,omitempty"`
+	Limitations      []string        `json:"limitations,omitempty"`
 }
