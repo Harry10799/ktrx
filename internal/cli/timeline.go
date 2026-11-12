@@ -64,7 +64,7 @@ func newTimelineCommand() *cobra.Command {
 
 func formatTimelineTime(value *time.Time) string {
 	if value == nil {
-		return "time unavailable (rollback likely)"
+		return "time unavailable"
 	}
 	return value.UTC().Format("2006-01-02 15:04:05Z")
 }
@@ -82,7 +82,7 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 		fmt.Printf("Failure started: %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
 	}
 	if len(report.Events) == 0 {
-		fmt.Println("No retained Deployment ReplicaSets found.")
+		fmt.Println("No timeline events found.")
 	}
 	for _, event := range report.Events {
 		current := ""
