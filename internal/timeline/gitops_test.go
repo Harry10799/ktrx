@@ -40,7 +40,7 @@ func TestAddGitOpsEventsReadsKustomizationAndGitCommit(t *testing.T) {
 	kustomization := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
 		"kind": "Kustomization",
-		"metadata": map[string]interface{}{"name": "apps", "namespace": "production"},
+		"metadata": map[string]interface{}{"name": "apps", "namespace": "flux-system"},
 		"spec": map[string]interface{}{"sourceRef": map[string]interface{}{"kind": "GitRepository", "name": "platform"}},
 		"status": map[string]interface{}{
 			"lastAppliedRevision": "main@sha1:0123456789abcdef0123456789abcdef01234567",
@@ -51,7 +51,7 @@ func TestAddGitOpsEventsReadsKustomizationAndGitCommit(t *testing.T) {
 	gitRepository := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "source.toolkit.fluxcd.io/v1",
 		"kind": "GitRepository",
-		"metadata": map[string]interface{}{"name": "platform", "namespace": "production"},
+		"metadata": map[string]interface{}{"name": "platform", "namespace": "flux-system"},
 		"spec": map[string]interface{}{"url": "https://github.com/example/platform.git"},
 	}}
 	client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), kustomization, gitRepository)
