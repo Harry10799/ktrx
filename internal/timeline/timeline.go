@@ -153,6 +153,8 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		}
 	}
 
+	addConfigResourceEvents(ctx, a.Client, report, owned)
+
 	pods, podErr := a.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 	podItems := []corev1.Pod{}
 	if podErr == nil && pods != nil {
