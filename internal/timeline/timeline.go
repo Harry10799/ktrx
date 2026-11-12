@@ -80,6 +80,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			"Only ReplicaSets still present in the Kubernetes API can be compared; deleted revision history is unavailable.",
 			"ReplicaSet creation timestamps indicate rollout object creation, not the exact time each field was applied.",
 			"Kubernetes Events are best-effort and may have expired according to cluster event-retention settings.",
+			"ConfigMap/Secret resourceVersions are opaque; only current metadata and managedFields timestamps are available, not historical object versions.",
 			"Environment variable values, Secret data, command contents, and argument contents are never included.",
 			"This timeline reports observed changes and potential correlations; it does not establish causation.",
 		},
