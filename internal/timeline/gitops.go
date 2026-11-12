@@ -45,6 +45,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			if sourceNamespace == "" { sourceNamespace = object.GetNamespace() }
 			timestamp := fluxKustomizationTime(object)
 			details := "sourceRef=" + sourceKind + "/" + sourceName
+			if timestamp != nil { details += " timestamp=lastHandledReconcileAt" } else { details += " reconcile timestamp unavailable; stale Ready condition timestamps are not used" }
 			if revision != "" { details += " revision=" + revision }
 			if hash := commitHash(revision); hash != "" {
 				details += " commit=" + hash
