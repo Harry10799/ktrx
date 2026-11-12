@@ -20,6 +20,39 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 - **Preflight:** Check Kubernetes API connectivity and the RBAC permissions KTRX uses.
 - **Output:** Colorized terminal, JSON and Markdown (command-specific output support is noted below).
 
+## Tool comparison
+
+The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings, benchmark results, or a claim that every tool serves the same purpose. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change.
+
+| Capability / category | KTRX | Komodor | K9s | Robusta | Popeye | Headlamp | kubectl | Stern |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Workload health and troubleshooting | 8.5 | 9.5 | 8.5 | 9.0 | 8.5 | 7.5 | 7.5 | 5.5 |
+| Evidence-based root-cause investigation | 8.5 | 9.5 | 6.5 | 9.0 | 7.5 | 6.5 | 6.5 | 4.5 |
+| Change history and rollout correlation | 8.5 | 9.5 | 6.5 | 8.0 | 5.5 | 6.0 | 5.5 | 2.0 |
+| Events and log investigation | 8.0 | 9.0 | 8.5 | 9.0 | 6.5 | 7.0 | 8.0 | 9.0 |
+| Service, Ingress and request-path tracing | 8.5 | 8.5 | 6.0 | 7.0 | 5.5 | 7.0 | 6.5 | 2.0 |
+| Runtime network checks | 8.0 | 7.5 | 6.5 | 7.5 | 3.0 | 4.5 | 6.5 | 1.0 |
+| Cluster-wide hygiene and misconfiguration checks | 5.5 | 8.5 | 6.5 | 8.5 | 9.5 | 7.5 | 5.5 | 1.0 |
+| Interactive resource navigation / UI | 3.0 | 8.5 | 9.5 | 7.0 | 3.0 | 9.5 | 4.0 | 3.0 |
+| AI-assisted analysis and remediation | 1.0 | 9.5 | 2.0 | 9.0 | 1.0 | 2.0 | 1.0 | 1.0 |
+| Scriptable output and CI integration | 9.0 | 7.5 | 6.5 | 8.0 | 7.0 | 5.5 | 9.5 | 8.0 |
+| **Overall fit for its intended use** | **7.6** | **9.4** | **9.2** | **9.0** | **8.6** | **8.5** | **8.4** | **8.0** |
+
+**How to read this comparison**
+
+- **KTRX** focuses on evidence-first troubleshooting from Kubernetes APIs: workload diagnosis, inbound route tracing, runtime probes, Pod comparison, change timelines and stable exit codes.
+- **Komodor** is a broader Kubernetes operations platform with change correlation, observability integrations and AI-assisted troubleshooting.
+- **K9s** excels at interactive, real-time terminal navigation and inspection of Kubernetes resources.
+- **Robusta** focuses on alert-driven troubleshooting, observability integrations and AI-assisted analysis.
+- **Popeye** is especially strong at cluster-wide resource sanitization and configuration hygiene.
+- **Headlamp** provides an extensible Kubernetes web UI and plugin ecosystem.
+- **kubectl** remains the essential general-purpose Kubernetes CLI and debugging interface.
+- **Stern** specializes in following and filtering logs across multiple Pods and containers.
+
+These tools overlap, but they are not direct substitutes. The overall scores measure usefulness within each tool's intended domain; they should not be interpreted as a universal product-quality ranking. See the projects' documentation for current scope: [Komodor](https://komodor.com/), [K9s](https://k9scli.io/), [Robusta](https://docs.robusta.dev/), [Popeye](https://popeyecli.io/), [Headlamp](https://headlamp.dev/), [kubectl](https://kubernetes.io/docs/reference/kubectl/), and [Stern](https://github.com/stern/stern).
+
+**KTRX's direction:** Rather than trying to replace K9s, Popeye or full Kubernetes operations platforms, KTRX aims to answer four focused questions: **What is broken? What Kubernetes evidence supports that finding? What changed before it broke? Where should I investigate next?**
+
 ## Quick start
 
 ### Requirements
