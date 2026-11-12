@@ -330,7 +330,7 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 		fmt.Printf("  Failure started: %s (current unhealthy evidence)\n", r.RecentFailureStartedAt)
 	}
 	if len(r.RecentChanges) == 0 {
-		fmt.Printf("  • No recent changes found. %s\n", r.RecentChangesNote)
+		fmt.Println("  • No recent changes found")
 	} else {
 		for _, change := range r.RecentChanges {
 			fmt.Printf("  • %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
