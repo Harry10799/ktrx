@@ -25,6 +25,7 @@ type accessCheck struct {
 	Namespace   string `json:"namespace,omitempty"`
 	Status      string `json:"status"`
 	Reason      string `json:"reason,omitempty"`
+	Optional    bool   `json:"optional,omitempty"`
 }
 
 type doctorReport struct {
@@ -73,7 +74,7 @@ func newDoctorCommand() *cobra.Command {
 				report.Checks = append(report.Checks, accessCheck{Name: "Kubernetes API connectivity", Resource: "discovery", Verb: "get", Status: "UNKNOWN", Reason: versionErr.Error()})
 				report.Unknown++
 				for _, req := range requirements {
-					report.Checks = append(report.Checks, accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace, Status: "UNKNOWN", Reason: "Skipped because Kubernetes API connectivity could not be verified"})
+					report.Checks = append(report.Checks, accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace, Status: "UNKNOWN", Reason: "Skipped because Kubernetes API connectivity could not be verified", Optional: req.optional})
 					report.Unknown++
 				}
 			} else {
@@ -137,6 +138,7 @@ func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequ
 		{name: "Read container logs", verb: "get", resource: "pods", subresource: "log", namespace: namespace},
 		{name: "Read Deployment for timeline", verb: "get", group: "apps", resource: "deployments", namespace: namespace},
 		{name: "List Deployments for timeline", verb: "list", group: "apps", resource: "deployments", namespace: namespace},
+		{name: "Read ReplicaSets for owner chain", verb: "get", group: "apps", resource: "replicasets", namespace: namespace},
 		{name: "List ReplicaSets for timeline", verb: "list", group: "apps", resource: "replicasets", namespace: namespace},
 		{name: "Read referenced ConfigMap metadata", verb: "get", resource: "configmaps", namespace: namespace},
 		{name: "Read referenced Secret metadata only", verb: "get", resource: "secrets", namespace: namespace},
@@ -153,7 +155,7 @@ func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequ
 }
 
 func checkAccess(ctx context.Context, client kubernetes.Interface, req accessRequirement) accessCheck {
-	result := accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace}
+	result := accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace, Optional: req.optional}
 	attrs := &authv1.ResourceAttributes{Verb: req.verb, Group: req.group, Resource: req.resource, Namespace: req.namespace}
 	attrs.Subresource = req.subresource
 	review, err := client.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, &authv1.SelfSubjectAccessReview{
@@ -224,7 +226,9 @@ func printDoctorTerminal(cmd *cobra.Command, report doctorReport, colorEnabled b
 		} else if check.Resource == "pods" {
 			target += " (all namespaces)"
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-8s %-48s %s\n", style(color, symbol), check.Status, check.Name, target)
+		name := check.Name
+		if check.Optional { name += " (optional)" }
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-8s %-48s %s\n", style(color, symbol), check.Status, name, target)
 		if check.Reason != "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "      %s\n", check.Reason)
 		}
