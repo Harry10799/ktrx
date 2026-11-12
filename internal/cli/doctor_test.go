@@ -215,7 +215,6 @@ func TestCheckAccessSelfSubjectAccessReview(t *testing.T) {
 	}
 }
 
-
 func TestDoctorConnectivityFailureMarksChecksUnknown(t *testing.T) {
 	requirements := []accessRequirement{
 		{name: "Read Pods", verb: "get", resource: "pods", namespace: "production"},

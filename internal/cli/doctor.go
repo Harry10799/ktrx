@@ -270,7 +270,6 @@ func doctorExitError(report doctorReport) error {
 	return nil
 }
 
-
 // doctorConnectivityFailureReport preserves every permission check as UNKNOWN
 // when the Kubernetes API cannot be reached. Optional checks remain optional,
 // but the overall preflight is incomplete because required checks were skipped.
@@ -285,8 +284,8 @@ func doctorConnectivityFailureReport(namespace string, requirements []accessRequ
 		report.Checks = append(report.Checks, accessCheck{
 			Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource,
 			Subresource: req.subresource, Namespace: req.namespace,
-			Status: "UNKNOWN",
-			Reason: "Skipped because Kubernetes API connectivity could not be verified",
+			Status:   "UNKNOWN",
+			Reason:   "Skipped because Kubernetes API connectivity could not be verified",
 			Optional: req.optional,
 		})
 		report.Unknown++
