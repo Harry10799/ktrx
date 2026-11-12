@@ -1,6 +1,19 @@
 package cli
 
-import (\n\t"context"\n\t"errors"\n\n\tauthv1 "k8s.io/api/authorization/v1"\n\t"k8s.io/apimachinery/pkg/runtime"\n\t"k8s.io/client-go/kubernetes/fake"\n\tk8stesting "k8s.io/client-go/testing"
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+	authv1 "k8s.io/api/authorization/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+)
 	"bytes"
 	"encoding/json"
 	"strings"
