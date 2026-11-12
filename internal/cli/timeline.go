@@ -116,7 +116,7 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 	if len(report.Correlations) > 0 {
 		fmt.Printf("\n%s\n", style("214", "POTENTIAL CORRELATIONS (NOT CAUSATION)"))
 		for _, item := range report.Correlations {
-			fmt.Printf("  #%d %s %s %s\n", item.Rank, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
+			fmt.Printf("  #%d score=%d confidence=%s (%s) %s %s — %s\n", item.Rank, item.Score, item.Confidence, item.Delta, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
 		}
 	}
 	fmt.Printf("\n%s\n", style("99", "LIMITATIONS"))
@@ -154,7 +154,7 @@ func printTimelineMarkdown(report *timeline.Report) error {
 	if len(report.Correlations) > 0 {
 		fmt.Println("## Potential correlations (not causation)")
 		for _, item := range report.Correlations {
-			fmt.Printf("%d. %s — %s: %s\n", item.Rank, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
+			fmt.Printf("%d. **%s** (score %d; %s) — %s — %s: %s\n", item.Rank, item.Confidence, item.Score, item.Delta, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
 		}
 	}
 	fmt.Println("## Limitations")
