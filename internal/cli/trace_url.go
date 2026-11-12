@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"crypto/tls"
-	"net"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
+	"net"
 	"fmt"
 	"net/url"
 	"os"
@@ -99,7 +101,7 @@ type urlTraceDNS struct {
  PointsTo string `json:"pointsTo,omitempty"`
  Error string `json:"error,omitempty"`
 }
-type urlTraceTLS struct { ServerName string `json:"serverName"`; NotAfter string `json:"notAfter,omitempty"`; DaysRemaining int `json:"daysRemaining,omitempty"`; Error string `json:"error,omitempty"` }
+type urlTraceTLS struct { ServerName string `json:"serverName"`; NotAfter string `json:"notAfter,omitempty"`; DaysRemaining int `json:"daysRemaining,omitempty"`; Status string `json:"status,omitempty"`; Error string `json:"error,omitempty"` }
 
 func newTraceURLCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output, ingressClass string
@@ -169,7 +171,6 @@ func newTraceURLCommand() *cobra.Command {
 					case "PARTIALLY_READY": if report.Verdict != "FAILED" { report.Verdict = "WARN" }
 					case "UNKNOWN", "PENDING": if report.Verdict == "HEALTHY" { report.Verdict = "UNKNOWN" }
 					}
-					if backend.HealthcheckMismatch { /* Different ALB and readiness paths can be intentional; informational only. */ }
 				}
 			}
 			applyURLExternalCheckVerdict(&report)
@@ -197,10 +198,20 @@ func newTraceURLCommand() *cobra.Command {
 
 func applyURLExternalCheckVerdict(report *urlTraceReport) {
 	if report.DNS != nil {
-		if report.DNS.Error != "" || len(report.DNS.Resolved) == 0 { report.Verdict = "FAILED" } else if report.DNS.MatchMethod != "" && !report.DNS.MatchesALB && report.Verdict != "FAILED" { report.Verdict = "WARN" }
+		switch report.DNS.Status {
+		case "FAILED":
+			report.Verdict = "FAILED"
+		case "HEALTHY":
+			if report.DNS.MatchMethod != "" && !report.DNS.MatchesALB && report.Verdict != "FAILED" { report.Verdict = "WARN" }
+		}
 	}
 	if report.TLS != nil {
-		if report.TLS.Error != "" || report.TLS.DaysRemaining < 0 { report.Verdict = "FAILED" } else if report.TLS.DaysRemaining <= 14 && report.Verdict != "FAILED" { report.Verdict = "WARN" }
+		switch report.TLS.Status {
+		case "FAILED":
+			report.Verdict = "FAILED"
+		case "HEALTHY":
+			if report.TLS.DaysRemaining <= 14 && report.Verdict != "FAILED" { report.Verdict = "WARN" }
+		}
 	}
 }
 
@@ -365,7 +376,6 @@ func resolveURLBackendWithBudget(ctx context.Context, client kubernetes.Interfac
 	}
 	sort.Slice(backend.Pods, func(i, j int) bool { return backend.Pods[i].Name < backend.Pods[j].Name })
 	for i := range backend.Pods { if !backend.Pods[i].Ready || !backend.Pods[i].EndpointReady { diagnoseURLPodWithBudget(ctx, client, namespace, &backend.Pods[i], diagnosisBudget) } }
-	if len(backend.ReadinessProbePaths) > 0 { /* route-level ALB healthcheck comparison is applied after backend resolution */ }
 	for _, pod := range backend.Pods { backend.ReadinessProbePaths = append(backend.ReadinessProbePaths, pod.ReadinessProbePaths...) }
 	backend.ReadinessProbePaths = uniqueSorted(backend.ReadinessProbePaths)
 	backend.NotReadyEndpoints = backend.EndpointCount - backend.ReadyEndpoints
@@ -500,8 +510,21 @@ func lookupURLDNS(ctx context.Context, host string) *urlTraceDNS {
 	result := &urlTraceDNS{Resolved: uniqueSorted(ips)}
 	cname, cnameErr := net.DefaultResolver.LookupCNAME(lookupCtx, host)
 	if cnameErr == nil { result.CNAME = strings.TrimSuffix(strings.ToLower(cname), ".") }
-	if err != nil { result.Error = err.Error() }
+	if err != nil {
+		result.Error = err.Error()
+		if isURLDNSNotFound(err) { result.Status = "FAILED" } else { result.Status = "UNKNOWN" }
+	} else if len(result.Resolved) == 0 {
+		result.Status = "UNKNOWN"
+		result.Error = "DNS returned no addresses; resolution status is inconclusive"
+	} else {
+		result.Status = "HEALTHY"
+	}
 	return result
+}
+
+func isURLDNSNotFound(err error) bool {
+	var dnsErr *net.DNSError
+	return errors.As(err, &dnsErr) && dnsErr.IsNotFound
 }
 
 func dnsMatchesALB(ctx context.Context, dns *urlTraceDNS, routes []urlTraceRoute) (bool, string, string) {
@@ -530,21 +553,40 @@ func ipSetsIntersect(left, right []string) bool {
 
 func checkURLTLS(ctx context.Context, host, port string) *urlTraceTLS {
 	if port == "" { port = "443" }
-	result := &urlTraceTLS{ServerName: host}
+	result := &urlTraceTLS{ServerName: host, Status: "UNKNOWN"}
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
 	if err != nil { result.Error = err.Error(); return result }
 	defer conn.Close()
 	handshakeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	tlsConn := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	var verificationErr error
+	// Verify explicitly so expired certificates can still expose their NotAfter date.
+	tlsConn := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12, InsecureSkipVerify: true, VerifyConnection: func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 { return errors.New("TLS peer did not present a certificate") }
+		intermediates := x509.NewCertPool()
+		for _, cert := range state.PeerCertificates[1:] { intermediates.AddCert(cert) }
+		_, verificationErr = state.PeerCertificates[0].Verify(x509.VerifyOptions{DNSName: host, Intermediates: intermediates})
+		return nil
+	}})
 	if err := tlsConn.HandshakeContext(handshakeCtx); err != nil { result.Error = err.Error(); return result }
 	state := tlsConn.ConnectionState()
 	if len(state.PeerCertificates) == 0 { result.Error = "TLS peer did not present a certificate"; return result }
 	notAfter := state.PeerCertificates[0].NotAfter
 	result.NotAfter = notAfter.UTC().Format(time.RFC3339)
 	result.DaysRemaining = int(time.Until(notAfter).Hours() / 24)
+	if verificationErr != nil { result.Error = verificationErr.Error(); if isURLCertificateError(verificationErr) { result.Status = "FAILED" }; return result }
+	if result.DaysRemaining < 0 { result.Status = "FAILED"; result.Error = "x509: certificate has expired"; return result }
+	result.Status = "HEALTHY"
 	return result
+}
+
+func isURLCertificateError(err error) bool {
+	var invalid x509.CertificateInvalidError
+	var unknownAuthority x509.UnknownAuthorityError
+	var hostname x509.HostnameError
+	var roots x509.SystemRootsError
+	return errors.As(err, &invalid) || errors.As(err, &unknownAuthority) || errors.As(err, &hostname) || errors.As(err, &roots)
 }
 
 func diagnoseURLPod(ctx context.Context, client kubernetes.Interface, namespace string, pod *urlTracePod) {
