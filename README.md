@@ -187,7 +187,7 @@ KTRX does not create diagnostic Pods or modify workload resources during normal 
 The caller needs read permissions for the resources used by the selected checks, including:
 
 - Pods, Services, EndpointSlices and legacy Endpoints.
-- Ingresses and IngressClasses.
+- Ingresses and IngressClasses; Gateway API HTTPRoutes (optional); AWS TargetGroupBindings (optional).
 - NetworkPolicies, Events and pods/log.
 - ReplicaSets for owner-chain inspection and Deployment timelines.
 - ConfigMaps and Secrets through metadata-only reads for resourceVersion/managedFields inspection; Secret data is not fetched.
@@ -254,7 +254,7 @@ The timeline includes:
 - Deployment scaling events and relevant Pod Warning events when the Kubernetes Events API still retains them.
 - Pod restart counts, retained previous-termination timestamps, and the earliest available failure evidence.
 - Referenced ConfigMap and Secret metadata through the Kubernetes metadata-only API: resourceVersion, managedFields manager names, and timestamps. Secret payloads are never fetched. Missing required references are surfaced as failures.
-- Optional Flux Kustomization/HelmRelease and Argo CD Application history, including Git revisions and GitHub/GitLab commit links where resolvable.
+- Optional Flux Kustomization/HelmRelease and Argo CD Application history, including Git revisions and GitHub/GitLab/Bitbucket commit links where resolvable.
 - A Recent Deployment Changes section in `ktrx pod` reports for Deployment-owned Pods, including nearest-first potential correlations.
 - Current-rollout failure evidence and nearest-first potential correlations to earlier rollout, config or GitOps changes. Correlations explicitly do not establish causation.
 
