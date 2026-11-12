@@ -162,9 +162,7 @@ func discoverIngressRoutesFiltered(ctx context.Context, client kubernetes.Interf
 	for i := range list.Items {
 		ing := &list.Items[i]
 		if ingressClass != "" {
-			class := ""
-			if ing.Spec.IngressClassName != nil { class = *ing.Spec.IngressClassName }
-			if class != ingressClass { continue }
+			if ingressClassName(ing) != ingressClass { continue }
 		}
 		routeNamespace := ing.Namespace
 		if routeNamespace == "" { routeNamespace = namespace }
@@ -243,7 +241,7 @@ func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, names
 					service, _, _ := unstructured.NestedString(b, "name")
 					port, _, _ := unstructured.NestedInt64(b, "port")
 					backendNamespace, _, _ := unstructured.NestedString(b, "namespace")
-					if backendNamespace != "" && backendNamespace != namespace {
+					if backendNamespace != "" && backendNamespace != route.GetNamespace() {
 						notes = append(notes, fmt.Sprintf("HTTPRoute %s references cross-namespace Service %s/%s; cross-namespace backend resolution is not supported yet.", route.GetName(), backendNamespace, service))
 						continue
 					}
