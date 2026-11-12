@@ -70,13 +70,7 @@ func newDoctorCommand() *cobra.Command {
 			requirements := ktrxAccessRequirements(namespace, includeNetcheck)
 			version, versionErr := client.Discovery().ServerVersion()
 			if versionErr != nil {
-				report.Ready = false
-				report.Checks = append(report.Checks, accessCheck{Name: "Kubernetes API connectivity", Resource: "discovery", Verb: "get", Status: "UNKNOWN", Reason: versionErr.Error()})
-				report.Unknown++
-				for _, req := range requirements {
-					report.Checks = append(report.Checks, accessCheck{Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource, Subresource: req.subresource, Namespace: req.namespace, Status: "UNKNOWN", Reason: "Skipped because Kubernetes API connectivity could not be verified", Optional: req.optional})
-					report.Unknown++
-				}
+				report = doctorConnectivityFailureReport(namespace, requirements, versionErr)
 			} else {
 				report.Server = version.GitVersion
 				report.Checks = append(report.Checks, accessCheck{Name: "Kubernetes API connectivity", Resource: "discovery", Verb: "get", Status: "PASS", Reason: "Connected to Kubernetes " + version.GitVersion})
@@ -274,4 +268,28 @@ func doctorExitError(report doctorReport) error {
 		return exitCodeErrorf(3, "preflight is incomplete: %d required check(s) unknown; review the checks above", requiredUnknown)
 	}
 	return nil
+}
+
+
+// doctorConnectivityFailureReport preserves every permission check as UNKNOWN
+// when the Kubernetes API cannot be reached. Optional checks remain optional,
+// but the overall preflight is incomplete because required checks were skipped.
+func doctorConnectivityFailureReport(namespace string, requirements []accessRequirement, cause error) doctorReport {
+	report := doctorReport{Namespace: namespace, Ready: false, Checks: make([]accessCheck, 0, len(requirements)+1)}
+	report.Checks = append(report.Checks, accessCheck{
+		Name: "Kubernetes API connectivity", Resource: "discovery", Verb: "get",
+		Status: "UNKNOWN", Reason: cause.Error(),
+	})
+	report.Unknown++
+	for _, req := range requirements {
+		report.Checks = append(report.Checks, accessCheck{
+			Name: req.name, Verb: req.verb, Group: req.group, Resource: req.resource,
+			Subresource: req.subresource, Namespace: req.namespace,
+			Status: "UNKNOWN",
+			Reason: "Skipped because Kubernetes API connectivity could not be verified",
+			Optional: req.optional,
+		})
+		report.Unknown++
+	}
+	return report
 }
