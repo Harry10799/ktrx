@@ -21,6 +21,7 @@ type Change struct {
 
 type TimelineEvent struct {
 	Timestamp  *time.Time `json:"timestamp,omitempty"`
+	SortTime   *time.Time `json:"-"`
 	Type       EventType  `json:"type"`
 	Resource   string     `json:"resource"`
 	Revision   string     `json:"revision,omitempty"`
