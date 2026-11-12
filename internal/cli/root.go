@@ -1,19 +1,25 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Harry10799/ktrx/internal/analyzer"
 	"github.com/Harry10799/ktrx/internal/kube"
+	"github.com/Harry10799/ktrx/internal/timeline"
 	"github.com/spf13/cobra"
 )
 
@@ -116,6 +122,7 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 		}
 		reports = append(reports, r)
 	}
+	addRecentChangesToPodReports(cmd.Context(), client, reports, target, namespace, kubeconfig, contextName)
 	switch strings.ToLower(output) {
 	case "json":
 		enc := json.NewEncoder(os.Stdout)
@@ -558,4 +565,89 @@ func shortPodName(name string) string {
 		return strings.Join(parts[:len(parts)-1], "-") + "-…-" + parts[len(parts)-1]
 	}
 	return name
+}
+
+func addRecentChangesToPodReports(ctx context.Context, client kubernetes.Interface, reports []*analyzer.PodReport, target, namespace, kubeconfig, contextName string) {
+	if len(reports) == 0 { return }
+	deploymentName := ""
+	if strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/") {
+		parts := strings.SplitN(target, "/", 2)
+		if len(parts) == 2 { deploymentName = parts[1] }
+	} else {
+		for _, owner := range reports[0].OwnerChain {
+			if strings.HasPrefix(owner, "Deployment/") {
+				deploymentName = strings.TrimPrefix(owner, "Deployment/")
+				break
+			}
+		}
+	}
+	if deploymentName == "" {
+		for _, report := range reports { report.RecentChangesNote = "Recent Deployment changes are available only for Pods owned by a Deployment." }
+		return
+	}
+	restConfig, err := kube.NewRESTConfig(kubeconfig, contextName, 0)
+	if err != nil {
+		setRecentChangesNote(reports, "Recent changes unavailable: "+err.Error())
+		return
+	}
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		setRecentChangesNote(reports, "Recent changes unavailable: could not create Kubernetes dynamic client: "+err.Error())
+		return
+	}
+	metadataClient, err := metadata.NewForConfig(restConfig)
+	if err != nil {
+		setRecentChangesNote(reports, "Recent changes unavailable: could not create metadata-only client: "+err.Error())
+		return
+	}
+	timelineReport, err := (&timeline.Analyzer{
+		Client: client, Dynamic: dynamicClient, Metadata: metadataClient, Since: 24*time.Hour,
+	}).AnalyzeDeployment(ctx, namespace, deploymentName)
+	if err != nil {
+		setRecentChangesNote(reports, "Recent changes unavailable: "+err.Error())
+		return
+	}
+	events := timelineReport.Events
+	if len(events) > 10 { events = events[len(events)-10:] }
+	changes := make([]analyzer.RecentChange, 0, len(events))
+	for _, event := range events {
+		timestamp := "time unavailable"
+		if event.Timestamp != nil { timestamp = event.Timestamp.UTC().Format(time.RFC3339) }
+		summary := event.Action
+		if len(event.Changes) > 0 {
+			fields := make([]string, 0, len(event.Changes))
+			for _, change := range event.Changes { fields = append(fields, change.Field) }
+			summary += " (" + strings.Join(fields, ", ") + ")"
+		}
+		changes = append(changes, analyzer.RecentChange{
+			Timestamp: timestamp, Type: string(event.Type), Resource: event.Resource, Summary: summary,
+		})
+	}
+	correlations := make([]analyzer.RecentCorrelation, 0, len(timelineReport.Correlations))
+	for _, item := range timelineReport.Correlations {
+		timestamp := "time unavailable"
+		if item.Timestamp != nil { timestamp = item.Timestamp.UTC().Format(time.RFC3339) }
+		correlations = append(correlations, analyzer.RecentCorrelation{
+			Rank: item.Rank, Timestamp: timestamp, Resource: item.Resource,
+			Summary: item.Summary, Disclaimer: item.Disclaimer,
+		})
+	}
+	failureStarted := ""
+	if timelineReport.FailureStartedAt != nil { failureStarted = timelineReport.FailureStartedAt.UTC().Format(time.RFC3339) }
+	note := "Timeline window: last 24h."
+	if len(timelineReport.Limitations) > 0 {
+		limitations := timelineReport.Limitations
+		if len(limitations) > 2 { limitations = limitations[:2] }
+		note += " " + strings.Join(limitations, " ")
+	}
+	for _, report := range reports {
+		report.RecentChanges = changes
+		report.RecentCorrelations = correlations
+		report.RecentFailureStartedAt = failureStarted
+		report.RecentChangesNote = note
+	}
+}
+
+func setRecentChangesNote(reports []*analyzer.PodReport, note string) {
+	for _, report := range reports { report.RecentChangesNote = note }
 }
