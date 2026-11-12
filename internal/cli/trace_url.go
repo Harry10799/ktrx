@@ -416,8 +416,10 @@ func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, names
 				if !matched {
 					continue
 				}
+				routeStatus, statusNotes := httpRouteStatus(route)
 				backends, _, _ := unstructured.NestedSlice(rule, "backendRefs")
 				var resolved []urlTraceBackend
+				var routeNotes []string
 				for _, rawBackend := range backends {
 					b, ok := rawBackend.(map[string]interface{})
 					if !ok {
@@ -433,16 +435,29 @@ func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, names
 					if backendNamespace == "" {
 						backendNamespace = route.GetNamespace()
 					}
-					if backendNamespace != route.GetNamespace() && !httpRouteReferenceAllowed(ctx, dyn, route.GetNamespace(), backendNamespace, service) {
-						notes = append(notes, fmt.Sprintf("HTTPRoute %s cross-namespace backend %s/%s has no matching ReferenceGrant; backend was not resolved.", route.GetName(), backendNamespace, service))
-						continue
+					if backendNamespace != route.GetNamespace() {
+						grantStatus, grantNote := httpRouteReferenceGrantStatus(ctx, dyn, route.GetNamespace(), backendNamespace, service)
+						switch grantStatus {
+						case "ALLOWED":
+							// The ReferenceGrant explicitly permits this backend.
+						case "DENIED":
+							routeStatus = "FAILED"
+							routeNotes = append(routeNotes, grantNote+" Backend was not resolved.")
+							continue
+						default:
+							if routeStatus != "FAILED" {
+								routeStatus = "UNKNOWN"
+							}
+							routeNotes = append(routeNotes, grantNote+" Backend was not resolved.")
+							continue
+						}
 					}
 					if service == "" {
 						continue
 					}
 					resolved = append(resolved, urlTraceBackend{Namespace: backendNamespace, Service: service, Port: fmt.Sprint(port), ServiceStatus: "PENDING"})
 				}
-				routeStatus, statusNotes := httpRouteStatus(route)
+				statusNotes = append(statusNotes, routeNotes...)
 				routes = append(routes, urlTraceRoute{Kind: "HTTPRoute", Namespace: route.GetNamespace(), Name: route.GetName(), Host: matchedHost, Path: pathMatch, Match: matchName, RouteStatus: routeStatus, Backends: resolved, Notes: statusNotes})
 			}
 		}
@@ -942,43 +957,74 @@ func httpRouteStatus(route *unstructured.Unstructured) (string, []string) {
 	if len(parents) == 0 {
 		return "UNKNOWN", []string{"HTTPRoute has no status.parents entry; Gateway attachment is not confirmed."}
 	}
-	status := "HEALTHY"
+
+	healthyParents, failedParents, validParents := 0, 0, 0
 	var notes []string
 	for _, rawParent := range parents {
 		parent, ok := rawParent.(map[string]interface{})
 		if !ok {
 			continue
 		}
+		validParents++
 		conditions, _, _ := unstructured.NestedSlice(parent, "conditions")
+		conditionStatus := map[string]string{}
+		conditionReason := map[string]string{}
 		for _, rawCondition := range conditions {
 			condition, ok := rawCondition.(map[string]interface{})
 			if !ok {
 				continue
 			}
 			typ, _, _ := unstructured.NestedString(condition, "type")
+			if typ != "Accepted" && typ != "ResolvedRefs" {
+				continue
+			}
 			value, _, _ := unstructured.NestedString(condition, "status")
 			reason, _, _ := unstructured.NestedString(condition, "reason")
-			if typ == "Accepted" && value == "False" {
-				status = "FAILED"
-				notes = append(notes, "HTTPRoute Accepted=False: "+reason)
+			conditionStatus[typ] = value
+			conditionReason[typ] = reason
+		}
+
+		accepted, hasAccepted := conditionStatus["Accepted"]
+		resolved, hasResolved := conditionStatus["ResolvedRefs"]
+		switch {
+		case hasAccepted && accepted == "True" && hasResolved && resolved == "True":
+			healthyParents++
+		case (hasAccepted && accepted == "False") || (hasResolved && resolved == "False"):
+			failedParents++
+			if accepted == "False" {
+				notes = append(notes, "HTTPRoute Accepted=False: "+conditionReason["Accepted"])
 			}
-			if typ == "ResolvedRefs" && value == "False" {
-				status = "FAILED"
-				notes = append(notes, "HTTPRoute ResolvedRefs=False: "+reason)
+			if resolved == "False" {
+				notes = append(notes, "HTTPRoute ResolvedRefs=False: "+conditionReason["ResolvedRefs"])
 			}
-			if (typ == "Accepted" || typ == "ResolvedRefs") && value == "Unknown" && status == "HEALTHY" {
-				status = "UNKNOWN"
-				notes = append(notes, "HTTPRoute "+typ+" condition is Unknown: "+reason)
+		default:
+			missing := make([]string, 0, 2)
+			if !hasAccepted || accepted != "True" {
+				missing = append(missing, "Accepted")
 			}
+			if !hasResolved || resolved != "True" {
+				missing = append(missing, "ResolvedRefs")
+			}
+			notes = append(notes, "HTTPRoute parent status does not confirm "+strings.Join(missing, " and ")+" as True.")
 		}
 	}
-	if status == "HEALTHY" {
-		notes = append(notes, "HTTPRoute parent status reports no Accepted/ResolvedRefs False condition.")
+
+	if validParents == 0 {
+		return "UNKNOWN", []string{"HTTPRoute status.parents contains no valid parent status entries."}
 	}
-	return status, notes
+	if healthyParents == validParents {
+		return "HEALTHY", []string{"All reported HTTPRoute parents have Accepted=True and ResolvedRefs=True."}
+	}
+	// A route can attach to multiple Gateways. A rejection from one parent must
+	// not hide another healthy attachment, and an incomplete parent must not be
+	// presented as a definitive failure.
+	if failedParents == validParents {
+		return "FAILED", notes
+	}
+	return "UNKNOWN", notes
 }
 
-func httpRouteReferenceAllowed(ctx context.Context, dyn dynamic.Interface, fromNamespace, toNamespace, serviceName string) bool {
+func httpRouteReferenceGrantStatus(ctx context.Context, dyn dynamic.Interface, fromNamespace, toNamespace, serviceName string) (string, string) {
 	for _, version := range []string{"v1", "v1beta1"} {
 		gvr := schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: version, Resource: "referencegrants"}
 		list, err := dyn.Resource(gvr).Namespace(toNamespace).List(ctx, metav1.ListOptions{})
@@ -986,7 +1032,7 @@ func httpRouteReferenceAllowed(ctx context.Context, dyn dynamic.Interface, fromN
 			continue
 		}
 		if err != nil {
-			return false
+			return "UNKNOWN", "Could not inspect ReferenceGrants in namespace " + toNamespace + ": " + err.Error()
 		}
 		for _, grant := range list.Items {
 			from, _, _ := unstructured.NestedSlice(grant.Object, "spec", "from")
@@ -1017,11 +1063,12 @@ func httpRouteReferenceAllowed(ctx context.Context, dyn dynamic.Interface, fromN
 				}
 			}
 			if fromAllowed && toAllowed {
-				return true
+				return "ALLOWED", "A matching ReferenceGrant permits this cross-namespace Service reference."
 			}
 		}
+		return "DENIED", "No matching ReferenceGrant permits HTTPRoute " + fromNamespace + " to reference Service " + toNamespace + "/" + serviceName + "."
 	}
-	return false
+	return "UNKNOWN", "ReferenceGrant API is unavailable in both gateway.networking.k8s.io/v1 and v1beta1; permission could not be verified."
 }
 
 func printURLTraceMarkdown(report urlTraceReport) error {
