@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
+
 func TestDoctorIncludesTimelineAndOptionalGitOpsPermissions(t *testing.T) {
 	requirements := ktrxAccessRequirements("production", false)
 	find := func(group, resource, verb string) (accessRequirement, bool) {
