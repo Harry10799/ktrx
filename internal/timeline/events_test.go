@@ -69,7 +69,7 @@ func TestBuildCorrelationsRanksNearestChangeFirst(t *testing.T) {
 			{Timestamp: &newer, Type: EventConfig, Resource: "ConfigMap/app", Action: "config changed"},
 		},
 	}
-	buildCorrelations(report)
+	buildCorrelations(report, 5)
 	if len(report.Correlations) != 2 || report.Correlations[0].Resource != "ConfigMap/app" || report.Correlations[0].Rank != 1 {
 		t.Fatalf("expected nearest change ranked first, got %+v", report.Correlations)
 	}
