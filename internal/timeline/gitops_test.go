@@ -1,12 +1,14 @@
 package timeline
 
-import "testing"
+import (
 	"context"
 	"strings"
+	"testing"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+)
 
 func TestCommitHashExtractsFluxRevision(t *testing.T) {
 	tests := []struct {
