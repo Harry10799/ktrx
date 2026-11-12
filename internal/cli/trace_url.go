@@ -613,7 +613,7 @@ func httpRouteReferenceAllowed(ctx context.Context, dyn dynamic.Interface, fromN
 func printURLTraceMarkdown(report urlTraceReport) error {
 	fmt.Printf("# KTRX URL trace: %s\n\n", report.URL)
 	fmt.Printf("- **Verdict:** %s\n- **Namespace scope:** %s\n- **Host/path:** %s%s\n\n", report.Verdict, report.Namespace, report.Host, report.Path)
-	if report.DNS != nil { fmt.Printf("## DNS\n\nResolved: %s\nError: %s\n\n", strings.Join(report.DNS.Resolved, ", "), report.DNS.Error) }
+	if report.DNS != nil { fmt.Printf("## DNS\n\n- Resolved: %s\n- CNAME: %s\n- Matches ALB: %t (checked=%t, method=%s)\n- DNS target: %s\n- ALB resolved IPs: %s\n- Error: %s\n\n", strings.Join(report.DNS.Resolved, ", "), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod), value(report.DNS.PointsTo), strings.Join(report.DNS.ALBResolved, ", "), report.DNS.Error) }
 	if report.TLS != nil { fmt.Printf("## TLS/SNI\n\n- Server name: %s\n- Certificate expires: %s\n- Days remaining: %d\n- Error: %s\n\n", report.TLS.ServerName, report.TLS.NotAfter, report.TLS.DaysRemaining, report.TLS.Error) }
 	for i, route := range report.Routes {
 		label := "also matches"; if i == 0 { label = "SELECTED" }
@@ -643,6 +643,8 @@ func printURLTrace(report urlTraceReport) {
 	fmt.Printf("KTRX URL TRACE  %s\n", report.URL)
 	fmt.Printf("Verdict: %s  Namespace: %s\n", report.Verdict, report.Namespace)
 	if len(report.Routes) == 0 { fmt.Println("No matching route was established.") }
+	if report.DNS != nil { fmt.Printf("\nDNS: resolved=%s CNAME=%s matchesALB=%t checked=%t method=%s\n", strings.Join(report.DNS.Resolved, ","), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod)); if report.DNS.PointsTo != "" { fmt.Printf("  DNS target: %s\n", report.DNS.PointsTo) }; if report.DNS.Error != "" { fmt.Printf("  DNS error: %s\n", report.DNS.Error) } }
+	if report.TLS != nil { fmt.Printf("TLS: serverName=%s expires=%s daysRemaining=%d\n", report.TLS.ServerName, value(report.TLS.NotAfter), report.TLS.DaysRemaining); if report.TLS.Error != "" { fmt.Printf("  TLS error: %s\n", report.TLS.Error) } }
 	for routeIndex, route := range report.Routes {
 		selection := "also matches"; if routeIndex == 0 { selection = "selected" }
 		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
@@ -658,6 +660,6 @@ func printURLTrace(report urlTraceReport) {
 		}
 	}
 	for _, note := range report.Limitations { fmt.Printf("\nNote: %s\n", note) }
-	fmt.Println("\nNote: This traces Kubernetes routing configuration only; it does not test DNS, TLS, external load balancers or live HTTP reachability.")
+	fmt.Println("\nNote: DNS and TLS are live opt-in checks; route discovery alone does not test external HTTP reachability.")
 }
 
