@@ -48,7 +48,7 @@ func TestConfigMetadataUsesMetadataOnlyClientAndNeverSerializesSecretData(t *tes
 }
 
 func TestMissingRequiredConfigMapIsFailure(t *testing.T) {
-	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs"}, Spec: appsv1.ReplicaSetSpec{
+	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs", Annotations: map[string]string{revisionAnnotation: "1"}}, Spec: appsv1.ReplicaSetSpec{
 		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 			Volumes: []corev1.Volume{{Name: "config", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "missing-config"}}}}},
 			Containers: []corev1.Container{{Name: "api", Image: "api:v1"}},
