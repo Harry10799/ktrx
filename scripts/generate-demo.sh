@@ -67,9 +67,7 @@ run_section() {
 
   # Strip ANSI color sequences so the generated Markdown stays readable.
   sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' "$output_file" >> "$DOC"
-  if [[ "$status" -ne 0 ]]; then
-    printf '\n[command exited with status %s]\n' "$status" >> "$DOC"
-  fi
+  printf '\n[exit status: %s]\n' "$status" >> "$DOC"
   printf '```\n' >> "$DOC"
   rm -f "$output_file"
   return "$status"
