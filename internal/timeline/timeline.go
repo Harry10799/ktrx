@@ -412,6 +412,21 @@ func buildCorrelations(report *Report) {
 	for _, event := range report.Events {
 		if event.Timestamp == nil || !event.Timestamp.Before(*report.FailureStartedAt) { continue }
 		if event.Type != EventRollout && event.Type != EventConfig && event.Type != EventGitOps { continue }
+		delta := report.FailureStartedAt.Sub(*event.Timestamp)
+		score := 0
+		switch {
+		case delta <= 15*time.Minute: score += 40
+		case delta <= time.Hour: score += 30
+		case delta <= 6*time.Hour: score += 20
+		case delta <= 24*time.Hour: score += 10
+		}
+		switch event.Type {
+		case EventRollout: score += 30
+		case EventConfig: score += 30
+		case EventGitOps: score += 20
+		}
+		if len(event.Changes) > 0 { score += 10 }
+		if event.Current { score += 5 }
 		summary := event.Action
 		if len(event.Changes) > 0 {
 			summary += ": "
@@ -420,13 +435,18 @@ func buildCorrelations(report *Report) {
 				summary += change.Field + " " + change.Before + " -> " + change.After
 			}
 		}
+		confidence := "low temporal relevance"
+		if score >= 70 { confidence = "high temporal relevance" } else if score >= 45 { confidence = "medium temporal relevance" }
 		candidates = append(candidates, Correlation{
 			Timestamp: event.Timestamp, Type: event.Type, Resource: event.Resource,
-			Summary: summary, Confidence: "temporal proximity",
-			Disclaimer: "Potential correlation only; causation is not established.",
+			Summary: summary, Confidence: confidence, Score: score,
+			Disclaimer: "Potential correlation only; ranking uses resource relevance, available change evidence and time proximity. Causation is not established.",
 		})
 	}
-	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].Timestamp.After(*candidates[j].Timestamp) })
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].Score != candidates[j].Score { return candidates[i].Score > candidates[j].Score }
+		return candidates[i].Timestamp.After(*candidates[j].Timestamp)
+	})
 	for i := range candidates { candidates[i].Rank = i + 1 }
 	report.Correlations = candidates
 }
