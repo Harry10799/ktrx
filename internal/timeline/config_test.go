@@ -24,6 +24,9 @@ func TestConfigMetadataUsesMetadataOnlyClientAndNeverSerializesSecretData(t *tes
 		},
 	}
 	scheme := metadatafake.NewTestScheme()
+	if err := metav1.AddMetaToScheme(scheme); err != nil {
+		t.Fatalf("register metadata API types: %v", err)
+	}
 	client := metadatafake.NewSimpleMetadataClient(scheme, secret)
 	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs", Annotations: map[string]string{revisionAnnotation: "1"}}, Spec: appsv1.ReplicaSetSpec{
 		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
@@ -55,6 +58,9 @@ func TestMissingRequiredConfigMapIsFailure(t *testing.T) {
 		}},
 	}}
 	scheme := metadatafake.NewTestScheme()
+	if err := metav1.AddMetaToScheme(scheme); err != nil {
+		t.Fatalf("register metadata API types: %v", err)
+	}
 	client := metadatafake.NewSimpleMetadataClient(scheme)
 	report := &Report{Namespace: "production", GeneratedAt: time.Now()}
 	addConfigResourceEvents(context.Background(), client, report, []appsv1.ReplicaSet{rs}, "1", time.Now().Add(-24*time.Hour))
