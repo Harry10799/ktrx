@@ -25,7 +25,7 @@ func TestConfigMetadataUsesMetadataOnlyClientAndNeverSerializesSecretData(t *tes
 	}
 	scheme := metadatafake.NewTestScheme()
 	client := metadatafake.NewSimpleMetadataClient(scheme, secret)
-	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs"}, Spec: appsv1.ReplicaSetSpec{
+	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs", Annotations: map[string]string{revisionAnnotation: "1"}}, Spec: appsv1.ReplicaSetSpec{
 		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 			Volumes: []corev1.Volume{{Name: "credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "db-credentials"}}}},
 			Containers: []corev1.Container{{Name: "api", Image: "api:v1"}},
