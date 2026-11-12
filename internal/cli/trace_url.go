@@ -231,16 +231,18 @@ func newTraceURLCommand() *cobra.Command {
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
-				return enc.Encode(report)
+				if err := enc.Encode(report); err != nil { return err }
+				return verdictExitError(report.Verdict)
 			}
 			if strings.EqualFold(output, "markdown") {
-				return printURLTraceMarkdown(cmd.OutOrStdout(), report)
+				if err := printURLTraceMarkdown(cmd.OutOrStdout(), report); err != nil { return err }
+				return verdictExitError(report.Verdict)
 			}
 			if !strings.EqualFold(output, "terminal") && !strings.EqualFold(output, "text") {
 				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 			}
 			printURLTrace(cmd.OutOrStdout(), report)
-			return nil
+			return verdictExitError(report.Verdict)
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace containing routes and Services")
