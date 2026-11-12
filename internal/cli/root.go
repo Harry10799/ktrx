@@ -130,9 +130,9 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		if all && len(reports) > 1 {
-			return enc.Encode(reports)
-		}
-		return enc.Encode(reports[0])
+			if err := enc.Encode(reports); err != nil { return err }
+		} else if err := enc.Encode(reports[0]); err != nil { return err }
+		return podReportsExitError(reports)
 	case "markdown":
 		for i, r := range reports {
 			if i > 0 {
@@ -142,10 +142,11 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 				return e
 			}
 		}
-		return nil
+		return podReportsExitError(reports)
 	case "terminal", "text":
 		if all && len(reports) > 1 && (strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/")) {
-			return printDeploymentTerminal(cmd.OutOrStdout(), strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == "")
+			if err := printDeploymentTerminal(cmd.OutOrStdout(), strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == ""); err != nil { return err }
+			return podReportsExitError(reports)
 		}
 		for i, r := range reports {
 			if i > 0 {
@@ -155,7 +156,7 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 				return e
 			}
 		}
-		return nil
+		return podReportsExitError(reports)
 	default:
 		return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 	}
