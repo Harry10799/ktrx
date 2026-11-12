@@ -85,7 +85,7 @@ func TestAnalyzeDeploymentUsesCurrentRolloutFailuresAndRetainsScalingEvents(t *t
 			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse, LastTransitionTime: metav1.NewTime(now.Add(-10*time.Minute))}},
 			ContainerStatuses: []corev1.ContainerStatus{{Name: "api", RestartCount: 3,
 				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}},
-				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(now.Add(-11*time.Minute))}},
+				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(now.Add(-9*time.Minute))}},
 			}},
 		},
 	}
@@ -99,20 +99,20 @@ func TestAnalyzeDeploymentUsesCurrentRolloutFailuresAndRetainsScalingEvents(t *t
 			}},
 		},
 	}
-	event := func(name, kind, reason, eventType string, at time.Time, uid types.UID) *corev1.Event {
+	event := func(eventName, involvedName, kind, reason, eventType string, at time.Time, uid types.UID) *corev1.Event {
 		return &corev1.Event{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "production", CreationTimestamp: metav1.NewTime(at)},
-			InvolvedObject: corev1.ObjectReference{Kind: kind, Name: name, UID: uid},
+			ObjectMeta: metav1.ObjectMeta{Name: eventName, Namespace: "production", CreationTimestamp: metav1.NewTime(at)},
+			InvolvedObject: corev1.ObjectReference{Kind: kind, Name: involvedName, UID: uid},
 			Reason: reason, Type: eventType, EventTime: metav1.NewMicroTime(at), Message: reason,
 		}
 	}
 	client := fake.NewSimpleClientset(
 		deployment, currentRS, oldRS, currentPod, recoveredPod,
-		event("orders-current-abcde", "Pod", "BackOff", corev1.EventTypeWarning, now.Add(-7*time.Minute), currentPod.UID),
-		event("orders-current-abcde", "Pod", "Unhealthy", corev1.EventTypeWarning, now.Add(-5*time.Minute), currentPod.UID),
-		event("orders-current-abcde", "Pod", "FailedScheduling", corev1.EventTypeWarning, now.Add(-6*time.Minute), currentPod.UID),
-		event("orders-current-deleted", "Pod", "FailedMount", corev1.EventTypeWarning, now.Add(-8*time.Minute), "deleted-pod"),
-		event("orders", "Deployment", "ScalingReplicaSet", corev1.EventTypeNormal, now.Add(-30*time.Minute), deployment.UID),
+		event("backoff-event", "orders-current-abcde", "Pod", "BackOff", corev1.EventTypeWarning, now.Add(-7*time.Minute), currentPod.UID),
+		event("unhealthy-event", "orders-current-abcde", "Pod", "Unhealthy", corev1.EventTypeWarning, now.Add(-5*time.Minute), currentPod.UID),
+		event("scheduling-event", "orders-current-abcde", "Pod", "FailedScheduling", corev1.EventTypeWarning, now.Add(-6*time.Minute), currentPod.UID),
+		event("mount-event", "orders-current-deleted", "Pod", "FailedMount", corev1.EventTypeWarning, now.Add(-8*time.Minute), "deleted-pod"),
+		event("scale-event", "orders", "Deployment", "ScalingReplicaSet", corev1.EventTypeNormal, now.Add(-30*time.Minute), deployment.UID),
 	)
 	report, err := (&Analyzer{Client: client, Since: 24*time.Hour, Now: func() time.Time { return now }}).AnalyzeDeployment(context.Background(), "production", "orders")
 	if err != nil { t.Fatalf("AnalyzeDeployment() error = %v", err) }
