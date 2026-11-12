@@ -302,8 +302,11 @@ func TestDoctorCommandIntegration(t *testing.T) {
 					}
 					response := authv1.SelfSubjectAccessReview{
 						TypeMeta: metav1.TypeMeta{APIVersion: "authorization.k8s.io/v1", Kind: "SelfSubjectAccessReview"},
+						ObjectMeta: metav1.ObjectMeta{},
+						Spec: review.Spec,
 						Status: status,
 					}
+					w.WriteHeader(http.StatusCreated)
 					_ = json.NewEncoder(w).Encode(response)
 				default:
 					http.NotFound(w, r)
