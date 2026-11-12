@@ -178,8 +178,8 @@ The caller needs read permissions for the resources used by the selected checks,
 - Ingresses and IngressClasses.
 - NetworkPolicies, Events and pods/log.
 - ReplicaSets for owner-chain inspection and Deployment timelines.
-- ConfigMaps and Secrets for metadata-only resourceVersion/managedFields inspection; KTRX never prints their data.
-- Flux Kustomizations, HelmReleases and GitRepositories (optional) for GitOps reconciliation and release history.
+- ConfigMaps and Secrets through metadata-only reads for resourceVersion/managedFields inspection; Secret data is not fetched.
+- Flux Kustomizations, HelmReleases, GitRepositories and Argo CD Applications (optional) for GitOps reconciliation and release history.
 - Pod listing across namespaces for Ingress controller discovery.
 - pods/exec create permission for ktrx netcheck.
 - SelfSubjectAccessReview creation for ktrx doctor.
@@ -233,6 +233,7 @@ KTRX can correlate retained rollout revisions with Kubernetes operational events
 ktrx timeline deploy/my-app -n production
 ktrx timeline deploy/my-app -n production --output json
 ktrx timeline deploy/my-app -n production --output markdown
+ktrx timeline deploy/my-app -n production --since 6h
 ```
 
 The timeline includes:
@@ -240,9 +241,10 @@ The timeline includes:
 - ReplicaSet revision and Pod-template diffs, including annotations such as `checksum/config`.
 - Deployment scaling events and relevant Pod Warning events when the Kubernetes Events API still retains them.
 - Pod restart counts, retained previous-termination timestamps, and the earliest available failure evidence.
-- Referenced ConfigMap and Secret metadata: resourceVersion, managedFields manager names, and managedFields timestamps. Secret and ConfigMap values are never printed.
-- Optional Flux Kustomization reconciliation revisions and Flux HelmRelease history when those CRDs are installed and readable. GitRepository revisions are shown as commit hashes; GitHub/GitLab commit URLs are included when the source URL can be resolved.
+- Referenced ConfigMap and Secret metadata through the Kubernetes metadata-only API: resourceVersion, managedFields manager names, and timestamps. Secret payloads are never fetched. Missing required references are surfaced as failures.
+- Optional Flux Kustomization/HelmRelease and Argo CD Application history, including Git revisions and GitHub/GitLab commit links where resolvable.
+- Current-rollout failure evidence and nearest-first potential correlations to earlier rollout, config or GitOps changes. Correlations explicitly do not establish causation.
 
 Flux support is read-only and optional. Missing CRDs or insufficient RBAC are reported as limitations rather than treated as application failures.
 
-**History limitations:** Kubernetes Events may expire according to cluster configuration. ReplicaSet history can be pruned or reused during rollback. ConfigMap/Secret resourceVersions are opaque identifiers; the standard Kubernetes API does not provide historical object versions, so KTRX reports current metadata and managedFields timestamps rather than claiming a complete data-change audit trail. A GitOps revision is linked to a workload only when Flux labels or its Kustomization inventory provide a reliable association. Timeline correlation is evidence, not proof of causation.
+**History limitations:** The timeline defaults to the last 24 hours; change this with `--since` (for example, `--since 7d`). Kubernetes Events may expire according to cluster configuration. ReplicaSet history can be pruned or reused during rollback. ConfigMap/Secret resourceVersions are opaque identifiers; the metadata-only API provides current metadata and managedFields timestamps, not historical object versions or a full audit trail. GitOps revisions are linked only when workload labels or controller inventory identify the owning application. Failure start means earliest retained evidence for a currently unhealthy workload; correlations are temporal clues, not proof of causation.
