@@ -422,7 +422,7 @@ func printURLTrace(report urlTraceReport) {
 		if len(route.Backends) == 0 { fmt.Println("  • No supported Service backend was discovered.") }
 		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\n", routeNote) }
 		for _, b := range route.Backends {
-			fmt.Printf("  → Service %s/%s port=%s status=%s endpoints=%d ready=%d\n", b.Namespace, b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints)
+			fmt.Printf("  → Service %s/%s port=%s status=%s endpoints=%d ready=%d notReady=%d\n", b.Namespace, b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints, b.NotReadyEndpoints)
 			for _, binding := range b.TargetGroupBindings { fmt.Printf("      → TargetGroupBinding %s targetGroup=%s targetType=%s\n", binding.Name, binding.TargetGroupARN, binding.TargetType) }
 			for _, pod := range b.Pods { fmt.Printf("      → Pod %s phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts) }
 			for _, note := range b.Notes { fmt.Printf("      ! %s\n", note) }
