@@ -48,6 +48,9 @@ func describeAWSTargetGroupHealth(ctx context.Context, client elbv2TargetHealthA
 	if err != nil {
 		return nil, err
 	}
+	if out == nil {
+		return nil, fmt.Errorf("AWS returned an empty DescribeTargetHealth response")
+	}
 	result := &urlTraceAWSTargetGroupHealth{TargetGroupARN: arn, Status: "AVAILABLE"}
 	for _, item := range out.TargetHealthDescriptions {
 		if item == nil || item.Target == nil {
@@ -134,16 +137,19 @@ func correlateAWSTargetsWithPods(targets []urlTraceAWSTarget, pods []urlTracePod
 
 func applyAWSTargetHealthVerdict(report *urlTraceReport) {
 	hasHealthy, hasUnhealthy := false, false
-	for _, route := range report.Routes {
-		for _, backend := range route.Backends {
-			for _, group := range backend.AWSTargetGroups {
-				for _, target := range group.Targets {
-					switch strings.ToLower(target.State) {
-					case "healthy":
-						hasHealthy = true
-					case "unhealthy":
-						hasUnhealthy = true
-					}
+	if len(report.Routes) == 0 {
+		return
+	}
+	// The URL trace verdict is based on the selected route. Do not let an
+	// unrelated, lower-precedence route change the result.
+	for _, backend := range report.Routes[0].Backends {
+		for _, group := range backend.AWSTargetGroups {
+			for _, target := range group.Targets {
+				switch strings.ToLower(target.State) {
+				case "healthy":
+					hasHealthy = true
+				case "unhealthy":
+					hasUnhealthy = true
 				}
 			}
 		}
