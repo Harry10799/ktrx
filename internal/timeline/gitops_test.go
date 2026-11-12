@@ -8,6 +8,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
@@ -56,7 +57,12 @@ func TestAddGitOpsEventsReadsKustomizationAndGitCommit(t *testing.T) {
 		"metadata": map[string]interface{}{"name": "platform", "namespace": "flux-system"},
 		"spec": map[string]interface{}{"url": "https://github.com/example/platform.git"},
 	}}
-	client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), kustomization, gitRepository)
+	client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+  {Group:"kustomize.toolkit.fluxcd.io", Version:"v1", Resource:"kustomizations"}:"KustomizationList",
+  {Group:"helm.toolkit.fluxcd.io", Version:"v2", Resource:"helmreleases"}:"HelmReleaseList",
+  {Group:"argoproj.io", Version:"v1alpha1", Resource:"applications"}:"ApplicationList",
+  {Version:"v1", Resource:"events"}:"EventList",
+ }, kustomization, gitRepository)
 	report := &Report{Namespace: "production", Target: "Deployment/orders"}
 	addGitOpsEvents(context.Background(), client, report, map[string]string{})
 	if len(report.Events) != 1 {
@@ -122,7 +128,9 @@ func TestFluxKustomizationEventProvidesAppliedRevisionAndTimestamp(t *testing.T)
   "involvedObject":map[string]interface{}{"kind":"Kustomization", "name":"apps", "namespace":"flux-system"},
   "reason":"ReconciliationSucceeded", "message":"Kustomization applied revision: main@sha1:0123456789abcdef0123456789abcdef01234567",
  }}
- client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), event)
+ client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+  {Version:"v1", Resource:"events"}:"EventList",
+ }, event)
  object := unstructured.Unstructured{Object:map[string]interface{}{"metadata":map[string]interface{}{"name":"apps", "namespace":"flux-system"}}}
  timestamp, revision, found := fluxKustomizationEvent(context.Background(), client, object)
  if !found || timestamp == nil { t.Fatalf("expected successful Flux Event timestamp, found=%t timestamp=%v", found, timestamp) }
