@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -68,13 +69,13 @@ func newTimelineCommand() *cobra.Command {
 			}
 			switch strings.ToLower(output) {
 			case "json":
-				enc := json.NewEncoder(os.Stdout)
+				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
 				return enc.Encode(report)
 			case "markdown":
-				return printTimelineMarkdown(report)
+				return printTimelineMarkdown(cmd.OutOrStdout(), report)
 			case "terminal", "text":
-				return printTimelineTerminal(report, !noColor && os.Getenv("NO_COLOR") == "")
+				return printTimelineTerminal(cmd.OutOrStdout(), report, !noColor && os.Getenv("NO_COLOR") == "")
 			default:
 				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 			}
@@ -99,21 +100,21 @@ func formatTimelineTime(value *time.Time) string {
 	return value.UTC().Format("2006-01-02 15:04:05Z")
 }
 
-func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
+func printTimelineTerminal(w io.Writer, report *timeline.Report, colorEnabled bool) error {
 	style := func(color, value string) string {
 		if !colorEnabled {
 			return value
 		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Printf("%s  %s\n", style("39", "◆ KTRX CHANGE TIMELINE"), report.Namespace+"/"+report.Target)
-	fmt.Printf("Generated: %s\n", formatTimelineTime(&report.GeneratedAt))
-	fmt.Printf("Window start: %s\n\n", formatTimelineTime(&report.Since))
+	fmt.Fprintf(w,"%s  %s\n", style("39", "◆ KTRX CHANGE TIMELINE"), report.Namespace+"/"+report.Target)
+	fmt.Fprintf(w,"Generated: %s\n", formatTimelineTime(&report.GeneratedAt))
+	fmt.Fprintf(w,"Window start: %s\n\n", formatTimelineTime(&report.Since))
 	if report.FailureStartedAt != nil {
-		fmt.Printf("Failure started: %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
+		fmt.Fprintf(w,"Failure started: %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
 	}
 	if len(report.Events) == 0 {
-		fmt.Println("No timeline events found.")
+		fmt.Fprintln(w,"No timeline events found.")
 	}
 	for _, event := range report.Events {
 		current := ""
@@ -124,37 +125,37 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 		if event.Revision != "" {
 			revision = "  revision=" + event.Revision
 		}
-		fmt.Printf("%s  %s  %s%s%s\n", formatTimelineTime(event.Timestamp), style("39", string(event.Type)), event.Resource, revision, current)
-		fmt.Printf("       %s\n", event.Action)
+		fmt.Fprintf(w,"%s  %s  %s%s%s\n", formatTimelineTime(event.Timestamp), style("39", string(event.Type)), event.Resource, revision, current)
+		fmt.Fprintf(w,"       %s\n", event.Action)
 		if event.Details != "" {
-			fmt.Printf("       %s\n", event.Details)
+			fmt.Fprintf(w,"       %s\n", event.Details)
 		}
 		for _, change := range event.Changes {
-			fmt.Printf("       • %s: %s → %s\n", change.Field, change.Before, change.After)
+			fmt.Fprintf(w,"       • %s: %s → %s\n", change.Field, change.Before, change.After)
 		}
 	}
 	if len(report.Correlations) > 0 {
-		fmt.Printf("\n%s\n", style("214", "POTENTIAL CORRELATIONS (NOT CAUSATION)"))
+		fmt.Fprintf(w,"\n%s\n", style("214", "POTENTIAL CORRELATIONS (NOT CAUSATION)"))
 		for _, item := range report.Correlations {
-			fmt.Printf("  #%d score=%d confidence=%s (%s) %s %s — %s\n", item.Rank, item.Score, item.Confidence, item.Delta, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
+			fmt.Fprintf(w,"  #%d score=%d confidence=%s (%s) %s %s — %s\n", item.Rank, item.Score, item.Confidence, item.Delta, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
 		}
 	}
-	fmt.Printf("\n%s\n", style("99", "LIMITATIONS"))
+	fmt.Fprintf(w,"\n%s\n", style("99", "LIMITATIONS"))
 	for _, limitation := range report.Limitations {
-		fmt.Printf("  • %s\n", limitation)
+		fmt.Fprintf(w,"  • %s\n", limitation)
 	}
 	return nil
 }
 
-func printTimelineMarkdown(report *timeline.Report) error {
-	fmt.Printf("# Change timeline: %s\n\n", report.Namespace+"/"+report.Target)
-	fmt.Printf("Generated: %s\n", formatTimelineTime(&report.GeneratedAt))
-	fmt.Printf("Window start: %s\n\n", formatTimelineTime(&report.Since))
+func printTimelineMarkdown(w io.Writer, report *timeline.Report) error {
+	fmt.Fprintf(w,"# Change timeline: %s\n\n", report.Namespace+"/"+report.Target)
+	fmt.Fprintf(w,"Generated: %s\n", formatTimelineTime(&report.GeneratedAt))
+	fmt.Fprintf(w,"Window start: %s\n\n", formatTimelineTime(&report.Since))
 	if report.FailureStartedAt != nil {
-		fmt.Printf("**Failure started:** %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
+		fmt.Fprintf(w,"**Failure started:** %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
 	}
 	if len(report.Events) == 0 {
-		fmt.Println("No timeline events found in the selected window.")
+		fmt.Fprintln(w,"No timeline events found in the selected window.")
 	}
 	for _, event := range report.Events {
 		current := ""
@@ -165,25 +166,25 @@ func printTimelineMarkdown(report *timeline.Report) error {
 		if event.Revision != "" {
 			revision = " (revision " + event.Revision + ")"
 		}
-		fmt.Printf("## %s — %s%s%s\n\n", formatTimelineTime(event.Timestamp), event.Resource, revision, current)
-		fmt.Printf("%s\n\n", event.Action)
+		fmt.Fprintf(w,"## %s — %s%s%s\n\n", formatTimelineTime(event.Timestamp), event.Resource, revision, current)
+		fmt.Fprintf(w,"%s\n\n", event.Action)
 		for _, change := range event.Changes {
-			fmt.Printf("- **%s:** %s → %s\n", change.Field, change.Before, change.After)
+			fmt.Fprintf(w,"- **%s:** %s → %s\n", change.Field, change.Before, change.After)
 		}
 		if event.Details != "" {
-			fmt.Printf("\n%s\n", event.Details)
+			fmt.Fprintf(w,"\n%s\n", event.Details)
 		}
-		fmt.Println()
+		fmt.Fprintln(w,)
 	}
 	if len(report.Correlations) > 0 {
-		fmt.Println("## Potential correlations (not causation)")
+		fmt.Fprintln(w,"## Potential correlations (not causation)")
 		for _, item := range report.Correlations {
-			fmt.Printf("%d. **%s** (score %d; %s) — %s — %s: %s\n", item.Rank, item.Confidence, item.Score, item.Delta, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
+			fmt.Fprintf(w,"%d. **%s** (score %d; %s) — %s — %s: %s\n", item.Rank, item.Confidence, item.Score, item.Delta, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
 		}
 	}
-	fmt.Println("## Limitations")
+	fmt.Fprintln(w,"## Limitations")
 	for _, limitation := range report.Limitations {
-		fmt.Printf("- %s\n", limitation)
+		fmt.Fprintf(w,"- %s\n", limitation)
 	}
 	return nil
 }
