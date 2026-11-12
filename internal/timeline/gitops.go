@@ -43,7 +43,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			sourceName, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "name")
 			sourceNamespace, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "namespace")
 			if sourceNamespace == "" { sourceNamespace = object.GetNamespace() }
-			timestamp := latestConditionTime(object)
+			timestamp := fluxKustomizationTime(object)
 			details := "sourceRef=" + sourceKind + "/" + sourceName
 			if revision != "" { details += " revision=" + revision }
 			if hash := commitHash(revision); hash != "" {
@@ -55,7 +55,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			report.Events = append(report.Events, TimelineEvent{
 				Timestamp: timestamp, Type: EventGitOps,
 				Resource: "Kustomization/" + object.GetName(),
-				Action: "Flux reconciliation history observed",
+				Action: "Flux Kustomization reconciliation state observed",
 				Source: "flux-kustomization-status", Confidence: "controller-status",
 				Details: details,
 			})
@@ -174,6 +174,20 @@ func latestConditionTime(object unstructured.Unstructured) *time.Time {
 	return &latest
 }
 
+func fluxKustomizationTime(object unstructured.Unstructured) *time.Time {
+	// lastHandledReconcileAt is the controller's reconciliation timestamp. Do not
+	// substitute an old Ready condition transition time: it can remain unchanged
+	// across many later reconciliations and look like a stale deployment event.
+	lastApplied, _, _ := unstructured.NestedString(object.Object, "status", "lastAppliedRevision")
+	lastAttempted, _, _ := unstructured.NestedString(object.Object, "status", "lastAttemptedRevision")
+	if lastApplied == "" || (lastAttempted != "" && lastApplied != lastAttempted) {
+		return nil
+	}
+	value, _, _ := unstructured.NestedString(object.Object, "status", "lastHandledReconcileAt")
+	if value == "" { value, _, _ = unstructured.NestedString(object.Object, "status", "lastAppliedAt") }
+	return parseHistoryTime(value)
+}
+
 func parseHistoryTime(value string) *time.Time {
 	if value == "" { return nil }
 	parsed, err := time.Parse(time.RFC3339Nano, value)
@@ -187,7 +201,7 @@ func nestedString(values map[string]interface{}, key string) string {
 }
 
 func commitHash(revision string) string {
-	for _, marker := range []string{"sha1:", "sha256:"} {
+	for _, marker := range []string{"sha1:"} {
 		if index := strings.LastIndex(revision, marker); index >= 0 {
 			return revision[index+len(marker):]
 		}
@@ -225,6 +239,8 @@ func gitCommitURL(ctx context.Context, client dynamic.Interface, namespace, kind
 		return "https://github.com" + repositoryPath + "/commit/" + hash
 	case "gitlab.com":
 		return "https://gitlab.com" + repositoryPath + "/-/commit/" + hash
+	case "bitbucket.org":
+		return "https://bitbucket.org" + repositoryPath + "/commits/" + hash
 	default:
 		return ""
 	}
@@ -322,7 +338,7 @@ func normalizeCommitHash(revision string) string {
 	hash := commitHash(revision)
 	if hash != "" { return hash }
 	value := strings.TrimSpace(revision)
-	if len(value) == 40 || len(value) == 64 {
+	if len(value) == 40 {
 		for _, char := range value {
 			if !strings.ContainsRune("0123456789abcdefABCDEF", char) { return "" }
 		}
@@ -340,6 +356,8 @@ func gitRepositoryCommitURL(repositoryURL, hash string) string {
 		return "https://github.com" + repositoryPath + "/commit/" + hash
 	case "gitlab.com":
 		return "https://gitlab.com" + repositoryPath + "/-/commit/" + hash
+	case "bitbucket.org":
+		return "https://bitbucket.org" + repositoryPath + "/commits/" + hash
 	default:
 		return ""
 	}
