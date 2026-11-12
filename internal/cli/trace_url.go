@@ -97,6 +97,7 @@ type urlTraceDNS struct {
  ALBResolved []string `json:"albResolved,omitempty"`
  MatchesALB bool `json:"matchesALB"`
  Checked bool `json:"checked"`
+ Status string `json:"status,omitempty"`
  MatchMethod string `json:"matchMethod,omitempty"`
  PointsTo string `json:"pointsTo,omitempty"`
  Error string `json:"error,omitempty"`
@@ -663,8 +664,8 @@ func httpRouteReferenceAllowed(ctx context.Context, dyn dynamic.Interface, fromN
 func printURLTraceMarkdown(report urlTraceReport) error {
 	fmt.Printf("# KTRX URL trace: %s\n\n", report.URL)
 	fmt.Printf("- **Verdict:** %s\n- **Namespace scope:** %s\n- **Host/path:** %s%s\n\n", report.Verdict, report.Namespace, report.Host, report.Path)
-	if report.DNS != nil { fmt.Printf("## DNS\n\n- Resolved: %s\n- CNAME: %s\n- Matches ALB: %t (checked=%t, method=%s)\n- DNS target: %s\n- ALB resolved IPs: %s\n- Error: %s\n\n", strings.Join(report.DNS.Resolved, ", "), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod), value(report.DNS.PointsTo), strings.Join(report.DNS.ALBResolved, ", "), report.DNS.Error) }
-	if report.TLS != nil { fmt.Printf("## TLS/SNI\n\n- Server name: %s\n- Certificate expires: %s\n- Days remaining: %d\n- Error: %s\n\n", report.TLS.ServerName, report.TLS.NotAfter, report.TLS.DaysRemaining, report.TLS.Error) }
+	if report.DNS != nil { fmt.Printf("## DNS\n\n- Resolved: %s\n- CNAME: %s\n- Matches ALB: %t (checked=%t, method=%s)\n- DNS target: %s\n- ALB resolved IPs: %s\n- Error: %s\n\n", value(report.DNS.Status), strings.Join(report.DNS.Resolved, ", "), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod), value(report.DNS.PointsTo), strings.Join(report.DNS.ALBResolved, ", "), report.DNS.Error) }
+	if report.TLS != nil { fmt.Printf("## TLS/SNI\n\n- Server name: %s\n- Certificate expires: %s\n- Days remaining: %d\n- Error: %s\n\n", value(report.TLS.Status), report.TLS.ServerName, report.TLS.NotAfter, report.TLS.DaysRemaining, report.TLS.Error) }
 	for i, route := range report.Routes {
 		label := "also matches"; if i == 0 { label = "SELECTED" }
 		fmt.Printf("## %s %s/%s — %s\n\n", route.Kind, route.Namespace, route.Name, label)
@@ -694,7 +695,7 @@ func printURLTrace(report urlTraceReport) {
 	fmt.Printf("Verdict: %s  Namespace: %s\n", report.Verdict, report.Namespace)
 	if len(report.Routes) == 0 { fmt.Println("No matching route was established.") }
 	if report.DNS != nil { fmt.Printf("\nDNS: resolved=%s CNAME=%s matchesALB=%t checked=%t method=%s\n", strings.Join(report.DNS.Resolved, ","), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod)); if report.DNS.PointsTo != "" { fmt.Printf("  DNS target: %s\n", report.DNS.PointsTo) }; if report.DNS.Error != "" { fmt.Printf("  DNS error: %s\n", report.DNS.Error) } }
-	if report.TLS != nil { fmt.Printf("TLS: serverName=%s expires=%s daysRemaining=%d\n", report.TLS.ServerName, value(report.TLS.NotAfter), report.TLS.DaysRemaining); if report.TLS.Error != "" { fmt.Printf("  TLS error: %s\n", report.TLS.Error) } }
+	if report.TLS != nil { fmt.Printf("TLS: status=%s serverName=%s expires=%s daysRemaining=%d\n", report.TLS.ServerName, value(report.TLS.NotAfter), report.TLS.DaysRemaining); if report.TLS.Error != "" { fmt.Printf("  TLS error: %s\n", report.TLS.Error) } }
 	for routeIndex, route := range report.Routes {
 		selection := "also matches"; if routeIndex == 0 { selection = "selected" }
 		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
