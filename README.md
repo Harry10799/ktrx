@@ -228,6 +228,19 @@ FAILED > UNKNOWN (critical evidence unavailable) > WARN > HEALTHY
 
 Some explicitly optional observations can be UNKNOWN without downgrading the headline. They remain visible in the evidence output. A HEALTHY headline means the checks KTRX could perform did not identify a higher-priority issue; it is **not** a guarantee that the application is correct or reachable from every client.
 
+## Exit codes
+
+KTRX returns stable process exit codes so shell scripts and CI jobs can act on diagnostic results:
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Diagnosis completed with a HEALTHY result, or the command completed without actionable findings. |
+| 1 | Command, argument, configuration, Kubernetes API or execution error. |
+| 2 | A confirmed FAILED condition or WARN finding was reported. |
+| 3 | The result is UNKNOWN or incomplete; required evidence or a requested check could not be verified. |
+
+For Deployment traces, the aggregate exit code follows the documented verdict precedence across the selected Pods. For `compare`, the candidate Pod's verdict determines the exit code; differences alone do not imply failure.
+
 ## Safety and RBAC permissions
 
 KTRX does not create diagnostic Pods or modify workload resources during normal inspection. The netcheck command is opt-in: it executes the requested commands inside an existing Pod container and can generate DNS queries or outbound traffic.
