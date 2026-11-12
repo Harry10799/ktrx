@@ -145,17 +145,30 @@ func newTraceURLCommand() *cobra.Command {
 }
 
 func discoverIngressRoutes(ctx context.Context, client kubernetes.Interface, namespace string, target *url.URL) ([]urlTraceRoute, []string) {
-	list, err := client.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+	return discoverIngressRoutesFiltered(ctx, client, namespace, false, "", target)
+}
+
+func discoverIngressRoutesFiltered(ctx context.Context, client kubernetes.Interface, namespace string, allNamespaces bool, ingressClass string, target *url.URL) ([]urlTraceRoute, []string) {
+	listNamespace := namespace
+	if allNamespaces { listNamespace = "" }
+	list, err := client.NetworkingV1().Ingresses(listNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, []string{"Ingress discovery unavailable: " + err.Error()}
 	}
 	var routes []urlTraceRoute
 	for i := range list.Items {
 		ing := &list.Items[i]
+		if ingressClass != "" {
+			class := ""
+			if ing.Spec.IngressClassName != nil { class = *ing.Spec.IngressClassName }
+			if class != ingressClass { continue }
+		}
+		routeNamespace := ing.Namespace
+		if routeNamespace == "" { routeNamespace = namespace }
 		routeStart := len(routes)
 		add := func(host, path, match, service, port string) {
 			if !urlHostMatches(host, target.Hostname()) || !urlPathMatches(path, target.Path, match) { return }
-			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:namespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match,
+			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:routeNamespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match, IngressClass:ingressClassName(ing), LoadBalancerHosts:ingressLoadBalancerHosts(ing),
 				Backends:[]urlTraceBackend{{Service:service, Port:port, ServiceStatus:"PENDING"}}})
 		}
 		for _, rule := range ing.Spec.Rules {
@@ -178,10 +191,16 @@ func discoverIngressRoutes(ctx context.Context, client kubernetes.Interface, nam
 }
 
 func discoverHTTPRoutes(ctx context.Context, dyn dynamic.Interface, namespace string, target *url.URL) ([]urlTraceRoute, []string) {
+	return discoverHTTPRoutesInScope(ctx, dyn, namespace, false, target)
+}
+
+func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, namespace string, allNamespaces bool, target *url.URL) ([]urlTraceRoute, []string) {
 	var notes []string
 	for _, version := range []string{"v1", "v1beta1"} {
 		gvr := schema.GroupVersionResource{Group:"gateway.networking.k8s.io", Version:version, Resource:"httproutes"}
-		list, err := dyn.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		resource := dyn.Resource(gvr)
+		if !allNamespaces { resource = resource.Namespace(namespace) }
+		list, err := resource.List(ctx, metav1.ListOptions{})
 		if apierrors.IsNotFound(err) { continue }
 		if err != nil {
 			notes = append(notes, "Gateway API HTTPRoute discovery ("+version+") unavailable: "+err.Error())
@@ -226,9 +245,9 @@ func discoverHTTPRoutes(ctx context.Context, dyn dynamic.Interface, namespace st
 						continue
 					}
 					if service == "" { continue }
-					resolved = append(resolved, urlTraceBackend{Service:service, Port:fmt.Sprint(port), ServiceStatus:"PENDING"})
+					resolved = append(resolved, urlTraceBackend{Namespace:route.GetNamespace(), Service:service, Port:fmt.Sprint(port), ServiceStatus:"PENDING"})
 				}
-				routes = append(routes, urlTraceRoute{Kind:"HTTPRoute", Namespace:namespace, Name:route.GetName(), Host:matchedHost, Path:pathMatch, Match:matchName, Backends:resolved, Notes:[]string{"Parent Gateway listener attachment and readiness are not verified yet."}})
+				routes = append(routes, urlTraceRoute{Kind:"HTTPRoute", Namespace:route.GetNamespace(), Name:route.GetName(), Host:matchedHost, Path:pathMatch, Match:matchName, Backends:resolved, Notes:[]string{"Parent Gateway listener attachment and readiness are not verified yet."}})
 			}
 		}
 		return routes, notes
