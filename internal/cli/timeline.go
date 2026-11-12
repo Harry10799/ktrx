@@ -73,6 +73,9 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 	}
 	fmt.Printf("%s  %s\n", style("39", "◆ KTRX CHANGE TIMELINE"), report.Namespace+"/"+report.Target)
 	fmt.Printf("Generated: %s\n\n", formatTimelineTime(&report.GeneratedAt))
+	if report.FailureStartedAt != nil {
+		fmt.Printf("Failure started: %s (earliest retained failure evidence)\\n\\n", formatTimelineTime(report.FailureStartedAt))
+	}
 	if len(report.Events) == 0 {
 		fmt.Println("No retained Deployment ReplicaSets found.")
 	}
