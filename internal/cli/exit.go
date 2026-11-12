@@ -42,20 +42,26 @@ func verdictExitError(verdict string) error {
 }
 
 func podReportsExitError(reports []*analyzer.PodReport) error {
-	hasUnknown := false
+	hasUnknown, hasWarning := false, false
 	for _, report := range reports {
 		if report == nil {
 			continue
 		}
 		switch report.Verdict {
-		case analyzer.Failed, analyzer.Warning:
-			return verdictExitError(string(report.Verdict))
+		case analyzer.Failed:
+			return verdictExitError("FAILED")
 		case analyzer.Unknown:
 			hasUnknown = true
+		case analyzer.Warning:
+			hasWarning = true
 		}
 	}
+	// Match the documented headline precedence: FAILED > UNKNOWN > WARN > HEALTHY.
 	if hasUnknown {
 		return verdictExitError("UNKNOWN")
+	}
+	if hasWarning {
+		return verdictExitError("WARN")
 	}
 	return nil
 }
