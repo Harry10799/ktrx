@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -200,9 +200,9 @@ func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, names
 	var notes []string
 	for _, version := range []string{"v1", "v1beta1"} {
 		gvr := schema.GroupVersionResource{Group:"gateway.networking.k8s.io", Version:version, Resource:"httproutes"}
-		resource := dyn.Resource(gvr)
-		if !allNamespaces { resource = resource.Namespace(namespace) }
-		list, err := resource.List(ctx, metav1.ListOptions{})
+		var list *unstructured.UnstructuredList
+		var err error
+		if allNamespaces { list, err = dyn.Resource(gvr).List(ctx, metav1.ListOptions{}) } else { list, err = dyn.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{}) }
 		if apierrors.IsNotFound(err) { continue }
 		if err != nil {
 			notes = append(notes, "Gateway API HTTPRoute discovery ("+version+") unavailable: "+err.Error())
@@ -354,7 +354,23 @@ func urlRoutePrecedence(route urlTraceRoute) int {
 	if route.Host == "*" { hostRank = 0 } else if strings.HasPrefix(route.Host, "*.") { hostRank = 1 }
 	pathRank := 1
 	switch route.Match { case "Exact": pathRank = 3; case "Prefix", "PathPrefix": pathRank = 2; case "ImplementationSpecific": pathRank = 1 }
-	return hostRank*100000 + pathRank*10000 + len(route.Path)
+	return hostRank*1000000 + len(route.Path)*10 + pathRank
+}
+
+func urlGlobMatch(pattern, value string) (bool, error) {
+	var expression strings.Builder
+	expression.WriteString("^")
+	for _, char := range pattern {
+		switch char {
+		case '*': expression.WriteString(".*")
+		case '?': expression.WriteString(".")
+		default: expression.WriteString(regexp.QuoteMeta(string(char)))
+		}
+	}
+	expression.WriteString("$")
+	compiled, err := regexp.Compile(expression.String())
+	if err != nil { return false, err }
+	return compiled.MatchString(value), nil
 }
 
 func urlHostMatches(pattern, host string) bool {
@@ -378,7 +394,7 @@ func urlPathMatches(rulePath, requestPath, kind string) bool {
 		if rulePath == "/" { return true }
 		return requestPath == rulePath || strings.HasPrefix(requestPath, strings.TrimSuffix(rulePath, "/")+"/")
 	case "ImplementationSpecific":
-		matched, err := path.Match(rulePath, requestPath)
+		matched, err := urlGlobMatch(rulePath, requestPath)
 		if err == nil && matched { return true }
 		return requestPath == rulePath || strings.HasPrefix(requestPath, strings.TrimSuffix(rulePath, "/")+"/")
 	default: return false
