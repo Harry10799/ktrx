@@ -25,7 +25,7 @@ func TestNetcheckReportOutputAndExitClassification(t *testing.T) {
 			if err := json.NewEncoder(&output).Encode(report); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(output.String(), "\"pod\": \"api-0\"") || !strings.Contains(output.String(), tt.status) {
+			if !strings.Contains(output.String(), "\"pod\":\"api-0\"") || !strings.Contains(output.String(), tt.status) {
 				t.Fatalf("JSON output missing report details: %s", output.String())
 			}
 			if got := ExitCode(netcheckExitError(report)); got != tt.want {
