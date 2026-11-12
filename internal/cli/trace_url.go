@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"sort"
 	"strings"
 
@@ -26,16 +27,25 @@ type urlTracePod struct {
 	Phase string `json:"phase"`
 	Ready bool `json:"ready"`
 	Restarts int32 `json:"restarts"`
+	EndpointReady bool `json:"endpointReady"`
 }
 
 type urlTraceBackend struct {
+	Namespace     string   `json:"namespace"`
 	Service       string   `json:"service"`
 	Port          string   `json:"port,omitempty"`
 	ServiceStatus string   `json:"serviceStatus"`
 	EndpointCount int      `json:"endpointCount"`
 	ReadyEndpoints int     `json:"readyEndpoints"`
+	TargetGroupBindings []urlTraceTargetGroupBinding `json:"targetGroupBindings,omitempty"`
 	Pods          []urlTracePod `json:"pods,omitempty"`
 	Notes         []string `json:"notes,omitempty"`
+}
+
+type urlTraceTargetGroupBinding struct {
+	Name string `json:"name"`
+	TargetGroupARN string `json:"targetGroupARN,omitempty"`
+	TargetType string `json:"targetType,omitempty"`
 }
 
 type urlTraceRoute struct {
@@ -45,6 +55,8 @@ type urlTraceRoute struct {
 	Host      string           `json:"host"`
 	Path      string           `json:"path"`
 	Match     string           `json:"match"`
+	IngressClass string `json:"ingressClass,omitempty"`
+	LoadBalancerHosts []string `json:"loadBalancerHosts,omitempty"`
 	Backends  []urlTraceBackend `json:"backends,omitempty"`
 	Notes     []string         `json:"notes,omitempty"`
 }
@@ -60,7 +72,8 @@ type urlTraceReport struct {
 }
 
 func newTraceURLCommand() *cobra.Command {
-	var namespace, kubeconfig, contextName, output string
+	var namespace, kubeconfig, contextName, output, ingressClass string
+	var allNamespaces bool
 	cmd := &cobra.Command{
 		Use:   "trace-url URL",
 		Short: "Trace an HTTP(S) URL through Kubernetes routes to Services and Pods",
@@ -80,15 +93,16 @@ func newTraceURLCommand() *cobra.Command {
 
 			report := urlTraceReport{URL: target.String(), Namespace: namespace, Host: target.Hostname(), Path: target.Path, Verdict: "UNKNOWN"}
 			if report.Path == "" { report.Path = "/" }
-			routes, notes := discoverIngressRoutes(cmd.Context(), client, namespace, target)
+			routes, notes := discoverIngressRoutesFiltered(cmd.Context(), client, namespace, allNamespaces, ingressClass, target)
 			report.Routes = append(report.Routes, routes...)
 			report.Limitations = append(report.Limitations, notes...)
-			gatewayRoutes, gatewayNotes := discoverHTTPRoutes(cmd.Context(), dyn, namespace, target)
+			gatewayRoutes, gatewayNotes := discoverHTTPRoutesInScope(cmd.Context(), dyn, namespace, allNamespaces, target)
 			report.Routes = append(report.Routes, gatewayRoutes...)
 			report.Limitations = append(report.Limitations, gatewayNotes...)
 			for i := range report.Routes {
 				for j := range report.Routes[i].Backends {
-					resolveURLBackend(cmd.Context(), client, namespace, &report.Routes[i].Backends[j])
+					resolveURLBackend(cmd.Context(), client, report.Routes[i].Namespace, &report.Routes[i].Backends[j])
+					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
 				}
 			}
 			sort.Slice(report.Routes, func(i,j int) bool {
@@ -122,6 +136,8 @@ func newTraceURLCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace containing routes and Services")
+	cmd.Flags().BoolVar(&allNamespaces, "all-namespaces", false, "Search routes and Services across all namespaces")
+	cmd.Flags().StringVar(&ingressClass, "ingress-class", "", "Only inspect Ingresses using this IngressClass")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	cmd.Flags().StringVar(&contextName, "context", "", "Kubeconfig context")
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal or json")
