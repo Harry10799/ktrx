@@ -23,6 +23,8 @@ type Analyzer struct {
 	Dynamic  dynamic.Interface
 	Metadata metadata.Interface
 	Since    time.Duration
+	FailureAt *time.Time
+	MaxCorrelations int
 	Now      func() time.Time
 }
 
@@ -262,7 +264,8 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		}
 	}
 	filterTimelineSince(report, since)
-	buildCorrelations(report)
+	if a.FailureAt != nil { report.FailureStartedAt = timePointer(*a.FailureAt) }
+	buildCorrelations(report, a.MaxCorrelations)
 	sort.SliceStable(report.Events, func(i, j int) bool {
 		left, right := report.Events[i].SortTime, report.Events[j].SortTime
 		if left == nil { left = report.Events[i].Timestamp }
@@ -431,7 +434,7 @@ func filterTimelineSince(report *Report, since time.Time) {
 	report.Events = filtered
 }
 
-func buildCorrelations(report *Report) {
+func buildCorrelations(report *Report, maxResults int) {
 	report.Correlations = nil
 	if report.FailureStartedAt == nil { return }
 	candidates := make([]Correlation, 0)
@@ -462,10 +465,10 @@ func buildCorrelations(report *Report) {
 			}
 		}
 		confidence := "low temporal relevance"
-		if score >= 70 { confidence = "high temporal relevance" } else if score >= 45 { confidence = "medium temporal relevance" }
+		if delta <= 15*time.Minute { confidence = "high temporal relevance" } else if delta <= time.Hour { confidence = "medium temporal relevance" }
 		candidates = append(candidates, Correlation{
 			Timestamp: event.Timestamp, Type: event.Type, Resource: event.Resource,
-			Summary: summary, Confidence: confidence, Score: score,
+			Summary: summary, Delta: delta.Round(time.Second).String() + " before failure", Confidence: confidence, Score: score,
 			Disclaimer: "Potential correlation only; ranking uses resource relevance, available change evidence and time proximity. Causation is not established.",
 		})
 	}
@@ -473,6 +476,8 @@ func buildCorrelations(report *Report) {
 		if candidates[i].Score != candidates[j].Score { return candidates[i].Score > candidates[j].Score }
 		return candidates[i].Timestamp.After(*candidates[j].Timestamp)
 	})
+	if maxResults <= 0 { maxResults = 5 }
+	if len(candidates) > maxResults { candidates = candidates[:maxResults] }
 	for i := range candidates { candidates[i].Rank = i + 1 }
 	report.Correlations = candidates
 }
