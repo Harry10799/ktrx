@@ -170,11 +170,13 @@ func TestBuildCorrelationsRanksEvidenceAndTimeTogether(t *testing.T) {
 			{Timestamp:&olderRollout, Type:EventRollout, Resource:"ReplicaSet/orders-2", Action:"Deployment revision changed", Changes:[]Change{{Field:"image", Before:"v1", After:"v2"}}},
 		},
 	}
-	buildCorrelations(report)
+	buildCorrelations(report, 5)
 	if len(report.Correlations) != 2 { t.Fatalf("got %d correlations", len(report.Correlations)) }
 	if report.Correlations[0].Type != EventRollout {
 		t.Fatalf("change-rich rollout should outrank recency-only GitOps event: %+v", report.Correlations)
 	}
+	if report.Correlations[0].Confidence != "low temporal relevance" { t.Fatalf("5-hour-old event must have low temporal confidence, got %q", report.Correlations[0].Confidence) }
+	if report.Correlations[0].Delta != "2h0m0s before failure" { t.Fatalf("unexpected time delta: %q", report.Correlations[0].Delta) }
 	if report.Correlations[0].Score <= report.Correlations[1].Score {
 		t.Fatalf("expected descending evidence score: %+v", report.Correlations)
 	}
