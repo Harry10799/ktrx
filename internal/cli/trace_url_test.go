@@ -3,6 +3,8 @@ package cli
 import (
 	"testing"
 	"context"
+	"encoding/json"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -11,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -78,22 +81,71 @@ func TestResolveURLBackendIncludesNotReadyEndpointPods(t *testing.T) {
 			Endpoints:[]discoveryv1.Endpoint{
 				{Addresses:[]string{"10.0.0.1"}, Conditions:discoveryv1.EndpointConditions{Ready:&ready}, TargetRef:&corev1.ObjectReference{Kind:"Pod", Namespace:"prod", Name:"api-ready"}},
 				{Addresses:[]string{"10.0.0.2"}, Conditions:discoveryv1.EndpointConditions{Ready:&notReady}, TargetRef:&corev1.ObjectReference{Kind:"Pod", Namespace:"prod", Name:"api-unready"}},
+				{Addresses:[]string{"10.0.0.3"}, Conditions:discoveryv1.EndpointConditions{}, TargetRef:&corev1.ObjectReference{Kind:"Pod", Namespace:"prod", Name:"api-unknown"}},
 			},
 		},
 		&corev1.Pod{ObjectMeta:metav1.ObjectMeta{Name:"api-ready", Namespace:"prod", UID:types.UID("p1")}, Status:corev1.PodStatus{Phase:corev1.PodRunning, Conditions:[]corev1.PodCondition{{Type:corev1.PodReady, Status:corev1.ConditionTrue}}}},
 		&corev1.Pod{ObjectMeta:metav1.ObjectMeta{Name:"api-unready", Namespace:"prod", UID:types.UID("p2")}, Status:corev1.PodStatus{Phase:corev1.PodRunning, Conditions:[]corev1.PodCondition{{Type:corev1.PodReady, Status:corev1.ConditionFalse}}}},
+		&corev1.Pod{ObjectMeta:metav1.ObjectMeta{Name:"api-unknown", Namespace:"prod", UID:types.UID("p3")}, Status:corev1.PodStatus{Phase:corev1.PodRunning, Conditions:[]corev1.PodCondition{{Type:corev1.PodReady, Status:corev1.ConditionTrue}}}},
 	)
 	backend := urlTraceBackend{Namespace:"prod", Service:"api", Port:"http"}
 	resolveURLBackend(context.Background(), client, "prod", &backend)
-	if backend.EndpointCount != 2 || backend.ReadyEndpoints != 1 {
+	if backend.EndpointCount != 3 || backend.ReadyEndpoints != 2 {
 		t.Fatalf("unexpected endpoint counts: total=%d ready=%d", backend.EndpointCount, backend.ReadyEndpoints)
 	}
-	if len(backend.Pods) != 2 { t.Fatalf("expected ready and not-ready Pods, got %+v", backend.Pods) }
+	if len(backend.Pods) != 3 { t.Fatalf("expected three endpoint Pods, got %+v", backend.Pods) }
 	foundNotReady := false
 	for _, pod := range backend.Pods {
 		if pod.Name == "api-unready" && !pod.EndpointReady && !pod.Ready { foundNotReady = true }
 	}
 	if !foundNotReady { t.Fatalf("not-ready endpoint Pod was not surfaced: %+v", backend.Pods) }
+}
+
+func TestDNSAliasMatchesALBByResolvedIP(t *testing.T) {
+ dns := &urlTraceDNS{Resolved: []string{"203.0.113.10", "203.0.113.11"}}
+ routes := []urlTraceRoute{{LoadBalancerHosts: []string{"203.0.113.11", "203.0.113.12"}}}
+ matched, method, _ := dnsMatchesALB(context.Background(), dns, routes)
+ if !matched || method != "IP" { t.Fatalf("expected Route 53 alias IP match, got matched=%t method=%q", matched, method) }
+}
+
+func TestDNSMismatchExplainsFrontEnd(t *testing.T) {
+ dns := &urlTraceDNS{Resolved: []string{"198.51.100.20"}}
+ routes := []urlTraceRoute{{LoadBalancerHosts: []string{"203.0.113.20"}}}
+ matched, _, pointsTo := dnsMatchesALB(context.Background(), dns, routes)
+ if matched || !strings.Contains(pointsTo, "CloudFront or Global Accelerator") { t.Fatalf("expected explained mismatch, got matched=%t target=%q", matched, pointsTo) }
+}
+
+func TestDNSJSONPreservesFalseAndUnchecked(t *testing.T) {
+ data, err := json.Marshal(urlTraceDNS{MatchesALB:false, Checked:false})
+ if err != nil { t.Fatal(err) }
+ if !strings.Contains(string(data), "\"matchesALB\":false") || !strings.Contains(string(data), "\"checked\":false") { t.Fatalf("false state omitted: %s", data) }
+}
+
+func TestExternalCheckVerdict(t *testing.T) {
+ report := urlTraceReport{Verdict:"HEALTHY", DNS:&urlTraceDNS{Resolved:[]string{"203.0.113.1"}, Checked:true, MatchesALB:false}}
+ applyURLExternalCheckVerdict(&report)
+ if report.Verdict != "WARN" { t.Fatalf("DNS mismatch should warn, got %s", report.Verdict) }
+ report = urlTraceReport{Verdict:"HEALTHY", TLS:&urlTraceTLS{Error:"certificate expired"}}
+ applyURLExternalCheckVerdict(&report)
+ if report.Verdict != "FAILED" { t.Fatalf("TLS error should fail, got %s", report.Verdict) }
+}
+
+func TestTargetGroupBindingMatchesNamedServicePort(t *testing.T) {
+ gvr := schema.GroupVersionResource{Group:"elbv2.k8s.aws", Version:"v1beta1", Resource:"targetgroupbindings"}
+ binding := &unstructured.Unstructured{Object:map[string]interface{}{"apiVersion":"elbv2.k8s.aws/v1beta1", "kind":"TargetGroupBinding", "metadata":map[string]interface{}{"name":"api-tgb", "namespace":"prod"}, "spec":map[string]interface{}{"serviceRef":map[string]interface{}{"name":"api", "port":int64(8080)}, "targetGroupARN":"arn:aws:elasticloadbalancing:region:account:targetgroup/example/123"}}}
+ dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{gvr:"TargetGroupBindingList"}, binding)
+ backend := urlTraceBackend{Namespace:"prod", Service:"api", Port:"http", ServicePort:8080}
+ limitations := []string{}
+ resolveTargetGroupBindings(context.Background(), dyn, "prod", &backend, &limitations)
+ if len(backend.TargetGroupBindings) != 1 { t.Fatalf("expected named Service port binding, got %+v", backend.TargetGroupBindings) }
+}
+
+func TestPodDiagnosisBudgetLimit(t *testing.T) {
+ client := fake.NewSimpleClientset()
+ budget := 3
+ pod := &urlTracePod{Name:"limited"}
+ diagnoseURLPodWithBudget(context.Background(), client, "prod", pod, &budget)
+ if budget != 3 || len(pod.Findings) != 1 || !strings.Contains(pod.Findings[0], "limit reached") { t.Fatalf("expected diagnosis cap, budget=%d findings=%v", budget, pod.Findings) }
 }
 
 func TestHTTPRouteStatusConditions(t *testing.T) {
