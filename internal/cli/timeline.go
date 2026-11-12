@@ -11,6 +11,7 @@ import (
 	"github.com/Harry10799/ktrx/internal/timeline"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/dynamic"
 )
 
 func newTimelineCommand() *cobra.Command {
@@ -31,7 +32,11 @@ func newTimelineCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			report, err := (&timeline.Analyzer{Client: client}).AnalyzeDeployment(cmd.Context(), namespace, name)
+			restConfig, err := kube.NewRESTConfig(kubeconfig, contextName, 0)
+			if err != nil { return err }
+			dynamicClient, err := dynamic.NewForConfig(restConfig)
+			if err != nil { return fmt.Errorf("create dynamic Kubernetes client: %w", err) }
+			report, err := (&timeline.Analyzer{Client: client, Dynamic: dynamicClient}).AnalyzeDeployment(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
