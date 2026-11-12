@@ -530,15 +530,22 @@ func isURLDNSNotFound(err error) bool {
 
 func dnsMatchesALB(ctx context.Context, dns *urlTraceDNS, routes []urlTraceRoute) (bool, string, string) {
 	if dns == nil { return false, "", "DNS check unavailable" }
-	for _, route := range routes { for _, lbHost := range route.LoadBalancerHosts { if dns.CNAME != "" && strings.EqualFold(strings.TrimSuffix(lbHost, "."), dns.CNAME) { return true, "CNAME", "CNAME points directly to ALB hostname " + lbHost } } }
-	for _, route := range routes { for _, lbHost := range route.LoadBalancerHosts {
+	var loadBalancerHosts []string
+	for _, route := range routes { loadBalancerHosts = append(loadBalancerHosts, route.LoadBalancerHosts...) }
+	loadBalancerHosts = uniqueSorted(loadBalancerHosts)
+	if len(loadBalancerHosts) == 0 { return false, "", "No load balancer hostname is available for comparison" }
+	for _, lbHost := range loadBalancerHosts {
+		if dns.CNAME != "" && strings.EqualFold(strings.TrimSuffix(lbHost, "."), dns.CNAME) { return true, "CNAME", "CNAME points directly to ALB hostname " + lbHost }
+	}
+	for _, lbHost := range loadBalancerHosts {
 		if net.ParseIP(lbHost) != nil { dns.ALBResolved = append(dns.ALBResolved, lbHost); continue }
 		lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		ips, err := net.DefaultResolver.LookupHost(lookupCtx, lbHost)
 		cancel()
 		if err == nil { dns.ALBResolved = append(dns.ALBResolved, ips...) }
-	} }
+	}
 	dns.ALBResolved = uniqueSorted(dns.ALBResolved)
+	if len(dns.ALBResolved) == 0 { return false, "", "Could not resolve the load balancer hostname from this machine; DNS-to-ALB comparison is inconclusive" }
 	if ipSetsIntersect(dns.Resolved, dns.ALBResolved) { return true, "IP", "DNS and ALB hostname have overlapping IP addresses" }
 	if len(dns.Resolved) == 0 { return false, "", "DNS did not resolve" }
 	if dns.CNAME != "" { return false, "CNAME", "DNS points to CNAME " + dns.CNAME + " (resolved IPs: " + strings.Join(dns.Resolved, ", ") + ")" }
