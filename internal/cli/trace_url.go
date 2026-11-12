@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -105,10 +106,11 @@ func newTraceURLCommand() *cobra.Command {
 					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
 				}
 			}
-			sort.Slice(report.Routes, func(i,j int) bool {
-				if report.Routes[i].Kind != report.Routes[j].Kind { return report.Routes[i].Kind < report.Routes[j].Kind }
-				if report.Routes[i].Name != report.Routes[j].Name { return report.Routes[i].Name < report.Routes[j].Name }
-				return report.Routes[i].Path < report.Routes[j].Path
+			sort.SliceStable(report.Routes, func(i,j int) bool {
+				left, right := urlRoutePrecedence(report.Routes[i]), urlRoutePrecedence(report.Routes[j])
+				if left != right { return left > right }
+				if report.Routes[i].Namespace != report.Routes[j].Namespace { return report.Routes[i].Namespace < report.Routes[j].Namespace }
+				return report.Routes[i].Name < report.Routes[j].Name
 			})
 			switch {
 			case len(report.Routes) == 0 && len(report.Limitations) == 0:
@@ -309,6 +311,50 @@ func summarizeURLPod(pod *corev1.Pod, endpointReady bool) urlTracePod {
 		if condition.Type == corev1.PodReady { ready = condition.Status == corev1.ConditionTrue; break }
 	}
 	return urlTracePod{Name:pod.Name, Phase:string(pod.Status.Phase), Ready:ready, Restarts:restarts, EndpointReady:endpointReady}
+}
+
+func ingressClassName(ing *networkingv1.Ingress) string {
+	if ing.Spec.IngressClassName != nil { return *ing.Spec.IngressClassName }
+	return ""
+}
+
+func ingressLoadBalancerHosts(ing *networkingv1.Ingress) []string {
+	hosts := make([]string, 0, len(ing.Status.LoadBalancer.Ingress))
+	for _, item := range ing.Status.LoadBalancer.Ingress {
+		if item.Hostname != "" { hosts = append(hosts, item.Hostname) } else if item.IP != "" { hosts = append(hosts, item.IP) }
+	}
+	sort.Strings(hosts)
+	return hosts
+}
+
+func resolveTargetGroupBindings(ctx context.Context, dyn dynamic.Interface, namespace string, backend *urlTraceBackend, limitations *[]string) {
+	if dyn == nil { return }
+	gvr := schema.GroupVersionResource{Group:"elbv2.k8s.aws", Version:"v1beta1", Resource:"targetgroupbindings"}
+	list, err := dyn.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	if apierrors.IsNotFound(err) {
+		*limitations = appendUnique(*limitations, "AWS TargetGroupBinding CRD is not installed; ALB-to-Service associations are unavailable.")
+		return
+	}
+	if err != nil {
+		*limitations = appendUnique(*limitations, "AWS TargetGroupBinding discovery is unavailable (RBAC denied or API error).")
+		return
+	}
+	for _, item := range list.Items {
+		service, _, _ := unstructured.NestedString(item.Object, "spec", "serviceRef", "name")
+		if service != backend.Service { continue }
+		arn, _, _ := unstructured.NestedString(item.Object, "spec", "targetGroupARN")
+		targetType, _, _ := unstructured.NestedString(item.Object, "spec", "targetType")
+		backend.TargetGroupBindings = append(backend.TargetGroupBindings, urlTraceTargetGroupBinding{Name:item.GetName(), TargetGroupARN:arn, TargetType:targetType})
+	}
+	sort.Slice(backend.TargetGroupBindings, func(i,j int) bool { return backend.TargetGroupBindings[i].Name < backend.TargetGroupBindings[j].Name })
+}
+
+func urlRoutePrecedence(route urlTraceRoute) int {
+	hostRank := 2
+	if route.Host == "*" { hostRank = 0 } else if strings.HasPrefix(route.Host, "*.") { hostRank = 1 }
+	pathRank := 1
+	switch route.Match { case "Exact": pathRank = 3; case "Prefix", "PathPrefix": pathRank = 2; case "ImplementationSpecific": pathRank = 1 }
+	return hostRank*100000 + pathRank*10000 + len(route.Path)
 }
 
 func urlHostMatches(pattern, host string) bool {
