@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -126,7 +127,7 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 	addRecentChangesToPodReports(cmd.Context(), client, reports, target, namespace, kubeconfig, contextName)
 	switch strings.ToLower(output) {
 	case "json":
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		if all && len(reports) > 1 {
 			return enc.Encode(reports)
@@ -135,22 +136,22 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 	case "markdown":
 		for i, r := range reports {
 			if i > 0 {
-				fmt.Print("\n---\n")
+				fmt.Fprint(cmd.OutOrStdout(), "\n---\n")
 			}
-			if e := printMarkdown(r, includeLogs); e != nil {
+			if e := printMarkdown(cmd.OutOrStdout(), r, includeLogs); e != nil {
 				return e
 			}
 		}
 		return nil
 	case "terminal", "text":
 		if all && len(reports) > 1 && (strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/")) {
-			return printDeploymentTerminal(strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == "")
+			return printDeploymentTerminal(cmd.OutOrStdout(), strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == "")
 		}
 		for i, r := range reports {
 			if i > 0 {
-				fmt.Printf("\n%s\n", strings.Repeat("─", 72))
+				fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", strings.Repeat("─", 72))
 			}
-			if e := printTerminal(r, !noColor && os.Getenv("NO_COLOR") == "", includeLogs); e != nil {
+			if e := printTerminal(cmd.OutOrStdout(), r, !noColor && os.Getenv("NO_COLOR") == "", includeLogs); e != nil {
 				return e
 			}
 		}
@@ -183,7 +184,7 @@ func newTraceCommand() *cobra.Command {
 	return cmd
 }
 
-func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error {
+func printTerminal(w io.Writer, r *analyzer.PodReport, colorEnabled, includeLogs bool) error {
 	style := func(color string, bold bool, value string) string {
 		s := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 		if bold {
@@ -213,142 +214,142 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 		return style("196", true, "false")
 	}
 	section := func(s string) string { return style("99", true, s) }
-	fmt.Printf("%s  %s/%s\n", style("39", true, "ktrx"), r.Namespace, r.Name)
-	fmt.Printf("Verdict: %s (%d warnings, %d not checked, %d failed)\n", verdict(r.Verdict), r.WarningCount, r.UnknownCount, r.FailedCount)
-	fmt.Printf("\n%s\n", section("Issues:"))
+	fmt.Fprintf(w,"%s  %s/%s\n", style("39", true, "ktrx"), r.Namespace, r.Name)
+	fmt.Fprintf(w,"Verdict: %s (%d warnings, %d not checked, %d failed)\n", verdict(r.Verdict), r.WarningCount, r.UnknownCount, r.FailedCount)
+	fmt.Fprintf(w,"\n%s\n", section("Issues:"))
 	n := 0
 	for _, e := range r.Evidence {
 		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning {
 			n++
-			fmt.Printf("  • [%s] %s: %s\n", verdict(e.Verdict), e.Check, e.Summary)
+			fmt.Fprintf(w,"  • [%s] %s: %s\n", verdict(e.Verdict), e.Check, e.Summary)
 			if e.Suggestion != "" {
-				fmt.Printf("      Suggestion: %s\n", e.Suggestion)
+				fmt.Fprintf(w,"      Suggestion: %s\n", e.Suggestion)
 			}
 		}
 	}
 	if n == 0 {
-		fmt.Println("  • No failures or warnings detected")
+		fmt.Fprintln(w,"  • No failures or warnings detected")
 	}
-	fmt.Printf("\n%s\n", section("Info:"))
+	fmt.Fprintf(w,"\n%s\n", section("Info:"))
 	n = 0
 	for _, e := range r.Evidence {
 		if e.Verdict == analyzer.Info {
 			n++
-			fmt.Printf("  • %s: %s\n", e.Check, e.Summary)
+			fmt.Fprintf(w,"  • %s: %s\n", e.Check, e.Summary)
 		}
 	}
 	if n == 0 {
-		fmt.Println("  • None")
+		fmt.Fprintln(w,"  • None")
 	}
-	fmt.Printf("\n%s\n", section("Not checked:"))
+	fmt.Fprintf(w,"\n%s\n", section("Not checked:"))
 	n = 0
 	for _, e := range r.Evidence {
 		if e.Verdict == analyzer.Unknown {
 			n++
-			fmt.Printf("  • %s: %s\n", e.Check, e.Summary)
+			fmt.Fprintf(w,"  • %s: %s\n", e.Check, e.Summary)
 		}
 	}
 	if n == 0 {
-		fmt.Println("  • None")
+		fmt.Fprintln(w,"  • None")
 	}
-	fmt.Printf("\n%s\n", section("Details:"))
-	fmt.Printf("  Phase: %s  Ready: %s  Restarts: %d\n", r.Phase, boolean(r.Ready), r.Restarts)
-	fmt.Printf("  Node: %s  Pod IP: %s  QoS: %s  Age: %s\n", value(r.Node), value(r.PodIP), value(r.QOSClass), r.Age)
+	fmt.Fprintf(w,"\n%s\n", section("Details:"))
+	fmt.Fprintf(w,"  Phase: %s  Ready: %s  Restarts: %d\n", r.Phase, boolean(r.Ready), r.Restarts)
+	fmt.Fprintf(w,"  Node: %s  Pod IP: %s  QoS: %s  Age: %s\n", value(r.Node), value(r.PodIP), value(r.QOSClass), r.Age)
 	if len(r.OwnerChain) > 0 {
-		fmt.Printf("  Owner: %s\n", strings.Join(r.OwnerChain, " → "))
+		fmt.Fprintf(w,"  Owner: %s\n", strings.Join(r.OwnerChain, " → "))
 	}
-	fmt.Printf("\n%s\n", section("Containers:"))
+	fmt.Fprintf(w,"\n%s\n", section("Containers:"))
 	for _, v := range r.Containers {
-		fmt.Printf("  • %s image=%s state=%s ready=%s restarts=%d\n", style("39", true, v.Name), v.Image, v.State, boolean(v.Ready), v.RestartCount)
+		fmt.Fprintf(w,"  • %s image=%s state=%s ready=%s restarts=%d\n", style("39", true, v.Name), v.Image, v.State, boolean(v.Ready), v.RestartCount)
 	}
-	fmt.Printf("\n%s\n", section("Inbound Services:"))
+	fmt.Fprintf(w,"\n%s\n", section("Inbound Services:"))
 	if len(r.InboundServices) == 0 {
-		fmt.Println("  • No matching Services")
+		fmt.Fprintln(w,"  • No matching Services")
 	}
 	for _, v := range r.InboundServices {
-		fmt.Printf("  • %s type=%s endpoint=%s ready=%s ports=%s\n", style("39", true, v.Name), v.Type, boolean(v.EndpointFound), endpointReadyLabel(v), strings.Join(v.Ports, ", "))
+		fmt.Fprintf(w,"  • %s type=%s endpoint=%s ready=%s ports=%s\n", style("39", true, v.Name), v.Type, boolean(v.EndpointFound), endpointReadyLabel(v), strings.Join(v.Ports, ", "))
 	}
-	fmt.Printf("\n%s\n", section("Dependencies:"))
+	fmt.Fprintf(w,"\n%s\n", section("Dependencies:"))
 	if len(r.Dependencies) == 0 {
-		fmt.Println("  • No explicit same-namespace Service dependencies discovered")
+		fmt.Fprintln(w,"  • No explicit same-namespace Service dependencies discovered")
 	}
 	for _, d := range r.Dependencies {
-		fmt.Printf("  • %s [%s] %d/%d backends ready — %s\n", style("39", true, d.Service), verdict(d.Verdict), d.ReadyPods, d.SelectedPods, d.Summary)
+		fmt.Fprintf(w,"  • %s [%s] %d/%d backends ready — %s\n", style("39", true, d.Service), verdict(d.Verdict), d.ReadyPods, d.SelectedPods, d.Summary)
 		if len(d.References) > 0 {
-			fmt.Printf("      Referenced by: %s\n", strings.Join(d.References, ", "))
+			fmt.Fprintf(w,"      Referenced by: %s\n", strings.Join(d.References, ", "))
 		}
 		if len(d.UnreadyPods) > 0 {
-			fmt.Printf("      Unready: %s\n", strings.Join(d.UnreadyPods, ", "))
+			fmt.Fprintf(w,"      Unready: %s\n", strings.Join(d.UnreadyPods, ", "))
 		}
 	}
-	fmt.Printf("\n%s\n", section("Ingress Routes:"))
+	fmt.Fprintf(w,"\n%s\n", section("Ingress Routes:"))
 	if len(r.IngressRoutes) == 0 {
-		fmt.Println("  • No matching Ingress routes")
+		fmt.Fprintln(w,"  • No matching Ingress routes")
 	}
 	for _, v := range r.IngressRoutes {
-		fmt.Printf("  • %s host=%s path=%s service=%s:%s class=%s classExists=%s controller=%d/%d addresses=%s\n", style("39", true, v.Name), v.Host, v.Path, v.Service, v.ServicePort, value(v.Class), boolLabel(v.ClassExists), v.ControllerReady, v.ControllerPods, strings.Join(v.Addresses, ", "))
+		fmt.Fprintf(w,"  • %s host=%s path=%s service=%s:%s class=%s classExists=%s controller=%d/%d addresses=%s\n", style("39", true, v.Name), v.Host, v.Path, v.Service, v.ServicePort, value(v.Class), boolLabel(v.ClassExists), v.ControllerReady, v.ControllerPods, strings.Join(v.Addresses, ", "))
 	}
-	fmt.Printf("\n%s\n", section("Outbound / DNS:"))
-	fmt.Printf("  DNS policy: %s  hostNetwork: %t\n", value(r.Outbound.DNSPolicy), r.Outbound.HostNetwork)
+	fmt.Fprintf(w,"\n%s\n", section("Outbound / DNS:"))
+	fmt.Fprintf(w,"  DNS policy: %s  hostNetwork: %t\n", value(r.Outbound.DNSPolicy), r.Outbound.HostNetwork)
 	if len(r.Outbound.Nameservers) > 0 {
-		fmt.Printf("  Nameservers: %s\n", strings.Join(r.Outbound.Nameservers, ", "))
+		fmt.Fprintf(w,"  Nameservers: %s\n", strings.Join(r.Outbound.Nameservers, ", "))
 	}
 	if len(r.Outbound.Searches) > 0 {
-		fmt.Printf("  Search domains: %s\n", strings.Join(r.Outbound.Searches, ", "))
+		fmt.Fprintf(w,"  Search domains: %s\n", strings.Join(r.Outbound.Searches, ", "))
 	}
 	if len(r.Outbound.Options) > 0 {
-		fmt.Printf("  Options: %s\n", strings.Join(r.Outbound.Options, ", "))
+		fmt.Fprintf(w,"  Options: %s\n", strings.Join(r.Outbound.Options, ", "))
 	}
 	if len(r.Outbound.Policies) == 0 {
-		fmt.Println("  • No matching NetworkPolicies")
+		fmt.Fprintln(w,"  • No matching NetworkPolicies")
 	}
 	for _, p := range r.Outbound.Policies {
 		state := "not egress-isolating"
 		if p.EgressIsolating {
 			state = "egress-isolating"
 		}
-		fmt.Printf("  • %s (%s, %d rule(s))\n", p.Name, state, p.RuleCount)
+		fmt.Fprintf(w,"  • %s (%s, %d rule(s))\n", p.Name, state, p.RuleCount)
 		if len(p.Destinations) > 0 {
-			fmt.Printf("      To: %s\n", strings.Join(p.Destinations, "; "))
+			fmt.Fprintf(w,"      To: %s\n", strings.Join(p.Destinations, "; "))
 		}
 		if len(p.Ports) > 0 {
-			fmt.Printf("      Ports: %s\n", strings.Join(p.Ports, ", "))
+			fmt.Fprintf(w,"      Ports: %s\n", strings.Join(p.Ports, ", "))
 		}
 	}
-	fmt.Printf("\n%s\n", section("Events:"))
+	fmt.Fprintf(w,"\n%s\n", section("Events:"))
 	if len(r.Events) == 0 {
 		if includeLogs {
-			fmt.Println("  • No events found")
+			fmt.Fprintln(w,"  • No events found")
 		} else {
-			fmt.Println("  • No Warning events (use --verbose to include Normal events)")
+			fmt.Fprintln(w,"  • No Warning events (use --verbose to include Normal events)")
 		}
 	}
 	for _, v := range r.Events {
-		fmt.Printf("  • %s %s count=%d %s %s\n", v.Type, v.Timestamp, v.Count, v.Reason, strings.ReplaceAll(v.Message, "bytes", " bytes"))
+		fmt.Fprintf(w,"  • %s %s count=%d %s %s\n", v.Type, v.Timestamp, v.Count, v.Reason, strings.ReplaceAll(v.Message, "bytes", " bytes"))
 	}
-	fmt.Printf("\n%s\n", section("Recent Deployment Changes:"))
+	fmt.Fprintf(w,"\n%s\n", section("Recent Deployment Changes:"))
 	if r.RecentFailureStartedAt != "" {
-		fmt.Printf("  Failure started: %s (current unhealthy evidence)\n", r.RecentFailureStartedAt)
+		fmt.Fprintf(w,"  Failure started: %s (current unhealthy evidence)\n", r.RecentFailureStartedAt)
 	}
 	if len(r.RecentChanges) == 0 {
-		fmt.Println("  • No recent changes found")
+		fmt.Fprintln(w,"  • No recent changes found")
 	} else {
 		for _, change := range r.RecentChanges {
-			fmt.Printf("  • %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
+			fmt.Fprintf(w,"  • %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
 		}
 	}
 	if len(r.RecentCorrelations) > 0 {
-		fmt.Println("  Potential correlations (not causation):")
+		fmt.Fprintln(w,"  Potential correlations (not causation):")
 		for _, item := range r.RecentCorrelations {
-			fmt.Printf("    #%d %s %s — %s\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
+			fmt.Fprintf(w,"    #%d %s %s — %s\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
 		}
 	}
 	if r.RecentChangesNote != "" {
-		fmt.Printf("  Note: %s\n", r.RecentChangesNote)
+		fmt.Fprintf(w,"  Note: %s\n", r.RecentChangesNote)
 	}
-	fmt.Printf("\n%s\n", section("Logs:"))
+	fmt.Fprintf(w,"\n%s\n", section("Logs:"))
 	if !includeLogs {
-		fmt.Println("  • Error/non-2xx matches only; use --logs for full logs")
+		fmt.Fprintln(w,"  • Error/non-2xx matches only; use --logs for full logs")
 	}
 	found := false
 	for _, v := range r.Logs {
@@ -356,123 +357,123 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 			found = true
 		}
 		if v.Current != "" {
-			fmt.Printf("  %s current:\n%s\n", v.Name, indent(v.Current, "    "))
+			fmt.Fprintf(w,"  %s current:\n%s\n", v.Name, indent(v.Current, "    "))
 		}
 		if v.Previous != "" {
-			fmt.Printf("  %s previous:\n%s\n", v.Name, indent(v.Previous, "    "))
+			fmt.Fprintf(w,"  %s previous:\n%s\n", v.Name, indent(v.Previous, "    "))
 		}
 		if v.CurrentError != "" {
-			fmt.Printf("  %s current log error: %s\n", v.Name, v.CurrentError)
+			fmt.Fprintf(w,"  %s current log error: %s\n", v.Name, v.CurrentError)
 		}
 		if v.PreviousError != "" {
-			fmt.Printf("  %s previous log error: %s\n", v.Name, v.PreviousError)
+			fmt.Fprintf(w,"  %s previous log error: %s\n", v.Name, v.PreviousError)
 		}
 	}
 	if !found {
 		if includeLogs {
-			fmt.Println("  • No log output")
+			fmt.Fprintln(w,"  • No log output")
 		} else {
-			fmt.Println("  • No error/non-2xx lines detected")
+			fmt.Fprintln(w,"  • No error/non-2xx lines detected")
 		}
 	}
 	return nil
 }
-func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
-	fmt.Printf("# Pod trace: %s/%s\n\n**Verdict:** %s (%d warnings, %d not checked, %d failed)\n\n", r.Namespace, r.Name, r.Verdict, r.WarningCount, r.UnknownCount, r.FailedCount)
-	fmt.Println("## Issues")
+func printMarkdown(w io.Writer, r *analyzer.PodReport, includeLogs bool) error {
+	fmt.Fprintf(w,"# Pod trace: %s/%s\n\n**Verdict:** %s (%d warnings, %d not checked, %d failed)\n\n", r.Namespace, r.Name, r.Verdict, r.WarningCount, r.UnknownCount, r.FailedCount)
+	fmt.Fprintln(w,"## Issues")
 	for _, e := range r.Evidence {
 		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning {
-			fmt.Printf("- **%s — %s:** %s\n", e.Verdict, e.Check, e.Summary)
+			fmt.Fprintf(w,"- **%s — %s:** %s\n", e.Verdict, e.Check, e.Summary)
 			if e.Suggestion != "" {
-				fmt.Printf("  - Suggestion: %s\n", e.Suggestion)
+				fmt.Fprintf(w,"  - Suggestion: %s\n", e.Suggestion)
 			}
 		}
 	}
-	fmt.Println("\n## Info")
+	fmt.Fprintln(w,"\n## Info")
 	for _, e := range r.Evidence {
 		if e.Verdict == analyzer.Info {
-			fmt.Printf("- **%s:** %s\n", e.Check, e.Summary)
+			fmt.Fprintf(w,"- **%s:** %s\n", e.Check, e.Summary)
 		}
 	}
-	fmt.Println("\n## Not checked")
+	fmt.Fprintln(w,"\n## Not checked")
 	for _, e := range r.Evidence {
 		if e.Verdict == analyzer.Unknown {
-			fmt.Printf("- **%s:** %s\n", e.Check, e.Summary)
+			fmt.Fprintf(w,"- **%s:** %s\n", e.Check, e.Summary)
 		}
 	}
-	fmt.Println("\n## Details")
-	fmt.Printf("- Phase: %s; Ready: %t; Restarts: %d; Node: %s; Pod IP: %s; QoS: %s; Age: %s\n", r.Phase, r.Ready, r.Restarts, value(r.Node), value(r.PodIP), value(r.QOSClass), r.Age)
-	fmt.Println("\n### Containers")
+	fmt.Fprintln(w,"\n## Details")
+	fmt.Fprintf(w,"- Phase: %s; Ready: %t; Restarts: %d; Node: %s; Pod IP: %s; QoS: %s; Age: %s\n", r.Phase, r.Ready, r.Restarts, value(r.Node), value(r.PodIP), value(r.QOSClass), r.Age)
+	fmt.Fprintln(w,"\n### Containers")
 	for _, v := range r.Containers {
-		fmt.Printf("- **%s** — %s; state: %s; ready: %t; restarts: %d\n", v.Name, v.Image, v.State, v.Ready, v.RestartCount)
+		fmt.Fprintf(w,"- **%s** — %s; state: %s; ready: %t; restarts: %d\n", v.Name, v.Image, v.State, v.Ready, v.RestartCount)
 	}
-	fmt.Println("\n### Inbound Services")
+	fmt.Fprintln(w,"\n### Inbound Services")
 	for _, v := range r.InboundServices {
-		fmt.Printf("- **%s** (%s): endpoint=%t, ready=%s; ports: %s\n", v.Name, v.Type, v.EndpointFound, endpointReadyLabel(v), strings.Join(v.Ports, ", "))
+		fmt.Fprintf(w,"- **%s** (%s): endpoint=%t, ready=%s; ports: %s\n", v.Name, v.Type, v.EndpointFound, endpointReadyLabel(v), strings.Join(v.Ports, ", "))
 	}
-	fmt.Println("\n### Dependencies")
+	fmt.Fprintln(w,"\n### Dependencies")
 	for _, d := range r.Dependencies {
-		fmt.Printf("- **%s** — %s (%d/%d ready); references: %s\n", d.Service, d.Summary, d.ReadyPods, d.SelectedPods, strings.Join(d.References, ", "))
+		fmt.Fprintf(w,"- **%s** — %s (%d/%d ready); references: %s\n", d.Service, d.Summary, d.ReadyPods, d.SelectedPods, strings.Join(d.References, ", "))
 	}
-	fmt.Println("\n### Ingress Routes")
-	fmt.Println("\n### Outbound / DNS")
-	fmt.Printf("- DNS policy: %s; hostNetwork: %t\n", value(r.Outbound.DNSPolicy), r.Outbound.HostNetwork)
+	fmt.Fprintln(w,"\n### Ingress Routes")
+	fmt.Fprintln(w,"\n### Outbound / DNS")
+	fmt.Fprintf(w,"- DNS policy: %s; hostNetwork: %t\n", value(r.Outbound.DNSPolicy), r.Outbound.HostNetwork)
 	for _, p := range r.Outbound.Policies {
-		fmt.Printf("- **%s** — egress isolation: %t; rules: %d; destinations: %s; ports: %s\n", p.Name, p.EgressIsolating, p.RuleCount, strings.Join(p.Destinations, ", "), strings.Join(p.Ports, ", "))
+		fmt.Fprintf(w,"- **%s** — egress isolation: %t; rules: %d; destinations: %s; ports: %s\n", p.Name, p.EgressIsolating, p.RuleCount, strings.Join(p.Destinations, ", "), strings.Join(p.Ports, ", "))
 	}
 	for _, v := range r.IngressRoutes {
-		fmt.Printf("- **%s** — host: %s; path: %s; service: %s:%s; class: %s; class exists: %s; controller ready: %d/%d; addresses: %s\n", v.Name, v.Host, v.Path, v.Service, v.ServicePort, value(v.Class), boolLabel(v.ClassExists), v.ControllerReady, v.ControllerPods, strings.Join(v.Addresses, ", "))
+		fmt.Fprintf(w,"- **%s** — host: %s; path: %s; service: %s:%s; class: %s; class exists: %s; controller ready: %d/%d; addresses: %s\n", v.Name, v.Host, v.Path, v.Service, v.ServicePort, value(v.Class), boolLabel(v.ClassExists), v.ControllerReady, v.ControllerPods, strings.Join(v.Addresses, ", "))
 	}
-	fmt.Println("\n### Events")
+	fmt.Fprintln(w,"\n### Events")
 	for _, v := range r.Events {
-		fmt.Printf("- **%s %s** — %s (count: %d): %s\n", v.Type, v.Timestamp, v.Reason, v.Count, strings.ReplaceAll(v.Message, "bytes", " bytes"))
+		fmt.Fprintf(w,"- **%s %s** — %s (count: %d): %s\n", v.Type, v.Timestamp, v.Reason, v.Count, strings.ReplaceAll(v.Message, "bytes", " bytes"))
 	}
-	fmt.Println("\n### Recent Deployment Changes")
+	fmt.Fprintln(w,"\n### Recent Deployment Changes")
 	if r.RecentFailureStartedAt != "" {
-		fmt.Printf("- Failure started: %s (current unhealthy evidence)\n", r.RecentFailureStartedAt)
+		fmt.Fprintf(w,"- Failure started: %s (current unhealthy evidence)\n", r.RecentFailureStartedAt)
 	}
 	for _, change := range r.RecentChanges {
-		fmt.Printf("- %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
+		fmt.Fprintf(w,"- %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
 	}
 	if len(r.RecentCorrelations) > 0 {
-		fmt.Println("\n#### Potential correlations (not causation)")
+		fmt.Fprintln(w,"\n#### Potential correlations (not causation)")
 		for _, item := range r.RecentCorrelations {
-			fmt.Printf("- #%d %s %s — %s\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
+			fmt.Fprintf(w,"- #%d %s %s — %s\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
 		}
 	}
 	if r.RecentChangesNote != "" {
-		fmt.Printf("\n%s\n", r.RecentChangesNote)
+		fmt.Fprintf(w,"\n%s\n", r.RecentChangesNote)
 	}
-	fmt.Println("\n### Logs")
+	fmt.Fprintln(w,"\n### Logs")
 	if !includeLogs {
-		fmt.Println("Error/non-2xx matches only; use --logs for full logs.")
+		fmt.Fprintln(w,"Error/non-2xx matches only; use --logs for full logs.")
 	}
 	for _, v := range r.Logs {
 		if v.Current != "" {
-			fmt.Printf("\n#### %s — current\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n", v.Name, v.Current)
+			fmt.Fprintf(w,"\n#### %s — current\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n", v.Name, v.Current)
 		}
 		if v.Previous != "" {
-			fmt.Printf("\n#### %s — previous\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n", v.Name, v.Previous)
+			fmt.Fprintf(w,"\n#### %s — previous\n\n\\x60\\x60\\x60text\n%s\n\\x60\\x60\\x60\n", v.Name, v.Previous)
 		}
 	}
 	return nil
 }
 func indent(s, prefix string) string { return prefix + strings.ReplaceAll(s, "\n", "\n"+prefix) }
 
-func printLogLines(label, content, errText string) {
+func printLogLines(w io.Writer, label, content, errText string) {
 	if errText != "" {
-		fmt.Printf("%s%s\n", label, errText)
+		fmt.Fprintf(w,"%s%s\n", label, errText)
 		return
 	}
 	if strings.TrimSpace(content) == "" {
-		fmt.Printf("%s<empty>\n", label)
+		fmt.Fprintf(w,"%s<empty>\n", label)
 		return
 	}
 	for i, line := range strings.Split(content, "\n") {
 		if i == 0 {
-			fmt.Printf("%s%s\n", label, line)
+			fmt.Fprintf(w,"%s%s\n", label, line)
 		} else {
-			fmt.Printf("%s\n", strings.Repeat(" ", len(label))+line)
+			fmt.Fprintf(w,"%s\n", strings.Repeat(" ", len(label))+line)
 		}
 	}
 }
@@ -504,15 +505,15 @@ func value(s string) string {
 	return s
 }
 
-func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEnabled bool) error {
+func printDeploymentTerminal(w io.Writer, name string, reports []*analyzer.PodReport, colorEnabled bool) error {
 	style := func(color, value string) string {
 		if !colorEnabled {
 			return value
 		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Printf("%s %s  %s\n", style("39", "◆ KTRX"), style("99", "DEPLOYMENT"), name)
-	fmt.Printf("%s %d replicas inspected\n", style("245", "↳"), len(reports))
+	fmt.Fprintf(w,"%s %s  %s\n", style("39", "◆ KTRX"), style("99", "DEPLOYMENT"), name)
+	fmt.Fprintf(w,"%s %d replicas inspected\n", style("245", "↳"), len(reports))
 
 	common := map[string]bool{}
 	for _, e := range reports[0].Evidence {
@@ -530,60 +531,60 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 		}
 	}
 
-	fmt.Printf("\n%s\n", style("99", "SHARED FINDINGS"))
+	fmt.Fprintf(w,"\n%s\n", style("99", "SHARED FINDINGS"))
 	printed := 0
 	for _, e := range reports[0].Evidence {
 		if !common[evidenceKey(e)] {
 			continue
 		}
 		if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info || e.Verdict == analyzer.Unknown {
-			fmt.Printf("  %s  %s: %s\n", deploymentVerdictStyle(style, e.Verdict), e.Check, e.Summary)
+			fmt.Fprintf(w,"  %s  %s: %s\n", deploymentVerdictStyle(style, e.Verdict), e.Check, e.Summary)
 			if e.Suggestion != "" {
-				fmt.Printf("      ↳ %s\n", e.Suggestion)
+				fmt.Fprintf(w,"      ↳ %s\n", e.Suggestion)
 			}
 			printed++
 		}
 	}
 	if printed == 0 {
-		fmt.Println("  ✓ No shared findings")
+		fmt.Fprintln(w,"  ✓ No shared findings")
 	}
 
 	if len(reports[0].RecentChanges) > 0 || reports[0].RecentChangesNote != "" {
-		fmt.Printf("\n%s\n", style("99", "RECENT DEPLOYMENT CHANGES"))
+		fmt.Fprintf(w,"\n%s\n", style("99", "RECENT DEPLOYMENT CHANGES"))
 		for _, change := range reports[0].RecentChanges {
-			fmt.Printf("  • %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
+			fmt.Fprintf(w,"  • %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
 		}
 		if reports[0].RecentChangesNote != "" {
-			fmt.Printf("  Note: %s\n", reports[0].RecentChangesNote)
+			fmt.Fprintf(w,"  Note: %s\n", reports[0].RecentChangesNote)
 		}
 		for _, item := range reports[0].RecentCorrelations {
-			fmt.Printf("  #%d %s %s — %s (potential correlation, not causation)\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
+			fmt.Fprintf(w,"  #%d %s %s — %s (potential correlation, not causation)\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
 		}
 	}
 	for _, r := range reports {
-		fmt.Printf("\n%s %s\n", style("39", "POD"), shortPodName(r.Name))
+		fmt.Fprintf(w,"\n%s %s\n", style("39", "POD"), shortPodName(r.Name))
 		unique := 0
 		for _, e := range r.Evidence {
 			if common[evidenceKey(e)] {
 				continue
 			}
 			if e.Verdict == analyzer.Failed || e.Verdict == analyzer.Warning || e.Verdict == analyzer.Info || e.Verdict == analyzer.Unknown {
-				fmt.Printf("  %s  %s: %s\n", deploymentVerdictStyle(style, e.Verdict), e.Check, e.Summary)
+				fmt.Fprintf(w,"  %s  %s: %s\n", deploymentVerdictStyle(style, e.Verdict), e.Check, e.Summary)
 				unique++
 			}
 		}
 		if unique == 0 {
-			fmt.Println("  • No pod-specific differences")
+			fmt.Fprintln(w,"  • No pod-specific differences")
 		}
 		readyLabel := "NOT READY"
 		readyVerdict := analyzer.Failed
 		if r.Ready {
 			readyLabel, readyVerdict = "READY", analyzer.Healthy
 		}
-		fmt.Printf("  %s  phase=%s  restarts=%d\n", deploymentVerdictStyle(style, readyVerdict)+" "+readyLabel, r.Phase, r.Restarts)
-		fmt.Printf("  Node: %s  IP: %s\n", value(r.Node), value(r.PodIP))
+		fmt.Fprintf(w,"  %s  phase=%s  restarts=%d\n", deploymentVerdictStyle(style, readyVerdict)+" "+readyLabel, r.Phase, r.Restarts)
+		fmt.Fprintf(w,"  Node: %s  IP: %s\n", value(r.Node), value(r.PodIP))
 	}
-	fmt.Printf("\n%s\n", style("245", "Tip: ktrx POD_NAME -n NAMESPACE --logs shows full per-Pod logs."))
+	fmt.Fprintf(w,"\n%s\n", style("245", "Tip: ktrx POD_NAME -n NAMESPACE --logs shows full per-Pod logs."))
 	return nil
 }
 
