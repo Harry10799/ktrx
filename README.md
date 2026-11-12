@@ -18,6 +18,7 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 - **Comparison:** Compare a known-good Pod with a candidate to surface configuration and evidence differences.
 - **Change timeline:** Compare retained Deployment-owned ReplicaSet revisions, Pod-template annotations/checksums, Deployment scaling events, Pod Warning events and restarts. Optionally read Flux Kustomization and HelmRelease history, including Git revisions. Referenced ConfigMap/Secret metadata is shown without displaying values.
 - **Preflight:** Check Kubernetes API connectivity and the RBAC permissions KTRX uses.
+- **AWS load balancer health (opt-in):** With `trace-url --aws`, read AWS ELB target-group health, preserve target states/reason codes, and correlate IP targets with Kubernetes Pod IPs.
 - **Output:** Colorized terminal, JSON and Markdown (command-specific output support is noted below).
 
 ## Tool comparison
@@ -164,11 +165,17 @@ ktrx compare api-good-abc api-bad-xyz -n production
 ktrx trace-url https://api.example.com/health -n production
 ktrx trace-url https://api.example.com/health -n production --output json
 ktrx trace-url https://api.example.com/health --all-namespaces --ingress-class alb
+
+# Opt in to AWS ELB target health for discovered TargetGroupBindings
+ktrx trace-url https://api.example.com/health -n production --aws
+
+# Override the region parsed from TargetGroupBinding ARNs
+ktrx trace-url https://api.example.com/health -n production --aws --aws-region ap-south-1
 ~~~
 
 KTRX performs read-only route discovery and follows matching Kubernetes Ingress or Gateway API HTTPRoute rules to their Service backends, EndpointSlices and referenced Pods. Host and path matching is applied before resolving backends. Routes are ordered by host specificity and path precedence. The trace includes ready and not-ready EndpointSlice targets, Pod readiness/restarts, IngressClass, Ingress load-balancer hostnames and matching AWS TargetGroupBinding metadata when its CRD is installed. Use `--all-namespaces` to search cluster-wide or `--ingress-class CLASS` to filter Ingresses.
 
-KTRX marks the highest-precedence matching route as **selected** and labels additional matches separately. For Gateway API routes, it inspects parent status conditions (`Accepted` and `ResolvedRefs`) and validates cross-namespace Service references against `ReferenceGrant` objects. For AWS Load Balancer Controller installations, it shows the Ingress ALB hostname, configured ALB health-check path, readiness-probe path comparison, and matching `TargetGroupBinding` metadata. Unhealthy or not-ready Pods are linked to KTRX Pod-analyzer findings where available.
+KTRX marks the highest-precedence matching route as **selected** and labels additional matches separately. For Gateway API routes, it inspects parent status conditions (`Accepted` and `ResolvedRefs`) and validates cross-namespace Service references against `ReferenceGrant` objects. For AWS Load Balancer Controller installations, it shows the Ingress ALB hostname, configured ALB health-check path, readiness-probe path comparison, and matching `TargetGroupBinding` metadata. With the explicit `--aws` flag, KTRX also calls the read-only ELBv2 `DescribeTargetHealth` API for those target groups, reports target state/reason/description, and maps IP-type targets to Pod IPs where possible. AWS API or credential failures are reported as limitations and do not independently downgrade the Kubernetes verdict.
 
 Optional live checks can be requested explicitly:
 
@@ -200,9 +207,9 @@ TargetGroupBinding (Kubernetes-side association)
  v
 AWS Target Group
  |
- +-- Target 10.0.1.10  HEALTHY       [AWS API check: planned optional --aws]
+ +-- Target 10.0.1.10  healthy       [--aws: DescribeTargetHealth]
  |
- +-- Target 10.0.1.11  UNHEALTHY     [reason, e.g. Target.Timeout: planned]
+ +-- Target 10.0.1.11  unhealthy     [reason, e.g. Target.Timeout]
  |
  v
 Kubernetes Service
@@ -214,7 +221,7 @@ EndpointSlice (ready / not-ready addresses)
 Pod (phase, readiness, restarts and KTRX findings)
 ~~~
 
-**AWS target-health boundary:** the current command reads `TargetGroupBinding` objects from Kubernetes and can show the associated target-group ARN. It does **not** currently call the AWS API, inspect listener rules directly, or retrieve per-target `HEALTHY`/`UNHEALTHY` state and reason codes such as `Target.Timeout`. Those are a planned opt-in AWS integration; the diagram labels that part explicitly so Kubernetes-side evidence is not confused with AWS control-plane evidence. HTTPRoute support is optional and requires the Gateway API CRDs and read permissions. Missing APIs or denied access are reported as limitations rather than treated as application failures.
+**AWS integration boundary:** `--aws` is strictly opt-in. Without it, KTRX does not load AWS configuration, resolve AWS credentials or make AWS SDK calls. When enabled, KTRX uses the standard AWS SDK credential chain (environment, shared config/credentials, web identity, or attached workload/instance role) and the target-group ARN region by default; `--aws-region` can override that region. The current AWS integration calls only the read-only ELBv2 `DescribeTargetHealth` API. It does not yet inspect ALB listener rules, resolve instance-type targets to EC2 instances, or analyze Security Group reachability. IP targets are correlated with Kubernetes Pod IPs where they match. AWS credentials/API failures and missing optional permissions remain limitations; they do not by themselves mark the Kubernetes route as failed. The AWS permission needed for this stage is `elasticloadbalancing:DescribeTargetHealth` on the relevant target groups. HTTPRoute support is optional and requires the Gateway API CRDs and read permissions.
 
 ### 7. Inspect Deployment change history
 
@@ -289,6 +296,7 @@ The caller needs read permissions for the resources used by the selected checks,
 - Pod listing across namespaces for Ingress controller discovery.
 - pods/exec create permission for ktrx netcheck.
 - SelfSubjectAccessReview creation for ktrx doctor.
+- When using `trace-url --aws`: AWS IAM permission `elasticloadbalancing:DescribeTargetHealth` for the target groups being inspected. This is not required for normal KTRX commands.
 
 Use ktrx doctor -n NAMESPACE to inspect the required permissions. Grant only the permissions appropriate for your environment. KTRX does not read or print Secret values.
 
@@ -314,6 +322,7 @@ KTRX is an aid for investigation, not an autonomous root-cause oracle.
 - Ingress controller Pod discovery currently supports ingress-nginx. Other controllers can still have their Ingress routes inspected, but controller-Pod health discovery is not implemented for them.
 - Kubernetes API visibility and RBAC restrictions can cause checks to be reported as UNKNOWN.
 - Gateway API HTTPRoute discovery includes parent `Accepted` / `ResolvedRefs` condition checks and cross-namespace Service `ReferenceGrant` validation. Full live Gateway listener data-plane verification and Hubble integration are not currently implemented.
+- AWS integration currently reads ELBv2 target health only. ALB listener-rule inspection, EC2 instance target-to-Pod correlation, and Security Group connectivity analysis remain future work.
 
 ## Contributing
 
