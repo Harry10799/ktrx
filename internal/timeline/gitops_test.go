@@ -15,8 +15,9 @@ func TestCommitHashExtractsFluxRevision(t *testing.T) {
 		revision string
 		want     string
 	}{
-		{revision: "main@sha1:0123456789abcdef", want: "0123456789abcdef"},
+		{revision: "main@sha1:0123456789abcdef0123456789abcdef01234567", want: "0123456789abcdef0123456789abcdef01234567"},
 		{revision: "release@sha256:abcdef012345", want: ""},
+		{revision: "main@sha1:not-a-valid-commit", want: ""},
 		{revision: "main@branch", want: ""},
 	}
 	for _, test := range tests {
