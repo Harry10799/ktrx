@@ -73,8 +73,10 @@ func addConfigResourceEvents(ctx context.Context, client metadata.Interface, rep
 		object, err := client.Resource(gvr).Namespace(report.Namespace).Get(ctx, ref.name, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) && ref.required {
+				failureAt := timePointer(report.GeneratedAt)
+				report.FailureStartedAt = earlierTime(report.FailureStartedAt, failureAt)
 				report.Events = append(report.Events, TimelineEvent{
-					Timestamp: timePointer(report.GeneratedAt), Type: EventFailure,
+					Timestamp: failureAt, Type: EventFailure,
 					Resource: ref.kind + "/" + ref.name,
 					Action: "Required referenced configuration resource is missing",
 					Source: "metadata-api", Confidence: "observed",
@@ -86,6 +88,7 @@ func addConfigResourceEvents(ctx context.Context, client metadata.Interface, rep
 			continue
 		}
 		latestTime := latestManagedFieldsTime(object.ManagedFields)
+		if latestTime == nil { latestTime = timePointer(object.CreationTimestamp.Time) }
 		if latestTime == nil || latestTime.Before(since) { continue }
 		managers := map[string]struct{}{}
 		for _, entry := range object.ManagedFields {
