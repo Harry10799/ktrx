@@ -55,11 +55,15 @@ func newCompareCommand() *cobra.Command {
 			case "json":
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
-				return enc.Encode(result)
+				if err := enc.Encode(result); err != nil { return err }
 			case "markdown":
-				return printComparisonMarkdown(cmd.OutOrStdout(), result)
+				if err := printComparisonMarkdown(cmd.OutOrStdout(), result); err != nil { return err }
 			case "terminal", "text":
-				return printComparisonTerminal(cmd.OutOrStdout(), result, !noColor && os.Getenv("NO_COLOR") == "")
+				if err := printComparisonTerminal(cmd.OutOrStdout(), result, !noColor && os.Getenv("NO_COLOR") == ""); err != nil { return err }
+			default:
+				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
+			}
+			return verdictExitError(string(candidate.Verdict))
 			default:
 				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 			}
