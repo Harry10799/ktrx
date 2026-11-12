@@ -48,6 +48,22 @@ type ContainerLogs struct {
 	PreviousError string `json:"previousError,omitempty" yaml:"previousError,omitempty"`
 }
 
+
+type RecentChange struct {
+	Timestamp string `json:"timestamp" yaml:"timestamp"`
+	Type      string `json:"type" yaml:"type"`
+	Resource  string `json:"resource" yaml:"resource"`
+	Summary   string `json:"summary" yaml:"summary"`
+}
+
+type RecentCorrelation struct {
+	Rank      int    `json:"rank" yaml:"rank"`
+	Timestamp string `json:"timestamp" yaml:"timestamp"`
+	Resource  string `json:"resource" yaml:"resource"`
+	Summary   string `json:"summary" yaml:"summary"`
+	Disclaimer string `json:"disclaimer" yaml:"disclaimer"`
+}
+
 type PodReport struct {
 	Namespace       string            `json:"namespace" yaml:"namespace"`
 	Name            string            `json:"name" yaml:"name"`
@@ -67,6 +83,10 @@ type PodReport struct {
 	IngressRoutes   []IngressTrace    `json:"ingressRoutes,omitempty" yaml:"ingressRoutes,omitempty"`
 	Outbound        OutboundTrace     `json:"outbound" yaml:"outbound"`
 	Events          []EventInfo       `json:"events,omitempty" yaml:"events,omitempty"`
+	RecentChanges   []RecentChange    `json:"recentChanges,omitempty" yaml:"recentChanges,omitempty"`
+	RecentCorrelations []RecentCorrelation `json:"recentCorrelations,omitempty" yaml:"recentCorrelations,omitempty"`
+	RecentFailureStartedAt string `json:"recentFailureStartedAt,omitempty" yaml:"recentFailureStartedAt,omitempty"`
+	RecentChangesNote string `json:"recentChangesNote,omitempty" yaml:"recentChangesNote,omitempty"`
 	Logs            []ContainerLogs   `json:"logs,omitempty" yaml:"logs,omitempty"`
 	Evidence        []Evidence        `json:"evidence" yaml:"evidence"`
 	Verdict         Verdict           `json:"verdict" yaml:"verdict"`
