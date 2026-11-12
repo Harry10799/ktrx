@@ -353,6 +353,7 @@ users:
 	}
 
 	command := newTraceURLCommand()
+	command.SilenceUsage = true
 	var stdout, stderr bytes.Buffer
 	command.SetOut(&stdout)
 	command.SetErr(&stderr)
