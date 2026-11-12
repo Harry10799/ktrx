@@ -28,23 +28,25 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 - A Kubernetes cluster and a working kubeconfig (kubectl should connect to the intended cluster).
 - Kubernetes permissions for the checks you want to run. See [RBAC permissions](#safety-and-rbac-permissions).
 
-### Install with Go
+### Install from source
+
+The repository is currently named `kubetrace`, while the installed executable is `ktrx`. Clone the repository URL that exists today, then install the local module:
 
 ~~~bash
-go install github.com/Harry10799/ktrx/cmd/ktrx@latest
+git clone https://github.com/Harry10799/kubetrace.git
+cd kubetrace
+go install ./cmd/ktrx
 ~~~
 
-Ensure $(go env GOPATH)/bin is in your PATH, then verify:
+Ensure `$(go env GOPATH)/bin` is in your PATH, then verify:
 
 ~~~bash
 ktrx --help
 ~~~
 
-### Build from source
+To build a local binary instead:
 
 ~~~bash
-git clone https://github.com/Harry10799/ktrx.git
-cd ktrx
 go build -o ktrx ./cmd/ktrx
 ./ktrx --help
 ~~~
