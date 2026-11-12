@@ -154,8 +154,10 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	}
 
 	pods, podErr := a.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
-	if podErr == nil {
-		for _, pod := range pods.Items {
+	podItems := []corev1.Pod{}
+	if podErr == nil && pods != nil {
+		podItems = pods.Items
+		for _, pod := range podItems {
 			if !podOwnedByReplicaSet(pod, ownedUIDs) {
 				continue
 			}
@@ -200,7 +202,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			if !relevant && item.InvolvedObject.Kind != "Pod" {
 				continue
 			}
-			if item.InvolvedObject.Kind == "Pod" && !podMatchesDeployment(item.InvolvedObject.Name, pods.Items) {
+			if item.InvolvedObject.Kind == "Pod" && !podMatchesDeployment(item.InvolvedObject.Name, podItems) {
 				continue
 			}
 			if item.Type != corev1.EventTypeWarning && item.Reason != "ScalingReplicaSet" && item.Reason != "SuccessfulCreate" && item.Reason != "SuccessfulDelete" {
