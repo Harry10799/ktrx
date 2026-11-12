@@ -24,6 +24,7 @@ func TestDoctorIncludesTimelineAndOptionalGitOpsPermissions(t *testing.T) {
 	}
 	for _, item := range []struct{ group, resource string }{
 		{"gateway.networking.k8s.io", "httproutes"},
+		{"gateway.networking.k8s.io", "referencegrants"},
 		{"elbv2.k8s.aws", "targetgroupbindings"},
 	} {
 		requirement, ok := find(item.group, item.resource, "list")
