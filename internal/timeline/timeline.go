@@ -514,7 +514,7 @@ func currentReplicaSetUIDs(replicaSets []appsv1.ReplicaSet, currentRevision stri
 	if len(result) == 0 && len(replicaSets) > 0 {
 		latest := replicaSets[0]
 		for _, rs := range replicaSets[1:] {
-			if rs.CreationTimestamp.After(&latest.CreationTimestamp) { latest = rs }
+			if rs.CreationTimestamp.Time.After(latest.CreationTimestamp.Time) { latest = rs }
 		}
 		result[string(latest.UID)] = struct{}{}
 	}
