@@ -57,8 +57,10 @@ func newTimelineCommand() *cobra.Command {
 	return cmd
 }
 
-func formatTimelineTime(value time.Time) string {
-	if value.IsZero() { return "time unavailable (rollback likely)" }
+func formatTimelineTime(value *time.Time) string {
+	if value == nil {
+		return "time unavailable (rollback likely)"
+	}
 	return value.UTC().Format("2006-01-02 15:04:05Z")
 }
 
@@ -76,7 +78,9 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 	}
 	for _, event := range report.Events {
 		current := ""
-		if event.Current { current = " ◀ current" }
+		if event.Current {
+			current = " ◀ current"
+		}
 		fmt.Printf("%s  %s  %s  revision=%s%s\n", formatTimelineTime(event.Timestamp), style("39", string(event.Type)), event.Resource, event.Revision, current)
 		fmt.Printf("       %s\n", event.Action)
 		if event.Details != "" {
@@ -101,7 +105,9 @@ func printTimelineMarkdown(report *timeline.Report) error {
 	}
 	for _, event := range report.Events {
 		current := ""
-		if event.Current { current = " — CURRENT" }
+		if event.Current {
+			current = " — CURRENT"
+		}
 		fmt.Printf("## %s — %s (revision %s)%s\n\n", formatTimelineTime(event.Timestamp), event.Resource, event.Revision, current)
 		fmt.Printf("%s\n\n", event.Action)
 		for _, change := range event.Changes {
