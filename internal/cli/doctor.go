@@ -112,13 +112,7 @@ func newDoctorCommand() *cobra.Command {
 			} else {
 				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
 			}
-			if report.Denied > 0 {
-				return exitCodeErrorf(2, "preflight found %d denied permission(s); review the checks above", report.Denied)
-			}
-			if report.Unknown > 0 || !report.Ready {
-				return exitCodeErrorf(3, "preflight is incomplete: %d unknown check(s); review the checks above", report.Unknown)
-			}
-			return nil
+			return doctorExitError(report)
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace to check")
@@ -258,4 +252,27 @@ func printDoctorTerminal(cmd *cobra.Command, report doctorReport, colorEnabled b
 	} else {
 		fmt.Fprintln(cmd.OutOrStdout(), "The checked RBAC permissions are available. Runtime connectivity and application health are not validated by this preflight.")
 	}
+}
+
+
+func doctorExitError(report doctorReport) error {
+	requiredDenied, requiredUnknown := 0, 0
+	for _, check := range report.Checks {
+		if check.Optional {
+			continue
+		}
+		switch check.Status {
+		case "DENIED":
+			requiredDenied++
+		case "UNKNOWN":
+			requiredUnknown++
+		}
+	}
+	if requiredDenied > 0 {
+		return exitCodeErrorf(2, "preflight found %d denied required permission(s); review the checks above", requiredDenied)
+	}
+	if requiredUnknown > 0 || !report.Ready {
+		return exitCodeErrorf(3, "preflight is incomplete: %d required check(s) unknown; review the checks above", requiredUnknown)
+	}
+	return nil
 }
