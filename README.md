@@ -134,7 +134,7 @@ KTRX performs read-only route discovery and follows matching Kubernetes Ingress 
 
 This is **configuration-path tracing**, not a live HTTP probe: it does not resolve public DNS, validate TLS, contact an external load balancer, or prove that a client can reach the application. Gateway API parent/listener attachment readiness and cross-namespace backend references are not verified yet. HTTPRoute support is optional and requires the Gateway API CRD plus read permissions. If the API is absent or access is denied, KTRX reports a limitation rather than treating it as an application failure.
 
-### 6. Inspect Deployment change history
+### 7. Inspect Deployment change history
 
 ~~~bash
 ktrx timeline deploy/api -n production
