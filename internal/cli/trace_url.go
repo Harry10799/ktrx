@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"strconv"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -497,9 +496,27 @@ func lookupURLDNS(ctx context.Context, host string) *urlTraceDNS {
 	return result
 }
 
-func dnsMatchesALB(dns *urlTraceDNS, routes []urlTraceRoute) bool {
-	if dns == nil || dns.CNAME == "" { return false }
-	for _, route := range routes { for _, lbHost := range route.LoadBalancerHosts { if strings.EqualFold(strings.TrimSuffix(lbHost, "."), dns.CNAME) { return true } } }
+func dnsMatchesALB(ctx context.Context, dns *urlTraceDNS, routes []urlTraceRoute) (bool, string, string) {
+	if dns == nil { return false, "", "DNS check unavailable" }
+	for _, route := range routes { for _, lbHost := range route.LoadBalancerHosts { if dns.CNAME != "" && strings.EqualFold(strings.TrimSuffix(lbHost, "."), dns.CNAME) { return true, "CNAME", "CNAME points directly to ALB hostname " + lbHost } } }
+	for _, route := range routes { for _, lbHost := range route.LoadBalancerHosts {
+		if net.ParseIP(lbHost) != nil { dns.ALBResolved = append(dns.ALBResolved, lbHost); continue }
+		lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		ips, err := net.DefaultResolver.LookupHost(lookupCtx, lbHost)
+		cancel()
+		if err == nil { dns.ALBResolved = append(dns.ALBResolved, ips...) }
+	} }
+	dns.ALBResolved = uniqueSorted(dns.ALBResolved)
+	if ipSetsIntersect(dns.Resolved, dns.ALBResolved) { return true, "IP", "DNS and ALB hostname have overlapping IP addresses" }
+	if len(dns.Resolved) == 0 { return false, "", "DNS did not resolve" }
+	if dns.CNAME != "" { return false, "CNAME", "DNS points to CNAME " + dns.CNAME + " (resolved IPs: " + strings.Join(dns.Resolved, ", ") + ")" }
+	return false, "IP", "DNS alias resolves to " + strings.Join(dns.Resolved, ", ") + "; this may be a CloudFront or Global Accelerator front end"
+}
+
+func ipSetsIntersect(left, right []string) bool {
+	seen := make(map[string]struct{}, len(left))
+	for _, value := range left { if ip := net.ParseIP(value); ip != nil { seen[ip.String()] = struct{}{} } }
+	for _, value := range right { if ip := net.ParseIP(value); ip != nil { if _, ok := seen[ip.String()]; ok { return true } } }
 	return false
 }
 
