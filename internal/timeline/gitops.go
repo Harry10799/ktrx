@@ -201,12 +201,14 @@ func nestedString(values map[string]interface{}, key string) string {
 }
 
 func commitHash(revision string) string {
-	for _, marker := range []string{"sha1:"} {
-		if index := strings.LastIndex(revision, marker); index >= 0 {
-			return revision[index+len(marker):]
-		}
+	index := strings.LastIndex(revision, "sha1:")
+	if index < 0 { return "" }
+	hash := revision[index+len("sha1:"):]
+	if len(hash) != 40 { return "" }
+	for _, char := range hash {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", char) { return "" }
 	}
-	return ""
+	return hash
 }
 
 func gitCommitURL(ctx context.Context, client dynamic.Interface, namespace, kind, name, hash string) string {
