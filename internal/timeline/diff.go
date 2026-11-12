@@ -17,7 +17,7 @@ func compareTemplates(before, after *appsv1.ReplicaSet) []Change {
  a,b:=before.Spec.Template.Spec,after.Spec.Template.Spec
  addChange(&changes,"pod.serviceAccountName",a.ServiceAccountName,b.ServiceAccountName)
  addChange(&changes,"pod.nodeSelector",formatMap(a.NodeSelector),formatMap(b.NodeSelector))
- if !reflect.DeepEqual(a.Tolerations,b.Tolerations) { addChange(&changes,"pod.tolerations",fmt.Sprint(a.Tolerations),fmt.Sprint(b.Tolerations)) }
+ if !reflect.DeepEqual(a.Tolerations,b.Tolerations) { addChange(&changes,"pod.tolerations",formatTolerations(a.Tolerations),formatTolerations(b.Tolerations)) }
  if !reflect.DeepEqual(a.Volumes,b.Volumes) { addChange(&changes,"pod.volumes",formatVolumes(a.Volumes),formatVolumes(b.Volumes)) }
  return changes
 }
@@ -77,4 +77,25 @@ func envRef(v corev1.EnvVar) string {if v.ValueFrom==nil{return ""};switch{case 
 func envIndex(items []corev1.EnvVar) map[string]corev1.EnvVar {out:=map[string]corev1.EnvVar{};for _,x:=range items{out[x.Name]=x};return out}
 func compareEnvFrom(c *[]Change,container string,before,after []corev1.EnvFromSource){
  if reflect.DeepEqual(before,after){return};format:=func(items []corev1.EnvFromSource)string{v:=[]string{};for _,x:=range items{if x.ConfigMapRef!=nil{v=append(v,"configMap/"+x.ConfigMapRef.Name)};if x.SecretRef!=nil{v=append(v,"secret/"+x.SecretRef.Name)}};sort.Strings(v);return strings.Join(v,",")};addChange(c,container+".envFrom",format(before),format(after))
+}
+
+func formatTolerations(items []corev1.Toleration) string {
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		operator := string(item.Operator)
+		if operator == "" {
+			operator = string(corev1.TolerationOpEqual)
+		}
+		value := item.Value
+		if value == "" {
+			value = "*"
+		}
+		effect := string(item.Effect)
+		if effect == "" {
+			effect = "*"
+		}
+		values = append(values, fmt.Sprintf("%s=%s:%s", item.Key, value, effect))
+	}
+	sort.Strings(values)
+	return strings.Join(values, ",")
 }
