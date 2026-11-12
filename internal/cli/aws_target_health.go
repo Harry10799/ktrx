@@ -53,7 +53,7 @@ func describeAWSTargetGroupHealth(ctx context.Context, client elbv2TargetHealthA
 	}
 	result := &urlTraceAWSTargetGroupHealth{TargetGroupARN: arn, Status: "AVAILABLE"}
 	for _, item := range out.TargetHealthDescriptions {
-		if item == nil || item.Target == nil {
+		if item.Target == nil {
 			continue
 		}
 		target := urlTraceAWSTarget{
