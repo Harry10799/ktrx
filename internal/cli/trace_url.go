@@ -1160,7 +1160,7 @@ func printURLTraceMarkdown(w io.Writer, report urlTraceReport) error {
 			fmt.Fprintf(w, "- %s\n", note)
 		}
 	}
-	fmt.Fprintln(w, "\n> Route discovery is Kubernetes configuration evidence; DNS and TLS are opt-in live checks. This command does not send an HTTP request.")
+	fmt.Fprintln(w, "\n> Route discovery is Kubernetes configuration evidence; DNS, TLS and AWS target-health checks are opt-in. AWS health is read-only. This command does not send an HTTP request.")
 	return nil
 }
 
@@ -1231,5 +1231,5 @@ func printURLTrace(w io.Writer, report urlTraceReport) {
 	for _, note := range report.Limitations {
 		fmt.Fprintf(w, "\nNote: %s\n", note)
 	}
-	fmt.Fprintln(w, "\nNote: DNS and TLS are live opt-in checks; route discovery alone does not test external HTTP reachability.")
+	fmt.Fprintln(w, "\nNote: DNS, TLS and AWS target-health checks are opt-in. AWS inspection is read-only; route discovery alone does not test external HTTP reachability.")
 }
