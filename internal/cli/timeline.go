@@ -19,13 +19,16 @@ func newTimelineCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output string
 	var noColor bool
 	var since time.Duration
+	var failureAtText string
+	var top int
 	cmd := &cobra.Command{
 		Use:   "timeline deploy/NAME",
 		Short: "Show retained Deployment rollout revisions and template changes",
 		Long:  "Build an evidence-based timeline from Deployment-owned ReplicaSets. Only revisions still present in the Kubernetes API are available.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if since < 0 { return fmt.Errorf("--since must be zero or a positive duration") }
+			if since < 0 { return fmt.Errorf("--since/--window must be zero or a positive duration") }
+			if top < 1 { return fmt.Errorf("--top must be at least 1") }
 			target := args[0]
 			name := strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/")
 			if name == target || name == "" {
@@ -41,7 +44,9 @@ func newTimelineCommand() *cobra.Command {
 			if err != nil { return fmt.Errorf("create dynamic Kubernetes client: %w", err) }
 			metadataClient, err := metadata.NewForConfig(restConfig)
 			if err != nil { return fmt.Errorf("create metadata-only Kubernetes client: %w", err) }
-			report, err := (&timeline.Analyzer{Client: client, Dynamic: dynamicClient, Metadata: metadataClient, Since: since}).AnalyzeDeployment(cmd.Context(), namespace, name)
+			var failureAt *time.Time
+			if failureAtText != "" { parsed, parseErr := time.Parse(time.RFC3339, failureAtText); if parseErr != nil { return fmt.Errorf("--failure-at must be RFC3339 (for example 2026-11-12T10:30:00Z): %w", parseErr) }; failureAt = &parsed }
+			report, err := (&timeline.Analyzer{Client: client, Dynamic: dynamicClient, Metadata: metadataClient, Since: since, FailureAt: failureAt, MaxCorrelations: top}).AnalyzeDeployment(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -65,6 +70,9 @@ func newTimelineCommand() *cobra.Command {
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal, json or markdown")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
 	cmd.Flags().DurationVar(&since, "since", 24*time.Hour, "Include timeline evidence from this duration (default 24h)")
+	cmd.Flags().DurationVar(&since, "window", 24*time.Hour, "Alias for --since: timeline evidence window")
+	cmd.Flags().IntVar(&top, "top", 5, "Maximum number of potential correlations to show")
+	cmd.Flags().StringVar(&failureAtText, "failure-at", "", "Override failure start using an RFC3339 timestamp")
 	return cmd
 }
 
