@@ -257,6 +257,8 @@ func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, names
 }
 
 func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespace string, backend *urlTraceBackend) {
+	if backend.Namespace == "" { backend.Namespace = namespace }
+	namespace = backend.Namespace
 	svc, err := client.CoreV1().Services(namespace).Get(ctx, backend.Service, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) { backend.ServiceStatus = "MISSING"; backend.Notes = append(backend.Notes, "Backend Service does not exist.") } else { backend.ServiceStatus = "UNKNOWN"; backend.Notes = append(backend.Notes, "Could not read Service: "+err.Error()) }
@@ -277,20 +279,20 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 	for _, slice := range slices.Items {
 		for _, endpoint := range slice.Endpoints {
 			backend.EndpointCount++
-			if endpoint.Conditions.Ready != nil && !*endpoint.Conditions.Ready { continue }
-			backend.ReadyEndpoints++
+			endpointReady := endpoint.Conditions.Ready != nil && *endpoint.Conditions.Ready
+			if endpointReady { backend.ReadyEndpoints++ }
 			if endpoint.TargetRef != nil && endpoint.TargetRef.Kind == "Pod" {
 				name := endpoint.TargetRef.Name
 				if endpoint.TargetRef.Namespace != "" && endpoint.TargetRef.Namespace != namespace { continue }
 				if _, ok := seenPods[name]; !ok {
 					pod, getErr := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
-					if getErr == nil { backend.Pods = append(backend.Pods, summarizeURLPod(pod)); seenPods[name] = struct{}{} }
+					if getErr == nil { backend.Pods = append(backend.Pods, summarizeURLPod(pod, endpointReady)); seenPods[name] = struct{}{} }
 					if getErr != nil { backend.Notes = append(backend.Notes, "Could not read target Pod "+name+": "+getErr.Error()) }
 				}
 			} else {
 				for _, address := range endpoint.Addresses {
 					pods, listErr := client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{FieldSelector:"status.podIP="+address})
-					if listErr == nil { for _, p := range pods.Items { if _, ok := seenPods[p.Name]; !ok { backend.Pods = append(backend.Pods, summarizeURLPod(&p)); seenPods[p.Name]=struct{}{} } } }
+					if listErr == nil { for _, p := range pods.Items { if _, ok := seenPods[p.Name]; !ok { backend.Pods = append(backend.Pods, summarizeURLPod(&p, endpointReady)); seenPods[p.Name]=struct{}{} } } }
 				}
 			}
 		}
@@ -299,14 +301,14 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 	if backend.ReadyEndpoints == 0 { backend.ServiceStatus = "NO_READY_ENDPOINTS"; backend.Notes = append(backend.Notes, "Service has no ready EndpointSlice endpoints.") } else { backend.ServiceStatus = "READY" }
 }
 
-func summarizeURLPod(pod *corev1.Pod) urlTracePod {
+func summarizeURLPod(pod *corev1.Pod, endpointReady bool) urlTracePod {
 	var restarts int32
 	for _, status := range pod.Status.ContainerStatuses { restarts += status.RestartCount }
 	ready := false
 	for _, condition := range pod.Status.Conditions {
 		if condition.Type == corev1.PodReady { ready = condition.Status == corev1.ConditionTrue; break }
 	}
-	return urlTracePod{Name:pod.Name, Phase:string(pod.Status.Phase), Ready:ready, Restarts:restarts}
+	return urlTracePod{Name:pod.Name, Phase:string(pod.Status.Phase), Ready:ready, Restarts:restarts, EndpointReady:endpointReady}
 }
 
 func urlHostMatches(pattern, host string) bool {
@@ -330,6 +332,8 @@ func urlPathMatches(rulePath, requestPath, kind string) bool {
 		if rulePath == "/" { return true }
 		return requestPath == rulePath || strings.HasPrefix(requestPath, strings.TrimSuffix(rulePath, "/")+"/")
 	case "ImplementationSpecific":
+		matched, err := path.Match(rulePath, requestPath)
+		if err == nil && matched { return true }
 		return requestPath == rulePath || strings.HasPrefix(requestPath, strings.TrimSuffix(rulePath, "/")+"/")
 	default: return false
 	}
@@ -345,12 +349,14 @@ func printURLTrace(report urlTraceReport) {
 	fmt.Printf("Verdict: %s  Namespace: %s\n", report.Verdict, report.Namespace)
 	if len(report.Routes) == 0 { fmt.Println("No matching route was established.") }
 	for _, route := range report.Routes {
-		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s)\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match)
+		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
+		for _, host := range route.LoadBalancerHosts { fmt.Printf("  LoadBalancer hostname: %s\n", host) }
 		if len(route.Backends) == 0 { fmt.Println("  • No supported Service backend was discovered.") }
 		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\n", routeNote) }
 		for _, b := range route.Backends {
-			fmt.Printf("  → Service %s port=%s status=%s endpoints=%d ready=%d\n", b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints)
-			for _, pod := range b.Pods { fmt.Printf("      → Pod %s phase=%s ready=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.Restarts) }
+			fmt.Printf("  → Service %s/%s port=%s status=%s endpoints=%d ready=%d\n", b.Namespace, b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints)
+			for _, binding := range b.TargetGroupBindings { fmt.Printf("      → TargetGroupBinding %s targetGroup=%s targetType=%s\n", binding.Name, binding.TargetGroupARN, binding.TargetType) }
+			for _, pod := range b.Pods { fmt.Printf("      → Pod %s phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts) }
 			for _, note := range b.Notes { fmt.Printf("      ! %s\n", note) }
 		}
 	}
