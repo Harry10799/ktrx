@@ -214,3 +214,34 @@ func TestCheckAccessSelfSubjectAccessReview(t *testing.T) {
 		})
 	}
 }
+
+
+func TestDoctorConnectivityFailureMarksChecksUnknown(t *testing.T) {
+	requirements := []accessRequirement{
+		{name: "Read Pods", verb: "get", resource: "pods", namespace: "production"},
+		{name: "List HTTPRoutes", verb: "list", group: "gateway.networking.k8s.io", resource: "httproutes", optional: true},
+	}
+	report := doctorConnectivityFailureReport("production", requirements, errors.New("connection refused"))
+
+	if report.Ready {
+		t.Fatal("connectivity failure report must not be ready")
+	}
+	if report.Namespace != "production" || report.Unknown != 3 || report.Passed != 0 || report.Denied != 0 {
+		t.Fatalf("unexpected connectivity failure summary: %+v", report)
+	}
+	if len(report.Checks) != 3 {
+		t.Fatalf("got %d checks, want connectivity plus 2 permission checks", len(report.Checks))
+	}
+	if report.Checks[0].Status != "UNKNOWN" || !strings.Contains(report.Checks[0].Reason, "connection refused") {
+		t.Fatalf("unexpected connectivity check: %+v", report.Checks[0])
+	}
+	if report.Checks[1].Status != "UNKNOWN" || report.Checks[1].Optional {
+		t.Fatalf("required check should be UNKNOWN and required: %+v", report.Checks[1])
+	}
+	if report.Checks[2].Status != "UNKNOWN" || !report.Checks[2].Optional {
+		t.Fatalf("optional check should remain UNKNOWN and optional: %+v", report.Checks[2])
+	}
+	if got := ExitCode(doctorExitError(report)); got != 3 {
+		t.Fatalf("connectivity failure exit code = %d, want 3", got)
+	}
+}
