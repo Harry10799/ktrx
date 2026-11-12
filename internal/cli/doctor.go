@@ -39,6 +39,7 @@ type doctorReport struct {
 
 type accessRequirement struct {
 	name, verb, group, resource, namespace, subresource string
+	optional bool
 }
 
 func newDoctorCommand() *cobra.Command {
@@ -134,8 +135,14 @@ func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequ
 		{name: "List NetworkPolicies", verb: "list", group: "networking.k8s.io", resource: "networkpolicies", namespace: namespace},
 		{name: "List Events", verb: "list", resource: "events", namespace: namespace},
 		{name: "Read container logs", verb: "get", resource: "pods", subresource: "log", namespace: namespace},
-		{name: "Read ReplicaSets", verb: "get", group: "apps", resource: "replicasets", namespace: namespace},
+		{name: "List Deployments for timeline", verb: "list", group: "apps", resource: "deployments", namespace: namespace},
+		{name: "List ReplicaSets for timeline", verb: "list", group: "apps", resource: "replicasets", namespace: namespace},
+		{name: "Read referenced ConfigMap metadata", verb: "get", resource: "configmaps", namespace: namespace},
+		{name: "Read referenced Secret metadata only", verb: "get", resource: "secrets", namespace: namespace},
 		{name: "Discover Ingress controller Pods across namespaces", verb: "list", resource: "pods"},
+		{name: "List Flux Kustomizations (optional)", verb: "list", group: "kustomize.toolkit.fluxcd.io", resource: "kustomizations", namespace: namespace, optional: true},
+		{name: "List Flux HelmReleases (optional)", verb: "list", group: "helm.toolkit.fluxcd.io", resource: "helmreleases", namespace: namespace, optional: true},
+		{name: "Get Flux GitRepositories (optional)", verb: "get", group: "source.toolkit.fluxcd.io", resource: "gitrepositories", namespace: namespace, optional: true},
 	}
 	if includeNetcheck {
 		requirements = append(requirements, accessRequirement{name: "Execute explicit in-Pod network probes", verb: "create", resource: "pods", subresource: "exec", namespace: namespace})
