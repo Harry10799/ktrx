@@ -104,7 +104,11 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 		if event.Current {
 			current = " ◀ current"
 		}
-		fmt.Printf("%s  %s  %s  revision=%s%s\n", formatTimelineTime(event.Timestamp), style("39", string(event.Type)), event.Resource, event.Revision, current)
+		revision := ""
+		if event.Revision != "" {
+			revision = "  revision=" + event.Revision
+		}
+		fmt.Printf("%s  %s  %s%s%s\n", formatTimelineTime(event.Timestamp), style("39", string(event.Type)), event.Resource, revision, current)
 		fmt.Printf("       %s\n", event.Action)
 		if event.Details != "" {
 			fmt.Printf("       %s\n", event.Details)
@@ -141,7 +145,11 @@ func printTimelineMarkdown(report *timeline.Report) error {
 		if event.Current {
 			current = " — CURRENT"
 		}
-		fmt.Printf("## %s — %s (revision %s)%s\n\n", formatTimelineTime(event.Timestamp), event.Resource, event.Revision, current)
+		revision := ""
+		if event.Revision != "" {
+			revision = " (revision " + event.Revision + ")"
+		}
+		fmt.Printf("## %s — %s%s%s\n\n", formatTimelineTime(event.Timestamp), event.Resource, revision, current)
 		fmt.Printf("%s\n\n", event.Action)
 		for _, change := range event.Changes {
 			fmt.Printf("- **%s:** %s → %s\n", change.Field, change.Before, change.After)
