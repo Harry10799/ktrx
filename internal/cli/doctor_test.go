@@ -269,14 +269,16 @@ func TestDoctorCommandIntegration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var received []authv1.ResourceAttributes
+			var requestPaths []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestPaths = append(requestPaths, r.Method+" "+r.URL.RequestURI())
 				w.Header().Set("Content-Type", "application/json")
 				switch {
 				case r.URL.Path == "/version":
 					_ = json.NewEncoder(w).Encode(map[string]string{
 						"major": "1", "minor": "32", "gitVersion": "v1.32.0",
 					})
-				case strings.HasSuffix(r.URL.Path, "/selfsubjectaccessreviews"):
+				case strings.Contains(r.URL.Path, "selfsubjectaccessreviews"):
 					if r.Method != http.MethodPost {
 						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 						return
@@ -309,7 +311,13 @@ func TestDoctorCommandIntegration(t *testing.T) {
 					w.WriteHeader(http.StatusCreated)
 					_ = json.NewEncoder(w).Encode(response)
 				default:
-					http.NotFound(w, r)
+					w.WriteHeader(http.StatusNotFound)
+					_ = json.NewEncoder(w).Encode(metav1.Status{
+						TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
+						Status: metav1.StatusFailure, Reason: metav1.StatusReasonNotFound,
+						Message: "unhandled test API path: " + r.Method + " " + r.URL.RequestURI(),
+						Code: http.StatusNotFound,
+					})
 				}
 			}))
 			defer server.Close()
@@ -330,7 +338,7 @@ func TestDoctorCommandIntegration(t *testing.T) {
 
 			err := command.Execute()
 			if got := ExitCode(err); got != tt.wantExit {
-				t.Fatalf("doctor exit code = %d, want %d; err=%v; stderr=%q; report=%s", got, tt.wantExit, err, stderr.String(), stdout.String())
+				t.Fatalf("doctor exit code = %d, want %d; err=%v; stderr=%q; requests=%q; report=%s", got, tt.wantExit, err, stderr.String(), requestPaths, stdout.String())
 			}
 
 			var report doctorReport
