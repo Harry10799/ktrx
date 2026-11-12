@@ -312,6 +312,13 @@ func summarizeURLPod(pod *corev1.Pod, endpointReady bool) urlTracePod {
 	return urlTracePod{Name:pod.Name, Phase:string(pod.Status.Phase), Ready:ready, Restarts:restarts, EndpointReady:endpointReady}
 }
 
+func appendURLTraceNote(notes []string, note string) []string {
+	for _, existing := range notes {
+		if existing == note { return notes }
+	}
+	return append(notes, note)
+}
+
 func ingressClassName(ing *networkingv1.Ingress) string {
 	if ing.Spec.IngressClassName != nil { return *ing.Spec.IngressClassName }
 	if legacy := ing.Annotations["kubernetes.io/ingress.class"]; legacy != "" { return legacy }
@@ -333,7 +340,7 @@ func resolveTargetGroupBindings(ctx context.Context, dyn dynamic.Interface, name
 	list, err := dyn.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
 	if apierrors.IsNotFound(err) { return }
 	if err != nil {
-		*limitations = appendUnique(*limitations, "AWS TargetGroupBinding discovery is unavailable (RBAC denied or API error).")
+		*limitations = appendURLTraceNote(*limitations, "AWS TargetGroupBinding discovery is unavailable (RBAC denied or API error).")
 		return
 	}
 	for _, item := range list.Items {
