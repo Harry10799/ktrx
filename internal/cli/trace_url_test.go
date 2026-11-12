@@ -34,6 +34,7 @@ func TestURLPathMatches(t *testing.T) {
 		{"/api", "/api", "Exact", true},
 		{"/api", "/api/v1", "Exact", false},
 		{"/api", "/api/v1", "PathPrefix", true},
+		{"/api/*", "/api/v1/users", "ImplementationSpecific", true},
 	}
 	for _, tt := range tests {
 		if got := urlPathMatches(tt.rule, tt.request, tt.kind); got != tt.want {
