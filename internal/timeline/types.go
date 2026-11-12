@@ -38,6 +38,7 @@ type Correlation struct {
 	Type       EventType  `json:"type"`
 	Resource   string     `json:"resource"`
 	Summary    string     `json:"summary"`
+	Delta      string     `json:"delta"`
 	Rank       int        `json:"rank"`
 	Score      int        `json:"score"`
 	Confidence string     `json:"confidence"`
