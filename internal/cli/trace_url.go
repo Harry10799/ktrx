@@ -168,13 +168,6 @@ func newTraceURLCommand() *cobra.Command {
 				for j := range report.Routes[i].Backends {
 					resolveURLBackendWithBudget(cmd.Context(), client, report.Routes[i].Namespace, &report.Routes[i].Backends[j], &diagnosisBudget)
 					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Backends[j].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
-					if checkAWS {
-						backend := &report.Routes[i].Backends[j]
-						attachAWSTargetHealth(cmd.Context(), backend, awsRegion, awsHealthCache, &report.Limitations)
-						if len(backend.TargetGroupBindings) == 0 {
-							report.Limitations = appendURLTraceNote(report.Limitations, "AWS target health was requested, but no matching TargetGroupBinding was found for Service "+backend.Namespace+"/"+backend.Service+".")
-						}
-					}
 				}
 			}
 			sort.SliceStable(report.Routes, func(i, j int) bool {
@@ -189,6 +182,15 @@ func newTraceURLCommand() *cobra.Command {
 			})
 			for i := range report.Routes {
 				report.Routes[i].Selected = i == 0
+				if checkAWS && i == 0 {
+					for j := range report.Routes[i].Backends {
+						backend := &report.Routes[i].Backends[j]
+						attachAWSTargetHealth(cmd.Context(), backend, awsRegion, awsHealthCache, &report.Limitations)
+						if len(backend.TargetGroupBindings) == 0 {
+							report.Limitations = appendURLTraceNote(report.Limitations, "AWS target health was requested, but no matching TargetGroupBinding was found for Service "+backend.Namespace+"/"+backend.Service+".")
+						}
+					}
+				}
 				for j := range report.Routes[i].Backends {
 					b := &report.Routes[i].Backends[j]
 					healthPath := report.Routes[i].ALBHealthcheckPath
