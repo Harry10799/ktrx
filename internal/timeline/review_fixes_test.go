@@ -182,3 +182,24 @@ func TestBuildCorrelationsRanksEvidenceAndTimeTogether(t *testing.T) {
 		t.Fatal("correlation disclaimer missing")
 	}
 }
+
+func TestWarningEvidenceIncludesUnhealthyAndFailedSchedulingWhenPodIsActive(t *testing.T) {
+	for _, reason := range []string{"Unhealthy", "FailedScheduling", "BackOff"} {
+		if !warningIndicatesActiveFailure(reason) { t.Errorf("%s should remain visible as actionable warning evidence", reason) }
+	}
+	for _, reason := range []string{"SuccessfulCreate", "SuccessfulDelete"} {
+		if warningIndicatesActiveFailure(reason) { t.Errorf("%s must not count as failure evidence", reason) }
+	}
+	controller := true
+	rs := appsv1.ReplicaSet{ObjectMeta:metav1.ObjectMeta{Name:"api-rs", UID:types.UID("rs-uid")}}
+	pod := corev1.Pod{
+		ObjectMeta:metav1.ObjectMeta{Name:"api-rs-abc", UID:types.UID("pod-uid"), OwnerReferences:[]metav1.OwnerReference{{Kind:"ReplicaSet", UID:rs.UID, Controller:&controller}}},
+		Status:corev1.PodStatus{Phase:corev1.PodPending, Conditions:[]corev1.PodCondition{{Type:corev1.PodScheduled, Status:corev1.ConditionFalse, Reason:"Unschedulable"}}},
+	}
+	event := corev1.Event{InvolvedObject:corev1.ObjectReference{Kind:"Pod", Name:pod.Name, UID:pod.UID}, Reason:"FailedScheduling", Type:corev1.EventTypeWarning}
+	current := map[string]struct{}{string(rs.UID):{}}
+	if !podCurrentlyUnhealthy(pod) { t.Fatal("unschedulable Pending Pod should be unhealthy evidence") }
+	if !warningBelongsToCurrentUnhealthyWorkload(event, []corev1.Pod{pod}, []appsv1.ReplicaSet{rs}, current) {
+		t.Fatal("FailedScheduling event should match active unhealthy Pod in current ReplicaSet")
+	}
+}
