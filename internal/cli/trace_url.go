@@ -43,6 +43,7 @@ type urlTraceBackend struct {
 	Namespace     string   `json:"namespace"`
 	Service       string   `json:"service"`
 	Port          string   `json:"port,omitempty"`
+	ServicePort   int32    `json:"servicePort,omitempty"`
 	ServiceStatus string   `json:"serviceStatus"`
 	EndpointCount int      `json:"endpointCount"`
 	ReadyEndpoints int     `json:"readyEndpoints"`
@@ -133,9 +134,10 @@ func newTraceURLCommand() *cobra.Command {
 			report.Routes = append(report.Routes, gatewayRoutes...)
 			if report.DNS != nil { report.DNS.Checked = true; report.DNS.MatchesALB, report.DNS.MatchMethod, report.DNS.PointsTo = dnsMatchesALB(cmd.Context(), report.DNS, report.Routes) }
 			report.Limitations = append(report.Limitations, gatewayNotes...)
+			diagnosisBudget := 0
 			for i := range report.Routes {
 				for j := range report.Routes[i].Backends {
-					resolveURLBackend(cmd.Context(), client, report.Routes[i].Namespace, &report.Routes[i].Backends[j])
+					resolveURLBackendWithBudget(cmd.Context(), client, report.Routes[i].Namespace, &report.Routes[i].Backends[j], &diagnosisBudget)
 					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Backends[j].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
 				}
 			}
@@ -308,6 +310,11 @@ func discoverHTTPRoutesInScope(ctx context.Context, dyn dynamic.Interface, names
 }
 
 func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespace string, backend *urlTraceBackend) {
+	budget := 0
+	resolveURLBackendWithBudget(ctx, client, namespace, backend, &budget)
+}
+
+func resolveURLBackendWithBudget(ctx context.Context, client kubernetes.Interface, namespace string, backend *urlTraceBackend, diagnosisBudget *int) {
 	if backend.Namespace == "" { backend.Namespace = namespace }
 	namespace = backend.Namespace
 	svc, err := client.CoreV1().Services(namespace).Get(ctx, backend.Service, metav1.GetOptions{})
@@ -319,7 +326,7 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 	if backend.Port != "" && backend.Port != "0" {
 		found := false
 		for _, p := range svc.Spec.Ports {
-			if fmt.Sprint(p.Port) == backend.Port || p.Name == backend.Port { found = true; break }
+			if fmt.Sprint(p.Port) == backend.Port || p.Name == backend.Port { found = true; backend.ServicePort = p.Port; break }
 		}
 		if !found { backend.ServiceStatus = "MISSING_PORT"; backend.Notes = append(backend.Notes, "Route backend port does not match a declared Service port."); return }
 	}
@@ -350,7 +357,7 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 		}
 	}
 	sort.Slice(backend.Pods, func(i, j int) bool { return backend.Pods[i].Name < backend.Pods[j].Name })
-	for i := range backend.Pods { if !backend.Pods[i].Ready || !backend.Pods[i].EndpointReady { diagnoseURLPod(ctx, client, namespace, &backend.Pods[i]); } }
+	for i := range backend.Pods { if !backend.Pods[i].Ready || !backend.Pods[i].EndpointReady { diagnoseURLPodWithBudget(ctx, client, namespace, &backend.Pods[i], diagnosisBudget) } }
 	if len(backend.ReadinessProbePaths) > 0 { /* route-level ALB healthcheck comparison is applied after backend resolution */ }
 	for _, pod := range backend.Pods { backend.ReadinessProbePaths = append(backend.ReadinessProbePaths, pod.ReadinessProbePaths...) }
 	backend.ReadinessProbePaths = uniqueSorted(backend.ReadinessProbePaths)
@@ -405,11 +412,7 @@ func resolveTargetGroupBindings(ctx context.Context, dyn dynamic.Interface, name
 		service, _, _ := unstructured.NestedString(item.Object, "spec", "serviceRef", "name")
 		if service != backend.Service { continue }
 		refPort, hasPort, _ := unstructured.NestedInt64(item.Object, "spec", "serviceRef", "port")
-		if hasPort && backend.Port != "" && backend.Port != "0" {
-			servicePortMatches := false
-			if n, err := strconv.ParseInt(backend.Port, 10, 32); err == nil { servicePortMatches = int64(n) == refPort }
-			if !servicePortMatches { continue }
-		}
+		if hasPort && backend.ServicePort != 0 && int64(backend.ServicePort) != refPort { continue }
 		arn, _, _ := unstructured.NestedString(item.Object, "spec", "targetGroupARN")
 		targetType, _, _ := unstructured.NestedString(item.Object, "spec", "targetType")
 		backend.TargetGroupBindings = append(backend.TargetGroupBindings, urlTraceTargetGroupBinding{Name:item.GetName(), TargetGroupARN:arn, TargetType:targetType})
@@ -519,11 +522,14 @@ func checkURLTLS(ctx context.Context, host, port string) *urlTraceTLS {
 	return result
 }
 
-var urlTracePodDiagnosisCount int
-
 func diagnoseURLPod(ctx context.Context, client kubernetes.Interface, namespace string, pod *urlTracePod) {
-	if urlTracePodDiagnosisCount >= 3 { pod.NextCommand = fmt.Sprintf("ktrx %s -n %s", pod.Name, namespace); pod.Findings = []string{"Automatic diagnosis limit reached (3 Pods); run the suggested command for full analysis."}; return }
-	urlTracePodDiagnosisCount++
+	budget := 0
+	diagnoseURLPodWithBudget(ctx, client, namespace, pod, &budget)
+}
+
+func diagnoseURLPodWithBudget(ctx context.Context, client kubernetes.Interface, namespace string, pod *urlTracePod, budget *int) {
+	if *budget >= 3 { pod.NextCommand = fmt.Sprintf("ktrx %s -n %s", pod.Name, namespace); pod.Findings = []string{"Automatic diagnosis limit reached (3 Pods); run the suggested command for full analysis."}; return }
+	*budget++
 	pod.NextCommand = fmt.Sprintf("ktrx %s -n %s", pod.Name, namespace)
 	report, err := (&analyzer.PodAnalyzer{Client: client}).Analyze(ctx, namespace, pod.Name)
 	if err != nil { pod.Findings = []string{"Pod analyzer could not complete: " + err.Error()}; return }
