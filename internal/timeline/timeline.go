@@ -447,11 +447,11 @@ func buildCorrelations(report *Report) {
 		case delta <= 24*time.Hour: score += 10
 		}
 		switch event.Type {
-		case EventRollout: score += 30
-		case EventConfig: score += 30
+		case EventRollout: score += 35
+		case EventConfig: score += 35
 		case EventGitOps: score += 20
 		}
-		if len(event.Changes) > 0 { score += 10 }
+		if len(event.Changes) > 0 { score += 20 }
 		if event.Current { score += 5 }
 		summary := event.Action
 		if len(event.Changes) > 0 {
