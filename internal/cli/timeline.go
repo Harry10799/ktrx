@@ -120,7 +120,8 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 
 func printTimelineMarkdown(report *timeline.Report) error {
 	fmt.Printf("# Change timeline: %s\n\n", report.Namespace+"/"+report.Target)
-	fmt.Printf("Generated: %s\n\n", formatTimelineTime(&report.GeneratedAt))
+	fmt.Printf("Generated: %s\n", formatTimelineTime(&report.GeneratedAt))
+	fmt.Printf("Window start: %s\n\n", formatTimelineTime(&report.Since))
 	if report.FailureStartedAt != nil {
 		fmt.Printf("**Failure started:** %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
 	}
