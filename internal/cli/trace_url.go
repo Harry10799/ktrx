@@ -89,7 +89,16 @@ type urlTraceReport struct {
 	TLS *urlTraceTLS `json:"tls,omitempty"`
 }
 
-type urlTraceDNS struct { Resolved []string `json:"resolved,omitempty"`; CNAME string `json:"cname,omitempty"`; MatchesALB bool `json:"matchesALB,omitempty"`; Error string `json:"error,omitempty"` }
+type urlTraceDNS struct {
+ Resolved []string `json:"resolved,omitempty"`
+ CNAME string `json:"cname,omitempty"`
+ ALBResolved []string `json:"albResolved,omitempty"`
+ MatchesALB bool `json:"matchesALB"`
+ Checked bool `json:"checked"`
+ MatchMethod string `json:"matchMethod,omitempty"`
+ PointsTo string `json:"pointsTo,omitempty"`
+ Error string `json:"error,omitempty"`
+}
 type urlTraceTLS struct { ServerName string `json:"serverName"`; NotAfter string `json:"notAfter,omitempty"`; DaysRemaining int `json:"daysRemaining,omitempty"`; Error string `json:"error,omitempty"` }
 
 func newTraceURLCommand() *cobra.Command {
@@ -122,7 +131,7 @@ func newTraceURLCommand() *cobra.Command {
 			report.Limitations = append(report.Limitations, notes...)
 			gatewayRoutes, gatewayNotes := discoverHTTPRoutesInScope(cmd.Context(), dyn, namespace, allNamespaces, target)
 			report.Routes = append(report.Routes, gatewayRoutes...)
-			if report.DNS != nil { report.DNS.MatchesALB = dnsMatchesALB(report.DNS, report.Routes) }
+			if report.DNS != nil { report.DNS.Checked = true; report.DNS.MatchesALB, report.DNS.MatchMethod, report.DNS.PointsTo = dnsMatchesALB(cmd.Context(), report.DNS, report.Routes) }
 			report.Limitations = append(report.Limitations, gatewayNotes...)
 			for i := range report.Routes {
 				for j := range report.Routes[i].Backends {
@@ -162,6 +171,8 @@ func newTraceURLCommand() *cobra.Command {
 					if backend.HealthcheckMismatch { /* Different ALB and readiness paths can be intentional; informational only. */ }
 				}
 			}
+			if report.DNS != nil { if report.DNS.Error != "" || len(report.DNS.Resolved) == 0 { report.Verdict = "FAILED" } else if !report.DNS.MatchesALB && report.Verdict != "FAILED" { report.Verdict = "WARN" } }
+			if report.TLS != nil { if report.TLS.Error != "" || report.TLS.DaysRemaining < 0 { report.Verdict = "FAILED" } else if report.TLS.DaysRemaining <= 14 && report.Verdict != "FAILED" { report.Verdict = "WARN" } }
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  "); return enc.Encode(report)
 			}
