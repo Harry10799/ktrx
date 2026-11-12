@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -161,13 +162,13 @@ func newNetcheckCommand() *cobra.Command {
 				run("HTTP", httpTarget, "if command -v curl >/dev/null 2>&1; then curl -fSs -o /dev/null -w 'HTTP_STATUS=%{http_code}\\n' --max-time "+strconv.Itoa(probeTimeout)+" "+q+"; elif command -v wget >/dev/null 2>&1; then wget --spider -T "+strconv.Itoa(probeTimeout)+" -S "+q+"; else echo KTRX_TOOL_UNAVAILABLE; exit 127; fi")
 			}
 			if strings.EqualFold(output, "json") {
-				enc := json.NewEncoder(os.Stdout)
+				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
 				if err := enc.Encode(report); err != nil {
 					return err
 				}
 			} else if strings.EqualFold(output, "terminal") || strings.EqualFold(output, "text") {
-				printNetcheck(report, !noColor && os.Getenv("NO_COLOR") == "")
+				printNetcheck(cmd.OutOrStdout(), report, !noColor && os.Getenv("NO_COLOR") == "")
 			} else {
 				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
 			}
@@ -227,14 +228,14 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func printNetcheck(report netcheckReport, colorEnabled bool) {
+func printNetcheck(w io.Writer, report netcheckReport, colorEnabled bool) {
 	style := func(color, value string) string {
 		if !colorEnabled {
 			return value
 		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Printf("%s  %s/%s (%s)\n", style("39", "KTRX NETCHECK"), report.Namespace, report.Pod, report.Container)
+	fmt.Fprintf(w,"%s  %s/%s (%s)\n", style("39", "KTRX NETCHECK"), report.Namespace, report.Pod, report.Container)
 	for _, result := range report.Results {
 		color := "42"
 		symbol := "✓"
@@ -244,12 +245,12 @@ func printNetcheck(report netcheckReport, colorEnabled bool) {
 		if result.Status == "UNAVAILABLE" {
 			color, symbol = "214", "!"
 		}
-		fmt.Printf("  %s [%s] %s (%s)\n", style(color, symbol+" "+result.Status), result.Type, result.Target, result.Duration)
+		fmt.Fprintf(w,"  %s [%s] %s (%s)\n", style(color, symbol+" "+result.Status), result.Type, result.Target, result.Duration)
 		if result.Output != "" {
-			fmt.Printf("      %s\n", strings.ReplaceAll(result.Output, "\n", "\n      "))
+			fmt.Fprintf(w,"      %s\n", strings.ReplaceAll(result.Output, "\n", "\n      "))
 		}
 		if result.Error != "" {
-			fmt.Printf("      %s\n", result.Error)
+			fmt.Fprintf(w,"      %s\n", result.Error)
 		}
 	}
 }
