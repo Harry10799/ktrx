@@ -112,8 +112,11 @@ func newDoctorCommand() *cobra.Command {
 			} else {
 				return fmt.Errorf("unsupported output %q (choose terminal or json)", output)
 			}
-			if !report.Ready {
-				return fmt.Errorf("preflight incomplete: %d denied, %d unknown; review the checks above", report.Denied, report.Unknown)
+			if report.Denied > 0 {
+				return exitCodeErrorf(2, "preflight found %d denied permission(s); review the checks above", report.Denied)
+			}
+			if report.Unknown > 0 || !report.Ready {
+				return exitCodeErrorf(3, "preflight is incomplete: %d unknown check(s); review the checks above", report.Unknown)
 			}
 			return nil
 		},
