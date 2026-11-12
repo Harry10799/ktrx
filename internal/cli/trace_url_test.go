@@ -1,11 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -306,5 +312,68 @@ func TestHTTPRouteReferenceGrantRBACFailureIsUnknown(t *testing.T) {
 	status, note := httpRouteReferenceGrantStatus(context.Background(), dyn, "frontend", "backend", "api")
 	if status != "UNKNOWN" || !strings.Contains(note, "forbidden") {
 		t.Fatalf("RBAC denial must be reported as UNKNOWN with context, got status=%s note=%q", status, note)
+	}
+}
+
+func TestTraceURLCommandWritesUnknownReportBeforeReturningDiagnosticError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/apis/networking.k8s.io/v1/namespaces/default/ingresses":
+			fmt.Fprint(w, `{"apiVersion":"networking.k8s.io/v1","kind":"IngressList","metadata":{"resourceVersion":"1"},"items":[]}`)
+		case "/apis/gateway.networking.k8s.io/v1/namespaces/default/httproutes":
+			fmt.Fprint(w, `{"apiVersion":"gateway.networking.k8s.io/v1","kind":"HTTPRouteList","metadata":{"resourceVersion":"1"},"items":[]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	kubeconfig := fmt.Sprintf(`apiVersion: v1
+kind: Config
+clusters:
+- name: test
+  cluster:
+    server: %s
+    insecure-skip-tls-verify: true
+contexts:
+- name: test
+  context:
+    cluster: test
+    user: test
+current-context: test
+users:
+- name: test
+  user:
+    token: test
+`, server.URL)
+	kubeconfigPath := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(kubeconfigPath, []byte(kubeconfig), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	command := newTraceURLCommand()
+	var stdout, stderr bytes.Buffer
+	command.SetOut(&stdout)
+	command.SetErr(&stderr)
+	command.SetArgs([]string{"--kubeconfig", kubeconfigPath, "--output", "json", "https://api.example.com/health"})
+
+	err := command.Execute()
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("command exit code = %d, want 3; err=%v; stderr=%q", got, err, stderr.String())
+	}
+	if err == nil || !strings.Contains(err.Error(), "UNKNOWN verdict") {
+		t.Fatalf("expected UNKNOWN diagnostic error, got %v", err)
+	}
+
+	var report urlTraceReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("expected JSON diagnostic output before exit error, got %q: %v", stdout.String(), err)
+	}
+	if report.Verdict != "UNKNOWN" {
+		t.Fatalf("report verdict = %q, want UNKNOWN", report.Verdict)
+	}
+	if !strings.Contains(stdout.String(), `"url": "https://api.example.com/health"`) {
+		t.Fatalf("JSON output does not contain requested URL: %s", stdout.String())
 	}
 }
