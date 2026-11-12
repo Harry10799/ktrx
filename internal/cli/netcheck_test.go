@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -37,5 +39,51 @@ func TestNetcheckReportOutputAndExitClassification(t *testing.T) {
 				t.Fatalf("terminal output missing report details: %s", terminal.String())
 			}
 		})
+	}
+}
+
+
+func TestNetcheckCommandIntegrationRejectsMultiContainerPod(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/namespaces/production/pods/api-0" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{
+			"apiVersion":"v1","kind":"Pod",
+			"metadata":{"name":"api-0","namespace":"production"},
+			"spec":{"containers":[{"name":"api","image":"example/api"},{"name":"sidecar","image":"example/sidecar"}]},
+			"status":{"phase":"Running","containerStatuses":[
+				{"name":"api","state":{"running":{"startedAt":"2026-01-01T00:00:00Z"}}},
+				{"name":"sidecar","state":{"running":{"startedAt":"2026-01-01T00:00:00Z"}}}
+			]}
+		}`))
+	}))
+	defer server.Close()
+
+	kubeconfigPath := writeDoctorTestKubeconfig(t, server.URL)
+	command := newNetcheckCommand()
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	var stdout, stderr bytes.Buffer
+	command.SetOut(&stdout)
+	command.SetErr(&stderr)
+	command.SetArgs([]string{
+		"--kubeconfig", kubeconfigPath,
+		"--namespace", "production",
+		"--dns", "api.default.svc.cluster.local",
+		"api-0",
+	})
+
+	err := command.Execute()
+	if err == nil || !strings.Contains(err.Error(), "specify --container") {
+		t.Fatalf("expected multi-container selection error, got %v", err)
+	}
+	if got := ExitCode(err); got != 1 {
+		t.Fatalf("exit code = %d, want 1; err=%v", got, err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("netcheck should not start probes or print a report without a selected container: %s", stdout.String())
 	}
 }
