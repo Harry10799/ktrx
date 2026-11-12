@@ -38,6 +38,7 @@ type urlTraceBackend struct {
 	ServiceStatus string   `json:"serviceStatus"`
 	EndpointCount int      `json:"endpointCount"`
 	ReadyEndpoints int     `json:"readyEndpoints"`
+	NotReadyEndpoints int  `json:"notReadyEndpoints"`
 	TargetGroupBindings []urlTraceTargetGroupBinding `json:"targetGroupBindings,omitempty"`
 	Pods          []urlTracePod `json:"pods,omitempty"`
 	Notes         []string `json:"notes,omitempty"`
@@ -123,7 +124,7 @@ func newTraceURLCommand() *cobra.Command {
 				report.Verdict = "DISCOVERED"
 				for _, route := range report.Routes {
 					for _, backend := range route.Backends {
-						if backend.ServiceStatus == "MISSING" || backend.ServiceStatus == "MISSING_PORT" || backend.ServiceStatus == "NO_READY_ENDPOINTS" { report.Verdict = "DEGRADED" }
+						if backend.ServiceStatus == "MISSING" || backend.ServiceStatus == "MISSING_PORT" || backend.ServiceStatus == "NO_READY_ENDPOINTS" || backend.ServiceStatus == "PARTIALLY_READY" { report.Verdict = "DEGRADED" }
 						if backend.ServiceStatus == "UNKNOWN" && report.Verdict == "DISCOVERED" { report.Verdict = "UNKNOWN" }
 					}
 				}
@@ -299,7 +300,8 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 		}
 	}
 	sort.Slice(backend.Pods, func(i, j int) bool { return backend.Pods[i].Name < backend.Pods[j].Name })
-	if backend.ReadyEndpoints == 0 { backend.ServiceStatus = "NO_READY_ENDPOINTS"; backend.Notes = append(backend.Notes, "Service has no ready EndpointSlice endpoints.") } else { backend.ServiceStatus = "READY" }
+	backend.NotReadyEndpoints = backend.EndpointCount - backend.ReadyEndpoints
+	if backend.ReadyEndpoints == 0 { backend.ServiceStatus = "NO_READY_ENDPOINTS"; backend.Notes = append(backend.Notes, "Service has no ready EndpointSlice endpoints.") } else if backend.NotReadyEndpoints > 0 { backend.ServiceStatus = "PARTIALLY_READY"; backend.Notes = append(backend.Notes, "One or more EndpointSlice targets are not ready.") } else { backend.ServiceStatus = "READY" }
 }
 
 func summarizeURLPod(pod *corev1.Pod, endpointReady bool) urlTracePod {
