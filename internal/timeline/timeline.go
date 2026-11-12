@@ -249,7 +249,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			if item.Type == corev1.EventTypeWarning {
 				eventType = EventFailure
 				action = "Warning event: " + item.Reason
-				if activeFailure && timestamp != nil && !timestamp.Before(rolloutStart) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) {
+				if activeFailure && timestamp != nil && !timestamp.Before(rolloutStart) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) && warningBelongsToCurrentUnhealthyWorkload(item, podItems, owned, currentReplicaSetUIDs) {
 					report.FailureStartedAt = earlierTime(report.FailureStartedAt, timestamp)
 				}
 			}
@@ -361,6 +361,11 @@ func latestReplicaSetTime(replicaSets []appsv1.ReplicaSet) time.Time {
 
 func podCurrentlyUnhealthy(pod corev1.Pod) bool {
 	if pod.Status.Phase == corev1.PodFailed { return true }
+	if pod.Status.Phase == corev1.PodPending {
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == corev1.PodScheduled && condition.Status == corev1.ConditionFalse && condition.Reason == "Unschedulable" { return true }
+		}
+	}
 	if pod.Status.Phase == corev1.PodRunning && !podReady(pod) { return true }
 	for _, status := range append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...), pod.Status.ContainerStatuses...) {
 		if status.State.Waiting == nil { continue }
@@ -380,11 +385,32 @@ func earlierTime(current, candidate *time.Time) *time.Time {
 
 func warningIndicatesActiveFailure(reason string) bool {
 	switch reason {
-	case "Unhealthy", "FailedScheduling", "SuccessfulCreate", "SuccessfulDelete":
+	case "SuccessfulCreate", "SuccessfulDelete":
 		return false
 	default:
 		return true
 	}
+}
+
+func warningBelongsToCurrentUnhealthyWorkload(event corev1.Event, pods []corev1.Pod, replicaSets []appsv1.ReplicaSet, currentReplicaSets map[string]struct{}) bool {
+	if event.InvolvedObject.Kind == "Pod" {
+		for _, pod := range pods {
+			if event.InvolvedObject.Name != pod.Name && (event.InvolvedObject.UID == "" || event.InvolvedObject.UID != pod.UID) { continue }
+			if !podOwnedByReplicaSet(pod, currentReplicaSets) { return false }
+			return podCurrentlyUnhealthy(pod)
+		}
+		return false
+	}
+	if event.InvolvedObject.Kind == "ReplicaSet" {
+		for _, rs := range replicaSets {
+			if rs.Name != event.InvolvedObject.Name { continue }
+			if _, current := currentReplicaSets[string(rs.UID)]; !current { return false }
+			for _, pod := range pods {
+				if podOwnedByReplicaSet(pod, map[string]struct{}{string(rs.UID): {}}) && podCurrentlyUnhealthy(pod) { return true }
+			}
+		}
+	}
+	return false
 }
 
 func isRelevantDeploymentEvent(event corev1.Event) bool {
