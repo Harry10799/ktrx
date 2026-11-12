@@ -52,6 +52,7 @@ type urlTraceBackend struct {
 	Notes         []string `json:"notes,omitempty"`
 	ReadinessProbePaths []string `json:"readinessProbePaths,omitempty"`
 	HealthcheckMismatch bool `json:"healthcheckMismatch,omitempty"`
+	ALBHealthcheckPath string `json:"albHealthcheckPath,omitempty"`
 }
 
 type urlTraceTargetGroupBinding struct {
@@ -137,7 +138,9 @@ func newTraceURLCommand() *cobra.Command {
 			})
 			for i := range report.Routes {
 				report.Routes[i].Selected = i == 0
-				for j := range report.Routes[i].Backends { b := &report.Routes[i].Backends[j]; if report.Routes[i].ALBHealthcheckPath != "" && len(b.ReadinessProbePaths) > 0 { for _, path := range b.ReadinessProbePaths { if path != report.Routes[i].ALBHealthcheckPath { b.HealthcheckMismatch = true; b.Notes = append(b.Notes, fmt.Sprintf("ALB healthcheck path %q differs from Pod readiness probe path %q.", report.Routes[i].ALBHealthcheckPath, path)); break } } } }
+				for j := range report.Routes[i].Backends { b := &report.Routes[i].Backends[j]; healthPath := report.Routes[i].ALBHealthcheckPath
+					if b.ALBHealthcheckPath != "" { healthPath = b.ALBHealthcheckPath }
+					if healthPath != "" && len(b.ReadinessProbePaths) > 0 { for _, path := range b.ReadinessProbePaths { if path != healthPath { b.HealthcheckMismatch = true; b.Notes = append(b.Notes, fmt.Sprintf("Informational: ALB healthcheck path %q differs from Pod readiness probe path %q; this can be intentional.", healthPath, path)); break } } } }
 			}
 			switch {
 			case len(report.Routes) == 0 && len(report.Limitations) == 0:
@@ -301,6 +304,7 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 		if apierrors.IsNotFound(err) { backend.ServiceStatus = "MISSING"; backend.Notes = append(backend.Notes, "Backend Service does not exist.") } else { backend.ServiceStatus = "UNKNOWN"; backend.Notes = append(backend.Notes, "Could not read Service: "+err.Error()) }
 		return
 	}
+	backend.ALBHealthcheckPath = svc.Annotations["alb.ingress.kubernetes.io/healthcheck-path"]
 	if backend.Port != "" && backend.Port != "0" {
 		found := false
 		for _, p := range svc.Spec.Ports {
