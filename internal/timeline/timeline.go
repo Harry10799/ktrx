@@ -171,7 +171,8 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		}
 	}
 
-	addConfigResourceEvents(ctx, a.Metadata, report, owned, since)
+	rolloutStart := currentRolloutStart(deployment, owned, currentRevision)
+	addConfigResourceEvents(ctx, a.Metadata, report, owned, currentRevision, since)
 	labels := map[string]string{}
 	for key, value := range deployment.Labels { labels[key] = value }
 	for key, value := range deployment.Spec.Template.Labels { labels[key] = value }
@@ -204,7 +205,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 				})
 			}
 			failureTime := podFailureStart(pod)
-			if !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(latestReplicaSetTime(owned)) || failureTime.Before(since) { failureTime = nil }
+			if !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(rolloutStart) || failureTime.Before(since) { failureTime = nil }
 			if failureTime != nil {
 				activeUnhealthyPod = true
 				report.Events = append(report.Events, TimelineEvent{
@@ -240,7 +241,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			if item.Type == corev1.EventTypeWarning {
 				eventType = EventFailure
 				action = "Warning event: " + item.Reason
-				if activeFailure && timestamp != nil && !timestamp.Before(latestReplicaSetTime(owned)) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) {
+				if activeFailure && timestamp != nil && !timestamp.Before(rolloutStart) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) {
 					report.FailureStartedAt = earlierTime(report.FailureStartedAt, timestamp)
 				}
 			}
@@ -414,4 +415,21 @@ func buildCorrelations(report *Report) {
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].Timestamp.After(*candidates[j].Timestamp) })
 	for i := range candidates { candidates[i].Rank = i + 1 }
 	report.Correlations = candidates
+}
+
+func currentRolloutStart(deployment *appsv1.Deployment, replicaSets []appsv1.ReplicaSet, currentRevision string) time.Time {
+	var revisionCreation time.Time
+	for _, rs := range replicaSets {
+		if currentRevision != "" && rs.Annotations[revisionAnnotation] == currentRevision {
+			revisionCreation = rs.CreationTimestamp.Time
+			break
+		}
+	}
+	if revisionCreation.IsZero() { revisionCreation = latestReplicaSetTime(replicaSets) }
+	var conditionUpdate time.Time
+	for _, condition := range deployment.Status.Conditions {
+		if condition.LastUpdateTime.Time.After(conditionUpdate) { conditionUpdate = condition.LastUpdateTime.Time }
+	}
+	if conditionUpdate.After(revisionCreation) { return conditionUpdate }
+	return revisionCreation
 }
