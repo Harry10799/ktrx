@@ -184,6 +184,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	filterTimelineSince(report, since)
 
 	activeUnhealthyPod := false
+	currentReplicaSetUIDs := currentReplicaSetUIDs(owned, currentRevision)
 	pods, podErr := a.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 	podItems := []corev1.Pod{}
 	if podErr == nil && pods != nil {
@@ -209,7 +210,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 				})
 			}
 			failureTime := podFailureStart(pod)
-			if !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(rolloutStart) || failureTime.Before(since) { failureTime = nil }
+			if !podOwnedByReplicaSet(pod, currentReplicaSetUIDs) || !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(rolloutStart) || failureTime.Before(since) { failureTime = nil }
 			if failureTime != nil {
 				activeUnhealthyPod = true
 				report.Events = append(report.Events, TimelineEvent{
@@ -446,4 +447,21 @@ func currentRolloutStart(deployment *appsv1.Deployment, replicaSets []appsv1.Rep
 	}
 	if revisionCreation.IsZero() { return conditionUpdate }
 	return revisionCreation
+}
+
+func currentReplicaSetUIDs(replicaSets []appsv1.ReplicaSet, currentRevision string) map[string]struct{} {
+	result := map[string]struct{}{}
+	if currentRevision != "" {
+		for _, rs := range replicaSets {
+			if rs.Annotations[revisionAnnotation] == currentRevision { result[string(rs.UID)] = struct{}{} }
+		}
+	}
+	if len(result) == 0 && len(replicaSets) > 0 {
+		latest := replicaSets[0]
+		for _, rs := range replicaSets[1:] {
+			if rs.CreationTimestamp.After(&latest.CreationTimestamp) { latest = rs }
+		}
+		result[string(latest.UID)] = struct{}{}
+	}
+	return result
 }
