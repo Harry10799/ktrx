@@ -158,3 +158,27 @@ func TestAnalyzeDeploymentRejectsMissingSelector(t *testing.T) {
 		t.Fatal("expected selector error")
 	}
 }
+
+func TestBuildCorrelationsRanksEvidenceAndTimeTogether(t *testing.T) {
+	failure := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
+	recentGitOps := failure.Add(-5 * time.Minute)
+	olderRollout := failure.Add(-2 * time.Hour)
+	report := &Report{
+		FailureStartedAt: &failure,
+		Events: []TimelineEvent{
+			{Timestamp:&recentGitOps, Type:EventGitOps, Resource:"ArgoCD Application/argocd/orders", Action:"GitOps revision observed"},
+			{Timestamp:&olderRollout, Type:EventRollout, Resource:"ReplicaSet/orders-2", Action:"Deployment revision changed", Changes:[]Change{{Field:"image", Before:"v1", After:"v2"}}},
+		},
+	}
+	buildCorrelations(report)
+	if len(report.Correlations) != 2 { t.Fatalf("got %d correlations", len(report.Correlations)) }
+	if report.Correlations[0].Type != EventRollout {
+		t.Fatalf("change-rich rollout should outrank recency-only GitOps event: %+v", report.Correlations)
+	}
+	if report.Correlations[0].Score <= report.Correlations[1].Score {
+		t.Fatalf("expected descending evidence score: %+v", report.Correlations)
+	}
+	if !strings.Contains(report.Correlations[0].Disclaimer, "Causation is not established") {
+		t.Fatal("correlation disclaimer missing")
+	}
+}
