@@ -24,7 +24,7 @@ type configReference struct {
 var configMapGVR = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
 var secretGVR = schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
 
-func addConfigResourceEvents(ctx context.Context, client metadata.Interface, report *Report, replicaSets []appsv1.ReplicaSet, since time.Time) {
+func addConfigResourceEvents(ctx context.Context, client metadata.Interface, report *Report, replicaSets []appsv1.ReplicaSet, currentRevision string, since time.Time) {
 	refs := map[string]configReference{}
 	add := func(kind, name string, required bool) {
 		if name == "" { return }
@@ -35,6 +35,7 @@ func addConfigResourceEvents(ctx context.Context, client metadata.Interface, rep
 		refs[key] = ref
 	}
 	for _, rs := range replicaSets {
+		if currentRevision != "" && rs.Annotations[revisionAnnotation] != currentRevision { continue }
 		podSpec := rs.Spec.Template.Spec
 		for _, volume := range podSpec.Volumes {
 			if volume.ConfigMap != nil { add("ConfigMap", volume.ConfigMap.Name, !optional(volume.ConfigMap.Optional)) }
@@ -74,7 +75,6 @@ func addConfigResourceEvents(ctx context.Context, client metadata.Interface, rep
 		if err != nil {
 			if apierrors.IsNotFound(err) && ref.required {
 				failureAt := timePointer(report.GeneratedAt)
-				report.FailureStartedAt = earlierTime(report.FailureStartedAt, failureAt)
 				report.Events = append(report.Events, TimelineEvent{
 					Timestamp: failureAt, Type: EventFailure,
 					Resource: ref.kind + "/" + ref.name,
