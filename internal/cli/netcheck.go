@@ -181,7 +181,9 @@ func newNetcheckCommand() *cobra.Command {
 					hasUnavailable = true
 				}
 			}
-			if hasUnavailable { return exitCodeErrorf(3, "one or more network checks could not run") }
+			if hasUnavailable {
+				return exitCodeErrorf(3, "one or more network checks could not run")
+			}
 			return nil
 		},
 	}

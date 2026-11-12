@@ -130,8 +130,12 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		if all && len(reports) > 1 {
-			if err := enc.Encode(reports); err != nil { return err }
-		} else if err := enc.Encode(reports[0]); err != nil { return err }
+			if err := enc.Encode(reports); err != nil {
+				return err
+			}
+		} else if err := enc.Encode(reports[0]); err != nil {
+			return err
+		}
 		return podReportsExitError(reports)
 	case "markdown":
 		for i, r := range reports {
@@ -145,7 +149,9 @@ func runTrace(cmd *cobra.Command, target, namespace, kubeconfig, contextName, ou
 		return podReportsExitError(reports)
 	case "terminal", "text":
 		if all && len(reports) > 1 && (strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/")) {
-			if err := printDeploymentTerminal(cmd.OutOrStdout(), strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == ""); err != nil { return err }
+			if err := printDeploymentTerminal(cmd.OutOrStdout(), strings.TrimPrefix(strings.TrimPrefix(target, "deployment/"), "deploy/"), reports, !noColor && os.Getenv("NO_COLOR") == ""); err != nil {
+				return err
+			}
 			return podReportsExitError(reports)
 		}
 		for i, r := range reports {

@@ -231,11 +231,15 @@ func newTraceURLCommand() *cobra.Command {
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
-				if err := enc.Encode(report); err != nil { return err }
+				if err := enc.Encode(report); err != nil {
+					return err
+				}
 				return verdictExitError(report.Verdict)
 			}
 			if strings.EqualFold(output, "markdown") {
-				if err := printURLTraceMarkdown(cmd.OutOrStdout(), report); err != nil { return err }
+				if err := printURLTraceMarkdown(cmd.OutOrStdout(), report); err != nil {
+					return err
+				}
 				return verdictExitError(report.Verdict)
 			}
 			if !strings.EqualFold(output, "terminal") && !strings.EqualFold(output, "text") {

@@ -44,7 +44,7 @@ func TestPodReportsExitError(t *testing.T) {
 		{name: "nil report ignored", reports: []*analyzer.PodReport{nil, {Verdict: analyzer.Healthy}}, want: 0},
 	}
 	for _, tt := range tests {
-		 t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			if got := ExitCode(podReportsExitError(tt.reports)); got != tt.want {
 				t.Fatalf("podReportsExitError() exit code = %d, want %d", got, tt.want)
 			}
