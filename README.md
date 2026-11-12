@@ -22,7 +22,7 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 
 ## Tool comparison
 
-The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings, benchmark results, or a claim that every tool serves the same purpose. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change.
+The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings or benchmark results. The overall row is the **unweighted arithmetic mean of the 10 category scores above**, rounded to one decimal place. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change.
 
 | Capability / category | KTRX | Komodor | K9s | Robusta | Popeye | Headlamp | kubectl | Stern |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -36,7 +36,7 @@ The table below compares KTRX with commonly used Kubernetes troubleshooting and 
 | Interactive resource navigation / UI | 3.0 | 8.5 | 9.5 | 7.0 | 3.0 | 9.5 | 4.0 | 3.0 |
 | AI-assisted analysis and remediation | 1.0 | 9.5 | 2.0 | 9.0 | 1.0 | 2.0 | 1.0 | 1.0 |
 | Scriptable output and CI integration | 9.0 | 7.5 | 6.5 | 8.0 | 7.0 | 5.5 | 9.5 | 8.0 |
-| **Overall fit for its intended use** | **7.6** | **9.4** | **9.2** | **9.0** | **8.6** | **8.5** | **8.4** | **8.0** |
+| **Overall average (10 categories)** | **6.8** | **8.8** | **6.7** | **8.2** | **5.7** | **6.3** | **6.1** | **3.7** |
 
 **How to read this comparison**
 
