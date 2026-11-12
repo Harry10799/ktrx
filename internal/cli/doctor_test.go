@@ -249,7 +249,6 @@ func TestDoctorConnectivityFailureMarksChecksUnknown(t *testing.T) {
 	}
 }
 
-
 func TestDoctorCommandIntegrationWhenAPIServerIsUnavailable(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	serverURL := server.URL
@@ -314,4 +313,3 @@ func writeDoctorTestKubeconfig(t *testing.T, serverURL string) string {
 	}
 	return path
 }
-
