@@ -12,11 +12,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/metadata"
 )
 
 func newTimelineCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output string
 	var noColor bool
+	var since time.Duration
 	cmd := &cobra.Command{
 		Use:   "timeline deploy/NAME",
 		Short: "Show retained Deployment rollout revisions and template changes",
@@ -36,7 +38,9 @@ func newTimelineCommand() *cobra.Command {
 			if err != nil { return err }
 			dynamicClient, err := dynamic.NewForConfig(restConfig)
 			if err != nil { return fmt.Errorf("create dynamic Kubernetes client: %w", err) }
-			report, err := (&timeline.Analyzer{Client: client, Dynamic: dynamicClient}).AnalyzeDeployment(cmd.Context(), namespace, name)
+			metadataClient, err := metadata.NewForConfig(restConfig)
+			if err != nil { return fmt.Errorf("create metadata-only Kubernetes client: %w", err) }
+			report, err := (&timeline.Analyzer{Client: client, Dynamic: dynamicClient, Metadata: metadataClient, Since: since}).AnalyzeDeployment(cmd.Context(), namespace, name)
 			if err != nil {
 				return err
 			}
@@ -59,6 +63,7 @@ func newTimelineCommand() *cobra.Command {
 	cmd.Flags().StringVar(&contextName, "context", "", "Kubeconfig context")
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal, json or markdown")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
+	cmd.Flags().DurationVar(&since, "since", 24*time.Hour, "Include timeline evidence from this duration (default 24h)")
 	return cmd
 }
 
@@ -98,6 +103,12 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 			fmt.Printf("       • %s: %s → %s\n", change.Field, change.Before, change.After)
 		}
 	}
+	if len(report.Correlations) > 0 {
+		fmt.Printf("\n%s\n", style("214", "POTENTIAL CORRELATIONS (NOT CAUSATION)"))
+		for _, item := range report.Correlations {
+			fmt.Printf("  #%d %s %s %s\n", item.Rank, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
+		}
+	}
 	fmt.Printf("\n%s\n", style("99", "LIMITATIONS"))
 	for _, limitation := range report.Limitations {
 		fmt.Printf("  • %s\n", limitation)
@@ -112,7 +123,7 @@ func printTimelineMarkdown(report *timeline.Report) error {
 		fmt.Printf("**Failure started:** %s (earliest retained failure evidence)\n\n", formatTimelineTime(report.FailureStartedAt))
 	}
 	if len(report.Events) == 0 {
-		fmt.Println("No retained Deployment ReplicaSets found.")
+		fmt.Println("No timeline events found in the selected window.")
 	}
 	for _, event := range report.Events {
 		current := ""
@@ -128,6 +139,12 @@ func printTimelineMarkdown(report *timeline.Report) error {
 			fmt.Printf("\n%s\n", event.Details)
 		}
 		fmt.Println()
+	}
+	if len(report.Correlations) > 0 {
+		fmt.Println("## Potential correlations (not causation)")
+		for _, item := range report.Correlations {
+			fmt.Printf("%d. %s — %s: %s\n", item.Rank, formatTimelineTime(item.Timestamp), item.Resource, item.Summary)
+		}
 	}
 	fmt.Println("## Limitations")
 	for _, limitation := range report.Limitations {
