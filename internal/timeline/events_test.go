@@ -39,10 +39,10 @@ func TestFailureStartRecognizesActiveCrashLoop(t *testing.T) {
 	}
 }
 
-func TestWarningEventFilterExcludesTransientStartupWarnings(t *testing.T) {
+func TestWarningEventFilterRetainsContextualFailureWarnings(t *testing.T) {
 	for _, reason := range []string{"Unhealthy", "FailedScheduling"} {
-		if isRelevantDeploymentEvent(corev1.Event{Type: corev1.EventTypeWarning, Reason: reason}) {
-			t.Errorf("transient startup warning %q should be excluded from failure evidence", reason)
+		if !isRelevantDeploymentEvent(corev1.Event{Type: corev1.EventTypeWarning, Reason: reason}) {
+			t.Errorf("warning %q should remain visible for contextual failure evaluation", reason)
 		}
 	}
 	if !isRelevantDeploymentEvent(corev1.Event{Type: corev1.EventTypeWarning, Reason: "FailedMount"}) {
