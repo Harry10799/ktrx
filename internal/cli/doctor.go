@@ -88,10 +88,10 @@ func newDoctorCommand() *cobra.Command {
 						report.Passed++
 					case "DENIED":
 						report.Denied++
-						report.Ready = false
+						if !req.optional { report.Ready = false }
 					default:
 						report.Unknown++
-						report.Ready = false
+						if !req.optional { report.Ready = false }
 					}
 				}
 			}
@@ -135,6 +135,7 @@ func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequ
 		{name: "List NetworkPolicies", verb: "list", group: "networking.k8s.io", resource: "networkpolicies", namespace: namespace},
 		{name: "List Events", verb: "list", resource: "events", namespace: namespace},
 		{name: "Read container logs", verb: "get", resource: "pods", subresource: "log", namespace: namespace},
+		{name: "Read Deployment for timeline", verb: "get", group: "apps", resource: "deployments", namespace: namespace},
 		{name: "List Deployments for timeline", verb: "list", group: "apps", resource: "deployments", namespace: namespace},
 		{name: "List ReplicaSets for timeline", verb: "list", group: "apps", resource: "replicasets", namespace: namespace},
 		{name: "Read referenced ConfigMap metadata", verb: "get", resource: "configmaps", namespace: namespace},
