@@ -71,7 +71,9 @@ func compareEnv(c *[]Change,container string,before,after []corev1.EnvVar){
  for _,k:=range sortedKeys(keys){a,ok1:=l[k];b,ok2:=r[k];field:=container+".env."+k
   switch{case !ok1:*c=append(*c,Change{Field:field,Before:"<absent>",After:"<present>"})
   case !ok2:*c=append(*c,Change{Field:field,Before:"<present>",After:"<absent>"})
-  case !reflect.DeepEqual(a,b):x,y:=envRef(a),envRef(b);if x==""&&y==""{x,y="<redacted>","<redacted>"};addChange(c,field,x,y)}
+  case !reflect.DeepEqual(a,b):
+   x,y:=envRef(a),envRef(b)
+   if x==""&&y=="" { *c=append(*c,Change{Field:field,Before:"<redacted>",After:"<redacted>"}) } else { addChange(c,field,x,y) }}
  }
 }
 func envRef(v corev1.EnvVar) string {if v.ValueFrom==nil{return ""};switch{case v.ValueFrom.SecretKeyRef!=nil:return "secret/"+v.ValueFrom.SecretKeyRef.Name+"/"+v.ValueFrom.SecretKeyRef.Key;case v.ValueFrom.ConfigMapKeyRef!=nil:return "configMap/"+v.ValueFrom.ConfigMapKeyRef.Name+"/"+v.ValueFrom.ConfigMapKeyRef.Key;case v.ValueFrom.FieldRef!=nil:return "fieldRef/"+v.ValueFrom.FieldRef.FieldPath;case v.ValueFrom.ResourceFieldRef!=nil:return "resourceFieldRef/"+v.ValueFrom.ResourceFieldRef.Resource};return "valueFrom/changed"}
@@ -110,7 +112,8 @@ func addStringMapChanges(changes *[]Change, prefix string, before, after map[str
   newValue, newOK := after[key]
   if oldOK == newOK && oldValue == newValue { continue }
   if isSensitiveAnnotation(key) {
-   oldValue, newValue = "<redacted>", "<redacted>"
+   *changes = append(*changes, Change{Field: prefix+"."+key, Before:"<redacted>", After:"<redacted>"})
+   continue
   } else if !oldOK {
    oldValue = "<absent>"
   } else if !newOK {
