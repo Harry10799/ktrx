@@ -254,7 +254,6 @@ func printDoctorTerminal(cmd *cobra.Command, report doctorReport, colorEnabled b
 	}
 }
 
-
 func doctorExitError(report doctorReport) error {
 	requiredDenied, requiredUnknown := 0, 0
 	for _, check := range report.Checks {

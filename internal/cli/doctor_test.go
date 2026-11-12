@@ -48,7 +48,6 @@ func TestDoctorIncludesTimelineAndOptionalGitOpsPermissions(t *testing.T) {
 	}
 }
 
-
 func TestDoctorExitErrorIgnoresOptionalPermissionGaps(t *testing.T) {
 	tests := []struct {
 		name   string
