@@ -64,9 +64,6 @@ func newCompareCommand() *cobra.Command {
 				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
 			}
 			return verdictExitError(string(candidate.Verdict))
-			default:
-				return fmt.Errorf("unsupported output %q (choose terminal, json or markdown)", output)
-			}
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Pod namespace")
