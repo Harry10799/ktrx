@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"io"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -236,18 +236,18 @@ func printComparisonTerminal(w io.Writer, r podComparison, colorEnabled bool) er
 		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Fprintf(w,"%s  %s/%s\n", style("39", "◆ KTRX COMPARE"), r.Namespace, r.Candidate)
-	fmt.Fprintf(w,"Reference: %s\nCandidate: %s\n", r.Reference, r.Candidate)
-	fmt.Fprintln(w,"\n" + style("99", "DIFFERENCES"))
+	fmt.Fprintf(w, "%s  %s/%s\n", style("39", "◆ KTRX COMPARE"), r.Namespace, r.Candidate)
+	fmt.Fprintf(w, "Reference: %s\nCandidate: %s\n", r.Reference, r.Candidate)
+	fmt.Fprintln(w, "\n"+style("99", "DIFFERENCES"))
 	if len(r.Differences) == 0 {
-		fmt.Fprintln(w,"  ✓ No differences found")
+		fmt.Fprintln(w, "  ✓ No differences found")
 	}
 	for _, d := range r.Differences {
-		fmt.Fprintf(w,"  %s %s / %s\n", style("214", "Δ"), d.Area, d.Field)
-		fmt.Fprintf(w,"      Reference: %s\n      Candidate: %s\n", value(d.Reference), value(d.Candidate))
+		fmt.Fprintf(w, "  %s %s / %s\n", style("214", "Δ"), d.Area, d.Field)
+		fmt.Fprintf(w, "      Reference: %s\n      Candidate: %s\n", value(d.Reference), value(d.Candidate))
 	}
-	fmt.Fprintln(w,"\n" + style("245", r.Summary))
-	fmt.Fprintln(w,style("245", "Note: comparison highlights observed differences; it does not prove causation."))
+	fmt.Fprintln(w, "\n"+style("245", r.Summary))
+	fmt.Fprintln(w, style("245", "Note: comparison highlights observed differences; it does not prove causation."))
 	return nil
 }
 
@@ -259,12 +259,12 @@ func markdownCell(value string) string {
 }
 
 func printComparisonMarkdown(w io.Writer, r podComparison) error {
-	fmt.Fprintf(w,"# Pod comparison: %s vs %s\n\nNamespace: %s\n\n", r.Reference, r.Candidate, r.Namespace)
-	fmt.Fprintln(w,"| Area | Field | Reference | Candidate |")
-	fmt.Fprintln(w,"|---|---|---|---|")
+	fmt.Fprintf(w, "# Pod comparison: %s vs %s\n\nNamespace: %s\n\n", r.Reference, r.Candidate, r.Namespace)
+	fmt.Fprintln(w, "| Area | Field | Reference | Candidate |")
+	fmt.Fprintln(w, "|---|---|---|---|")
 	for _, d := range r.Differences {
-		fmt.Fprintf(w,"| %s | %s | %s | %s |\n", markdownCell(d.Area), markdownCell(d.Field), markdownCell(d.Reference), markdownCell(d.Candidate))
+		fmt.Fprintf(w, "| %s | %s | %s | %s |\n", markdownCell(d.Area), markdownCell(d.Field), markdownCell(d.Reference), markdownCell(d.Candidate))
 	}
-	fmt.Fprintf(w,"\n**%s**\n\n> Differences are diagnostic clues, not proof of causation.\n", r.Summary)
+	fmt.Fprintf(w, "\n**%s**\n\n> Differences are diagnostic clues, not proof of causation.\n", r.Summary)
 	return nil
 }

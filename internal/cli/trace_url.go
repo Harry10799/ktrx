@@ -1,13 +1,13 @@
 package cli
 
 import (
-	"io"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"regexp"
@@ -1072,81 +1072,81 @@ func httpRouteReferenceGrantStatus(ctx context.Context, dyn dynamic.Interface, f
 }
 
 func printURLTraceMarkdown(w io.Writer, report urlTraceReport) error {
-	fmt.Fprintf(w,"# KTRX URL trace: %s\n\n", report.URL)
-	fmt.Fprintf(w,"- **Verdict:** %s\n- **Namespace scope:** %s\n- **Host/path:** %s%s\n\n", report.Verdict, report.Namespace, report.Host, report.Path)
+	fmt.Fprintf(w, "# KTRX URL trace: %s\n\n", report.URL)
+	fmt.Fprintf(w, "- **Verdict:** %s\n- **Namespace scope:** %s\n- **Host/path:** %s%s\n\n", report.Verdict, report.Namespace, report.Host, report.Path)
 	if report.DNS != nil {
-		fmt.Fprintf(w,"## DNS\n\n- Status: %s\n- Resolved: %s\n- CNAME: %s\n- Matches ALB: %t (checked=%t, method=%s)\n- DNS target: %s\n- ALB resolved IPs: %s\n- Error: %s\n\n", value(report.DNS.Status), strings.Join(report.DNS.Resolved, ", "), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod), value(report.DNS.PointsTo), strings.Join(report.DNS.ALBResolved, ", "), report.DNS.Error)
+		fmt.Fprintf(w, "## DNS\n\n- Status: %s\n- Resolved: %s\n- CNAME: %s\n- Matches ALB: %t (checked=%t, method=%s)\n- DNS target: %s\n- ALB resolved IPs: %s\n- Error: %s\n\n", value(report.DNS.Status), strings.Join(report.DNS.Resolved, ", "), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod), value(report.DNS.PointsTo), strings.Join(report.DNS.ALBResolved, ", "), report.DNS.Error)
 	}
 	if report.TLS != nil {
-		fmt.Fprintf(w,"## TLS/SNI\n\n- Status: %s\n- Server name: %s\n- Certificate expires: %s\n- Days remaining: %d\n- Error: %s\n\n", value(report.TLS.Status), report.TLS.ServerName, report.TLS.NotAfter, report.TLS.DaysRemaining, report.TLS.Error)
+		fmt.Fprintf(w, "## TLS/SNI\n\n- Status: %s\n- Server name: %s\n- Certificate expires: %s\n- Days remaining: %d\n- Error: %s\n\n", value(report.TLS.Status), report.TLS.ServerName, report.TLS.NotAfter, report.TLS.DaysRemaining, report.TLS.Error)
 	}
 	for i, route := range report.Routes {
 		label := "also matches"
 		if i == 0 {
 			label = "SELECTED"
 		}
-		fmt.Fprintf(w,"## %s %s/%s — %s\n\n", route.Kind, route.Namespace, route.Name, label)
-		fmt.Fprintf(w,"- Host/path: %s%s (%s %s)\n- Route status: %s\n", route.Host, route.Path, route.Match, route.IngressClass, route.RouteStatus)
+		fmt.Fprintf(w, "## %s %s/%s — %s\n\n", route.Kind, route.Namespace, route.Name, label)
+		fmt.Fprintf(w, "- Host/path: %s%s (%s %s)\n- Route status: %s\n", route.Host, route.Path, route.Match, route.IngressClass, route.RouteStatus)
 		if route.ALBHealthcheckPath != "" {
-			fmt.Fprintf(w,"- ALB healthcheck path: %s\n", route.ALBHealthcheckPath)
+			fmt.Fprintf(w, "- ALB healthcheck path: %s\n", route.ALBHealthcheckPath)
 		}
 		for _, host := range route.LoadBalancerHosts {
-			fmt.Fprintf(w,"- Load balancer hostname: %s\n", host)
+			fmt.Fprintf(w, "- Load balancer hostname: %s\n", host)
 		}
 		for _, note := range route.Notes {
-			fmt.Fprintf(w,"- Note: %s\n", note)
+			fmt.Fprintf(w, "- Note: %s\n", note)
 		}
 		for _, backend := range route.Backends {
-			fmt.Fprintf(w,"\n### Service %s/%s — %s\n\n- Port: %s\n- Endpoints: %d total, %d ready, %d not ready\n", backend.Namespace, backend.Service, backend.ServiceStatus, backend.Port, backend.EndpointCount, backend.ReadyEndpoints, backend.NotReadyEndpoints)
+			fmt.Fprintf(w, "\n### Service %s/%s — %s\n\n- Port: %s\n- Endpoints: %d total, %d ready, %d not ready\n", backend.Namespace, backend.Service, backend.ServiceStatus, backend.Port, backend.EndpointCount, backend.ReadyEndpoints, backend.NotReadyEndpoints)
 			if backend.HealthcheckMismatch {
-				fmt.Fprintln(w,"- **ALB healthcheck/readiness path mismatch detected.**")
+				fmt.Fprintln(w, "- **ALB healthcheck/readiness path mismatch detected.**")
 			}
 			for _, binding := range backend.TargetGroupBindings {
-				fmt.Fprintf(w,"- TargetGroupBinding: %s (%s)\n", binding.Name, binding.TargetGroupARN)
+				fmt.Fprintf(w, "- TargetGroupBinding: %s (%s)\n", binding.Name, binding.TargetGroupARN)
 			}
 			for _, pod := range backend.Pods {
-				fmt.Fprintf(w,"- Pod %s: phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts)
+				fmt.Fprintf(w, "- Pod %s: phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts)
 				for _, finding := range pod.Findings {
-					fmt.Fprintf(w,"  - %s\n", finding)
+					fmt.Fprintf(w, "  - %s\n", finding)
 				}
 				if pod.NextCommand != "" {
-					fmt.Fprintf(w,"  - Next: %s\n", pod.NextCommand)
+					fmt.Fprintf(w, "  - Next: %s\n", pod.NextCommand)
 				}
 			}
 			for _, note := range backend.Notes {
-				fmt.Fprintf(w,"- Note: %s\n", note)
+				fmt.Fprintf(w, "- Note: %s\n", note)
 			}
 		}
 	}
 	if len(report.Limitations) > 0 {
-		fmt.Fprintln(w,"\n## Limitations")
+		fmt.Fprintln(w, "\n## Limitations")
 		for _, note := range report.Limitations {
-			fmt.Fprintf(w,"- %s\n", note)
+			fmt.Fprintf(w, "- %s\n", note)
 		}
 	}
-	fmt.Fprintln(w,"\n> Route discovery is Kubernetes configuration evidence; DNS and TLS are opt-in live checks. This command does not send an HTTP request.")
+	fmt.Fprintln(w, "\n> Route discovery is Kubernetes configuration evidence; DNS and TLS are opt-in live checks. This command does not send an HTTP request.")
 	return nil
 }
 
 func printURLTrace(w io.Writer, report urlTraceReport) {
-	fmt.Fprintf(w,"KTRX URL TRACE  %s\n", report.URL)
-	fmt.Fprintf(w,"Verdict: %s  Namespace: %s\n", report.Verdict, report.Namespace)
+	fmt.Fprintf(w, "KTRX URL TRACE  %s\n", report.URL)
+	fmt.Fprintf(w, "Verdict: %s  Namespace: %s\n", report.Verdict, report.Namespace)
 	if len(report.Routes) == 0 {
-		fmt.Fprintln(w,"No matching route was established.")
+		fmt.Fprintln(w, "No matching route was established.")
 	}
 	if report.DNS != nil {
-		fmt.Fprintf(w,"\nDNS: status=%s resolved=%s CNAME=%s matchesALB=%t checked=%t method=%s\n", value(report.DNS.Status), strings.Join(report.DNS.Resolved, ","), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod))
+		fmt.Fprintf(w, "\nDNS: status=%s resolved=%s CNAME=%s matchesALB=%t checked=%t method=%s\n", value(report.DNS.Status), strings.Join(report.DNS.Resolved, ","), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod))
 		if report.DNS.PointsTo != "" {
-			fmt.Fprintf(w,"  DNS target: %s\n", report.DNS.PointsTo)
+			fmt.Fprintf(w, "  DNS target: %s\n", report.DNS.PointsTo)
 		}
 		if report.DNS.Error != "" {
-			fmt.Fprintf(w,"  DNS error: %s\n", report.DNS.Error)
+			fmt.Fprintf(w, "  DNS error: %s\n", report.DNS.Error)
 		}
 	}
 	if report.TLS != nil {
-		fmt.Fprintf(w,"TLS: status=%s serverName=%s expires=%s daysRemaining=%d\n", value(report.TLS.Status), report.TLS.ServerName, value(report.TLS.NotAfter), report.TLS.DaysRemaining)
+		fmt.Fprintf(w, "TLS: status=%s serverName=%s expires=%s daysRemaining=%d\n", value(report.TLS.Status), report.TLS.ServerName, value(report.TLS.NotAfter), report.TLS.DaysRemaining)
 		if report.TLS.Error != "" {
-			fmt.Fprintf(w,"  TLS error: %s\n", report.TLS.Error)
+			fmt.Fprintf(w, "  TLS error: %s\n", report.TLS.Error)
 		}
 	}
 	for routeIndex, route := range report.Routes {
@@ -1154,38 +1154,38 @@ func printURLTrace(w io.Writer, report urlTraceReport) {
 		if routeIndex == 0 {
 			selection = "selected"
 		}
-		fmt.Fprintf(w,"\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
-		fmt.Fprintf(w,"  Route selection: %s\n", selection)
+		fmt.Fprintf(w, "\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
+		fmt.Fprintf(w, "  Route selection: %s\n", selection)
 		for _, host := range route.LoadBalancerHosts {
-			fmt.Fprintf(w,"  LoadBalancer hostname: %s\n", host)
+			fmt.Fprintf(w, "  LoadBalancer hostname: %s\n", host)
 		}
 		if len(route.Backends) == 0 {
-			fmt.Fprintln(w,"  • No supported Service backend was discovered.")
+			fmt.Fprintln(w, "  • No supported Service backend was discovered.")
 		}
 		for _, routeNote := range route.Notes {
-			fmt.Fprintf(w,"  ! %s\n", routeNote)
+			fmt.Fprintf(w, "  ! %s\n", routeNote)
 		}
 		for _, b := range route.Backends {
-			fmt.Fprintf(w,"  → Service %s/%s port=%s status=%s endpoints=%d ready=%d notReady=%d\n", b.Namespace, b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints, b.NotReadyEndpoints)
+			fmt.Fprintf(w, "  → Service %s/%s port=%s status=%s endpoints=%d ready=%d notReady=%d\n", b.Namespace, b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints, b.NotReadyEndpoints)
 			for _, binding := range b.TargetGroupBindings {
-				fmt.Fprintf(w,"      → TargetGroupBinding %s targetGroup=%s targetType=%s\n", binding.Name, binding.TargetGroupARN, binding.TargetType)
+				fmt.Fprintf(w, "      → TargetGroupBinding %s targetGroup=%s targetType=%s\n", binding.Name, binding.TargetGroupARN, binding.TargetType)
 			}
 			for _, pod := range b.Pods {
-				fmt.Fprintf(w,"      → Pod %s phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts)
+				fmt.Fprintf(w, "      → Pod %s phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts)
 				for _, finding := range pod.Findings {
-					fmt.Fprintf(w,"          ! %s\n", finding)
+					fmt.Fprintf(w, "          ! %s\n", finding)
 				}
 				if pod.NextCommand != "" {
-					fmt.Fprintf(w,"          Next: %s\n", pod.NextCommand)
+					fmt.Fprintf(w, "          Next: %s\n", pod.NextCommand)
 				}
 			}
 			for _, note := range b.Notes {
-				fmt.Fprintf(w,"      ! %s\n", note)
+				fmt.Fprintf(w, "      ! %s\n", note)
 			}
 		}
 	}
 	for _, note := range report.Limitations {
-		fmt.Fprintf(w,"\nNote: %s\n", note)
+		fmt.Fprintf(w, "\nNote: %s\n", note)
 	}
-	fmt.Fprintln(w,"\nNote: DNS and TLS are live opt-in checks; route discovery alone does not test external HTTP reachability.")
+	fmt.Fprintln(w, "\nNote: DNS and TLS are live opt-in checks; route discovery alone does not test external HTTP reachability.")
 }

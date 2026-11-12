@@ -1,11 +1,11 @@
 package cli
 
 import (
-	"io"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -235,7 +235,7 @@ func printNetcheck(w io.Writer, report netcheckReport, colorEnabled bool) {
 		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Fprintf(w,"%s  %s/%s (%s)\n", style("39", "KTRX NETCHECK"), report.Namespace, report.Pod, report.Container)
+	fmt.Fprintf(w, "%s  %s/%s (%s)\n", style("39", "KTRX NETCHECK"), report.Namespace, report.Pod, report.Container)
 	for _, result := range report.Results {
 		color := "42"
 		symbol := "✓"
@@ -245,12 +245,12 @@ func printNetcheck(w io.Writer, report netcheckReport, colorEnabled bool) {
 		if result.Status == "UNAVAILABLE" {
 			color, symbol = "214", "!"
 		}
-		fmt.Fprintf(w,"  %s [%s] %s (%s)\n", style(color, symbol+" "+result.Status), result.Type, result.Target, result.Duration)
+		fmt.Fprintf(w, "  %s [%s] %s (%s)\n", style(color, symbol+" "+result.Status), result.Type, result.Target, result.Duration)
 		if result.Output != "" {
-			fmt.Fprintf(w,"      %s\n", strings.ReplaceAll(result.Output, "\n", "\n      "))
+			fmt.Fprintf(w, "      %s\n", strings.ReplaceAll(result.Output, "\n", "\n      "))
 		}
 		if result.Error != "" {
-			fmt.Fprintf(w,"      %s\n", result.Error)
+			fmt.Fprintf(w, "      %s\n", result.Error)
 		}
 	}
 }
