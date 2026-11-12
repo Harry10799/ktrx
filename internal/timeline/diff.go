@@ -33,8 +33,8 @@ func compareContainers(changes *[]Change,before,after []corev1.Container,prefix 
   compareResources(changes,field,"requests",old.Resources.Requests,cur.Resources.Requests)
   compareResources(changes,field,"limits",old.Resources.Limits,cur.Resources.Limits)
   compareEnv(changes,field,old.Env,cur.Env); compareEnvFrom(changes,field,old.EnvFrom,cur.EnvFrom)
-  if !reflect.DeepEqual(old.Command,cur.Command) {addChange(changes,field+".command","<redacted>","<redacted>")}
-  if !reflect.DeepEqual(old.Args,cur.Args) {addChange(changes,field+".args","<redacted>","<redacted>")}
+  if !reflect.DeepEqual(old.Command,cur.Command) { *changes = append(*changes, Change{Field:field+".command", Before:"<redacted>", After:"<redacted>"}) }
+  if !reflect.DeepEqual(old.Args,cur.Args) { *changes = append(*changes, Change{Field:field+".args", Before:"<redacted>", After:"<redacted>"}) }
   if !reflect.DeepEqual(old.Ports,cur.Ports) {addChange(changes,field+".ports",formatPorts(old.Ports),formatPorts(cur.Ports))}
   compareProbe(changes,field+".readinessProbe",old.ReadinessProbe,cur.ReadinessProbe)
   compareProbe(changes,field+".livenessProbe",old.LivenessProbe,cur.LivenessProbe)
