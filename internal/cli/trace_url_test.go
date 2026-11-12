@@ -124,10 +124,10 @@ func TestDNSJSONPreservesFalseAndUnchecked(t *testing.T) {
 }
 
 func TestExternalCheckVerdict(t *testing.T) {
- report := urlTraceReport{Verdict:"HEALTHY", DNS:&urlTraceDNS{Resolved:[]string{"203.0.113.1"}, Checked:true, MatchesALB:false}}
+ report := urlTraceReport{Verdict:"HEALTHY", DNS:&urlTraceDNS{Resolved:[]string{"203.0.113.1"}, Checked:true, Status:"HEALTHY", MatchMethod:"IP", MatchesALB:false}}
  applyURLExternalCheckVerdict(&report)
  if report.Verdict != "WARN" { t.Fatalf("DNS mismatch should warn, got %s", report.Verdict) }
- report = urlTraceReport{Verdict:"HEALTHY", TLS:&urlTraceTLS{Error:"certificate expired"}}
+ report = urlTraceReport{Verdict:"HEALTHY", TLS:&urlTraceTLS{Status:"FAILED", Error:"certificate expired"}}
  applyURLExternalCheckVerdict(&report)
  if report.Verdict != "FAILED" { t.Fatalf("TLS error should fail, got %s", report.Verdict) }
 }
