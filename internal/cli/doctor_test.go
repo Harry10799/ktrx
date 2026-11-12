@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -284,13 +286,18 @@ func TestDoctorCommandIntegration(t *testing.T) {
 						return
 					}
 					var review authv1.SelfSubjectAccessReview
-					if err := json.NewDecoder(r.Body).Decode(&review); err != nil {
-						http.Error(w, err.Error(), http.StatusBadRequest)
+					requestBody, err := io.ReadAll(r.Body)
+					if err != nil {
+						writeDoctorTestAPIError(w, http.StatusBadRequest, "read request body: "+err.Error())
+						return
+					}
+					if err := json.Unmarshal(requestBody, &review); err != nil {
+						writeDoctorTestAPIError(w, http.StatusBadRequest, fmt.Sprintf("decode SelfSubjectAccessReview request %q: %v", string(requestBody), err))
 						return
 					}
 					attrs := review.Spec.ResourceAttributes
 					if attrs == nil {
-						http.Error(w, "missing resource attributes", http.StatusBadRequest)
+						writeDoctorTestAPIError(w, http.StatusBadRequest, "missing resource attributes in request "+string(requestBody))
 						return
 					}
 					received = append(received, *attrs)
@@ -308,19 +315,13 @@ func TestDoctorCommandIntegration(t *testing.T) {
 						Spec: review.Spec,
 						Status: status,
 					}
-					// The client-go REST path accepts a normal successful JSON response.
-					// Use 200 here to keep this lightweight test server independent of
-					// Kubernetes API-server create-response negotiation.
-					w.WriteHeader(http.StatusOK)
-					_ = json.NewEncoder(w).Encode(response)
+					// Kubernetes create endpoints return HTTP 201 and the created object.
+					w.WriteHeader(http.StatusCreated)
+					if err := json.NewEncoder(w).Encode(response); err != nil {
+						t.Errorf("encode SelfSubjectAccessReview response: %v", err)
+					}
 				default:
-					w.WriteHeader(http.StatusNotFound)
-					_ = json.NewEncoder(w).Encode(metav1.Status{
-						TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
-						Status: metav1.StatusFailure, Reason: metav1.StatusReasonNotFound,
-						Message: "unhandled test API path: " + r.Method + " " + r.URL.RequestURI(),
-						Code: http.StatusNotFound,
-					})
+					writeDoctorTestAPIError(w, http.StatusNotFound, "unhandled test API path: "+r.Method+" "+r.URL.RequestURI())
 				}
 			}))
 			defer server.Close()
@@ -436,4 +437,14 @@ func writeDoctorTestKubeconfig(t *testing.T, serverURL string) string {
 		t.Fatalf("write temporary kubeconfig: %v", err)
 	}
 	return path
+}
+
+func writeDoctorTestAPIError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(metav1.Status{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
+		Status: metav1.StatusFailure, Reason: metav1.StatusReasonBadRequest,
+		Message: message, Code: int32(code),
+	})
 }
