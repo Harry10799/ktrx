@@ -69,8 +69,8 @@ func newTimelineCommand() *cobra.Command {
 	cmd.Flags().StringVar(&contextName, "context", "", "Kubeconfig context")
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal, json or markdown")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "Disable colored terminal output")
-	cmd.Flags().DurationVar(&since, "since", 24*time.Hour, "Include timeline evidence from this duration (default 24h)")
-	cmd.Flags().DurationVar(&since, "window", 24*time.Hour, "Look back this far for timeline evidence before the failure start (same as --since)")
+	cmd.Flags().DurationVar(&since, "since", 24*time.Hour, "Lookback duration for retained evidence (default 24h); correlation deltas are measured before failure start")
+	cmd.Flags().DurationVar(&since, "window", 24*time.Hour, "Alias for --since: retained-evidence lookback; correlation deltas are measured before failure start")
 	cmd.Flags().IntVar(&top, "top", 5, "Maximum number of potential correlations to show")
 	cmd.Flags().StringVar(&failureAtText, "failure-at", "", "Override failure start using an RFC3339 timestamp")
 	return cmd
