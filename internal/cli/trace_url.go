@@ -315,7 +315,7 @@ func printURLTrace(report urlTraceReport) {
 		for _, routeNote := range route.Notes { fmt.Printf("  ! %s\n", routeNote) }
 		for _, b := range route.Backends {
 			fmt.Printf("  → Service %s port=%s status=%s endpoints=%d ready=%d\n", b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints)
-			for _, pod := range b.Pods { fmt.Printf("      → Pod %s\n", pod) }
+			for _, pod := range b.Pods { fmt.Printf("      → Pod %s phase=%s ready=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.Restarts) }
 			for _, note := range b.Notes { fmt.Printf("      ! %s\n", note) }
 		}
 	}
