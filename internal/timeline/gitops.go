@@ -29,7 +29,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 		report.Limitations = appendUnique(report.Limitations, "Flux history was not queried because a dynamic Kubernetes client was unavailable.")
 		return
 	}
-	kustomizations, kustomErr := listFirstAvailable(ctx, client, report.Namespace, fluxKustomizationResources)
+	kustomizations, kustomErr := listAcrossNamespaces(ctx, client, []string{report.Namespace, "flux-system"}, fluxKustomizationResources, report)
 	if kustomErr != nil {
 		report.Limitations = appendUnique(report.Limitations, "Flux Kustomization history is unavailable (CRD missing or RBAC denied).")
 	} else {
@@ -41,12 +41,14 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			}
 			sourceKind, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "kind")
 			sourceName, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "name")
+			sourceNamespace, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "namespace")
+			if sourceNamespace == "" { sourceNamespace = object.GetNamespace() }
 			timestamp := latestConditionTime(object)
 			details := "sourceRef=" + sourceKind + "/" + sourceName
 			if revision != "" { details += " revision=" + revision }
 			if hash := commitHash(revision); hash != "" {
 				details += " commit=" + hash
-				if commitURL := gitCommitURL(ctx, client, report.Namespace, sourceKind, sourceName, hash); commitURL != "" {
+				if commitURL := gitCommitURL(ctx, client, sourceNamespace, sourceKind, sourceName, hash); commitURL != "" {
 					details += " commitURL=" + commitURL
 				}
 			}
@@ -59,7 +61,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			})
 		}
 	}
-	helmReleases, helmErr := listFirstAvailable(ctx, client, report.Namespace, fluxHelmReleaseResources)
+	helmReleases, helmErr := listAcrossNamespaces(ctx, client, []string{report.Namespace, "flux-system"}, fluxHelmReleaseResources, report)
 	if helmErr != nil {
 		report.Limitations = appendUnique(report.Limitations, "Flux HelmRelease history is unavailable (CRD missing or RBAC denied).")
 	} else {
@@ -102,6 +104,27 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 		}
 	}
 	addArgoCDHistory(ctx, client, report, labels)
+}
+
+func listAcrossNamespaces(ctx context.Context, client dynamic.Interface, namespaces []string, resources []schema.GroupVersionResource, report *Report) ([]unstructured.Unstructured, error) {
+	combined := make([]unstructured.Unstructured, 0)
+	successes := 0
+	var lastErr error
+	seen := map[string]struct{}{}
+	for _, namespace := range namespaces {
+		if _, exists := seen[namespace]; exists { continue }
+		seen[namespace] = struct{}{}
+		items, err := listFirstAvailable(ctx, client, namespace, resources)
+		if err != nil {
+			lastErr = err
+			report.Limitations = appendUnique(report.Limitations, "Could not list optional GitOps resources in namespace "+namespace+" (CRD missing or RBAC denied).")
+			continue
+		}
+		successes++
+		combined = append(combined, items...)
+	}
+	if successes == 0 { return nil, lastErr }
+	return combined, nil
 }
 
 func listFirstAvailable(ctx context.Context, client dynamic.Interface, namespace string, resources []schema.GroupVersionResource) ([]unstructured.Unstructured, error) {
