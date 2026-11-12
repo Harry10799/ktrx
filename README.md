@@ -128,11 +128,12 @@ ktrx compare api-good-abc api-bad-xyz -n production
 ~~~bash
 ktrx trace-url https://api.example.com/health -n production
 ktrx trace-url https://api.example.com/health -n production --output json
+ktrx trace-url https://api.example.com/health --all-namespaces --ingress-class alb
 ~~~
 
-KTRX performs read-only route discovery and follows matching Kubernetes Ingress or Gateway API HTTPRoute rules to their Service backends, EndpointSlices and referenced Pods. Host and path matching is applied before resolving backends. A missing Service or a Service with no ready endpoints is highlighted.
+KTRX performs read-only route discovery and follows matching Kubernetes Ingress or Gateway API HTTPRoute rules to their Service backends, EndpointSlices and referenced Pods. Host and path matching is applied before resolving backends. Routes are ordered by host specificity and path precedence. The trace includes ready and not-ready EndpointSlice targets, Pod readiness/restarts, IngressClass, Ingress load-balancer hostnames and matching AWS TargetGroupBinding metadata when its CRD is installed. Use `--all-namespaces` to search cluster-wide or `--ingress-class CLASS` to filter Ingresses.
 
-This is **configuration-path tracing**, not a live HTTP probe: it does not resolve public DNS, validate TLS, contact an external load balancer, or prove that a client can reach the application. Gateway API parent/listener attachment readiness and cross-namespace backend references are not verified yet. HTTPRoute support is optional and requires the Gateway API CRD plus read permissions. If the API is absent or access is denied, KTRX reports a limitation rather than treating it as an application failure.
+This is **configuration-path tracing**, not a live HTTP probe: it does not resolve public DNS, validate TLS, contact an external load balancer, or prove that a client can reach the application. Gateway API parent/listener attachment readiness and cross-namespace backend references are not verified yet. AWS TargetGroupBinding metadata is Kubernetes-side association only; AWS target health and unhealthy reasons are not queried by this command. HTTPRoute support is optional and requires the Gateway API CRD plus read permissions. If the API is absent or access is denied, KTRX reports a limitation rather than treating it as an application failure.
 
 ### 7. Inspect Deployment change history
 
@@ -218,7 +219,7 @@ KTRX is an aid for investigation, not an autonomous root-cause oracle.
 - Runtime probes require suitable utilities inside the chosen container and execute in that container's network context.
 - Ingress controller Pod discovery currently supports ingress-nginx. Other controllers can still have their Ingress routes inspected, but controller-Pod health discovery is not implemented for them.
 - Kubernetes API visibility and RBAC restrictions can cause checks to be reported as UNKNOWN.
-- Gateway API HTTPRoute support and Hubble integration are not currently implemented.
+- Gateway API HTTPRoute discovery is supported, but parent/listener attachment and cross-namespace ReferenceGrant validation remain incomplete. Hubble integration is not currently implemented.
 
 ## Contributing
 
