@@ -145,16 +145,15 @@ func newTraceURLCommand() *cobra.Command {
 				report.Verdict = "UNKNOWN"
 			default:
 				report.Verdict = "HEALTHY"
-				for _, route := range report.Routes {
-					if route.RouteStatus == "FAILED" { report.Verdict = "FAILED" } else if route.RouteStatus == "UNKNOWN" && report.Verdict == "HEALTHY" { report.Verdict = "UNKNOWN" }
-					for _, backend := range route.Backends {
-						switch backend.ServiceStatus {
-						case "MISSING", "MISSING_PORT", "NO_READY_ENDPOINTS": report.Verdict = "FAILED"
-						case "PARTIALLY_READY": if report.Verdict != "FAILED" { report.Verdict = "WARN" }
-						case "UNKNOWN", "PENDING": if report.Verdict == "HEALTHY" { report.Verdict = "UNKNOWN" }
-						}
-						if backend.HealthcheckMismatch && report.Verdict == "HEALTHY" { report.Verdict = "WARN" }
+				selected := report.Routes[0]
+				if selected.RouteStatus == "FAILED" { report.Verdict = "FAILED" } else if selected.RouteStatus == "UNKNOWN" { report.Verdict = "UNKNOWN" }
+				for _, backend := range selected.Backends {
+					switch backend.ServiceStatus {
+					case "MISSING", "MISSING_PORT", "NO_READY_ENDPOINTS": report.Verdict = "FAILED"
+					case "PARTIALLY_READY": if report.Verdict != "FAILED" { report.Verdict = "WARN" }
+					case "UNKNOWN", "PENDING": if report.Verdict == "HEALTHY" { report.Verdict = "UNKNOWN" }
 					}
+					if backend.HealthcheckMismatch && report.Verdict == "HEALTHY" { report.Verdict = "WARN" }
 				}
 			}
 			if strings.EqualFold(output, "json") {
@@ -461,7 +460,9 @@ func uniqueSorted(values []string) []string {
 }
 
 func lookupURLDNS(ctx context.Context, host string) *urlTraceDNS {
-	ips, err := net.DefaultResolver.LookupHost(ctx, host)
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupHost(lookupCtx, host)
 	result := &urlTraceDNS{Resolved: uniqueSorted(ips)}
 	if err != nil { result.Error = err.Error() }
 	return result
