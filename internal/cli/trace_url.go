@@ -93,6 +93,7 @@ func newTraceURLCommand() *cobra.Command {
 			if dynErr != nil { return fmt.Errorf("create Kubernetes dynamic client: %w", dynErr) }
 
 			report := urlTraceReport{URL: target.String(), Namespace: namespace, Host: target.Hostname(), Path: target.Path, Verdict: "UNKNOWN"}
+			if allNamespaces { report.Namespace = "*" }
 			if report.Path == "" { report.Path = "/" }
 			routes, notes := discoverIngressRoutesFiltered(cmd.Context(), client, namespace, allNamespaces, ingressClass, target)
 			report.Routes = append(report.Routes, routes...)
@@ -315,6 +316,7 @@ func summarizeURLPod(pod *corev1.Pod, endpointReady bool) urlTracePod {
 
 func ingressClassName(ing *networkingv1.Ingress) string {
 	if ing.Spec.IngressClassName != nil { return *ing.Spec.IngressClassName }
+	if legacy := ing.Annotations["kubernetes.io/ingress.class"]; legacy != "" { return legacy }
 	return ""
 }
 
