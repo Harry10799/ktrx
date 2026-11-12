@@ -542,7 +542,7 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 	}
 
 	if len(reports[0].RecentChanges) > 0 || reports[0].RecentChangesNote != "" {
-		fmt.Printf("\\n%s\\n", style("99", "RECENT DEPLOYMENT CHANGES"))
+		fmt.Printf("\n%s\n", style("99", "RECENT DEPLOYMENT CHANGES"))
 		for _, change := range reports[0].RecentChanges {
 			fmt.Printf("  • %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
 		}
