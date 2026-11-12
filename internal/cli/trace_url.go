@@ -71,7 +71,7 @@ func newTraceURLCommand() *cobra.Command {
 			dyn, dynErr := dynamic.NewForConfig(config)
 			if dynErr != nil { return fmt.Errorf("create Kubernetes dynamic client: %w", dynErr) }
 
-			report := urlTraceReport{URL: target.String(), Namespace: namespace, Host: target.Hostname(), Path: target.EscapedPath(), Verdict: "UNKNOWN"}
+			report := urlTraceReport{URL: target.String(), Namespace: namespace, Host: target.Hostname(), Path: target.Path, Verdict: "UNKNOWN"}
 			if report.Path == "" { report.Path = "/" }
 			routes, notes := discoverIngressRoutes(cmd.Context(), client, namespace, target)
 			report.Routes = append(report.Routes, routes...)
@@ -130,7 +130,7 @@ func discoverIngressRoutes(ctx context.Context, client kubernetes.Interface, nam
 	for i := range list.Items {
 		ing := &list.Items[i]
 		add := func(host, path, match, service, port string) {
-			if !urlHostMatches(host, target.Hostname()) || !urlPathMatches(path, target.EscapedPath(), match) { return }
+			if !urlHostMatches(host, target.Hostname()) || !urlPathMatches(path, target.Path, match) { return }
 			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:namespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match,
 				Backends:[]urlTraceBackend{{Service:service, Port:port, ServiceStatus:"PENDING"}}})
 		}
@@ -186,7 +186,7 @@ func discoverHTTPRoutes(ctx context.Context, dyn dynamic.Interface, namespace st
 					value, _, _ := unstructured.NestedString(path, "value")
 					kind, _, _ := unstructured.NestedString(path, "type")
 					if value == "" { value = "/" }; if kind == "" { kind = "PathPrefix" }
-					if urlPathMatches(value, target.EscapedPath(), kind) { matched = true; pathMatch = value; matchName = kind; break }
+					if urlPathMatches(value, target.Path, kind) { matched = true; pathMatch = value; matchName = kind; break }
 				}
 				if !matched { continue }
 				backends, _, _ := unstructured.NestedSlice(rule, "backendRefs")
@@ -220,7 +220,7 @@ func resolveURLBackend(ctx context.Context, client kubernetes.Interface, namespa
 		for _, p := range svc.Spec.Ports {
 			if fmt.Sprint(p.Port) == backend.Port || p.Name == backend.Port { found = true; break }
 		}
-		if !found { backend.Notes = append(backend.Notes, "Route backend port does not match a declared Service port.") }
+		if !found { backend.ServiceStatus = "MISSING_PORT"; backend.Notes = append(backend.Notes, "Route backend port does not match a declared Service port."); return }
 	}
 	slices, err := client.DiscoveryV1().EndpointSlices(namespace).List(ctx, metav1.ListOptions{LabelSelector:"kubernetes.io/service-name="+backend.Service})
 	if err != nil {
@@ -252,7 +252,12 @@ func urlHostMatches(pattern, host string) bool {
 	pattern = strings.ToLower(strings.TrimSuffix(pattern, "."))
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if pattern == "" || pattern == "*" { return true }
-	if strings.HasPrefix(pattern, "*.") { suffix := strings.TrimPrefix(pattern, "*"); return strings.HasSuffix(host, suffix) && host != strings.TrimPrefix(suffix, ".") }
+	if strings.HasPrefix(pattern, "*.") {
+		suffix := strings.TrimPrefix(pattern, "*")
+		if !strings.HasSuffix(host, suffix) { return false }
+		label := strings.TrimSuffix(host, suffix)
+		return label != "" && !strings.Contains(label, ".")
+	}
 	return pattern == host
 }
 
