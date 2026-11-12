@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"encoding/json"
 	"net"
 	"strings"
@@ -15,8 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 )
 
 func TestURLHostMatches(t *testing.T) {
@@ -244,6 +247,32 @@ func TestHTTPRouteStatusConditions(t *testing.T) {
 	}
 }
 
+func TestHTTPRouteStatusRequiresBothConditionsTrue(t *testing.T) {
+	tests := []struct {
+		name      string
+		parents   []interface{}
+		want      string
+	}{
+		{name: "missing parents", parents: nil, want: "UNKNOWN"},
+		{name: "missing resolved refs", parents: []interface{}{map[string]interface{}{"conditions": []interface{}{map[string]interface{}{"type": "Accepted", "status": "True"}}}}, want: "UNKNOWN"},
+		{name: "both true", parents: []interface{}{map[string]interface{}{"conditions": []interface{}{map[string]interface{}{"type": "Accepted", "status": "True"}, map[string]interface{}{"type": "ResolvedRefs", "status": "True"}}}}, want: "HEALTHY"},
+		{name: "both false", parents: []interface{}{map[string]interface{}{"conditions": []interface{}{map[string]interface{}{"type": "Accepted", "status": "False"}, map[string]interface{}{"type": "ResolvedRefs", "status": "False"}}}}, want: "FAILED"},
+		{name: "one healthy and one rejected parent", parents: []interface{}{
+			map[string]interface{}{"conditions": []interface{}{map[string]interface{}{"type": "Accepted", "status": "True"}, map[string]interface{}{"type": "ResolvedRefs", "status": "True"}}},
+			map[string]interface{}{"conditions": []interface{}{map[string]interface{}{"type": "Accepted", "status": "False"}, map[string]interface{}{"type": "ResolvedRefs", "status": "True"}}},
+		}, want: "UNKNOWN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			route := &unstructured.Unstructured{Object: map[string]interface{}{"status": map[string]interface{}{"parents": tt.parents}}}
+			got, _ := httpRouteStatus(route)
+			if got != tt.want {
+				t.Fatalf("httpRouteStatus() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestHTTPRouteCrossNamespaceReferenceGrant(t *testing.T) {
 	grant := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "gateway.networking.k8s.io/v1",
@@ -260,10 +289,22 @@ func TestHTTPRouteCrossNamespaceReferenceGrant(t *testing.T) {
 		referenceGrantV1:      "ReferenceGrantList",
 		referenceGrantV1beta1: "ReferenceGrantList",
 	}, grant)
-	if !httpRouteReferenceAllowed(context.Background(), dyn, "frontend", "backend", "api") {
-		t.Fatal("matching ReferenceGrant should allow the cross-namespace Service reference")
+	if status, _ := httpRouteReferenceGrantStatus(context.Background(), dyn, "frontend", "backend", "api"); status != "ALLOWED" {
+		t.Fatalf("matching ReferenceGrant should allow the cross-namespace Service reference, got %s", status)
 	}
-	if httpRouteReferenceAllowed(context.Background(), dyn, "other", "backend", "api") {
-		t.Fatal("ReferenceGrant must not authorize a different source namespace")
+	if status, _ := httpRouteReferenceGrantStatus(context.Background(), dyn, "other", "backend", "api"); status != "DENIED" {
+		t.Fatalf("ReferenceGrant must deny a different source namespace, got %s", status)
+	}
+}
+
+func TestHTTPRouteReferenceGrantRBACFailureIsUnknown(t *testing.T) {
+	gvr := schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "referencegrants"}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{gvr: "ReferenceGrantList"})
+	dyn.PrependReactor("list", "referencegrants", func(action ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(gvr.GroupResource(), "", errors.New("forbidden"))
+	})
+	status, note := httpRouteReferenceGrantStatus(context.Background(), dyn, "frontend", "backend", "api")
+	if status != "UNKNOWN" || !strings.Contains(note, "forbidden") {
+		t.Fatalf("RBAC denial must be reported as UNKNOWN with context, got status=%s note=%q", status, note)
 	}
 }
