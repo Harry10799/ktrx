@@ -30,11 +30,11 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 
 ### Install from source
 
-The repository is currently named `kubetrace`, while the installed executable is `ktrx`. Clone the repository URL that exists today, then install the local module:
+Clone the KTRX repository and install the CLI from source:
 
 ~~~bash
-git clone https://github.com/Harry10799/kubetrace.git
-cd kubetrace
+git clone https://github.com/Harry10799/ktrx.git
+cd ktrx
 go install ./cmd/ktrx
 ~~~
 
