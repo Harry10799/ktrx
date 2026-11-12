@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -151,7 +152,14 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			}
 		}
 		if len(missing) > 0 {
-			report.Limitations = appendUnique(report.Limitations, "Revision gap(s) detected: "+joinValues(missing, ", ")+". Kubernetes may have pruned old ReplicaSets or reused a prior ReplicaSet during rollback; missing revision contents cannot be reconstructed.")
+			gapDetail := "Revision gap(s) detected: " + joinValues(missing, ", ") + ". Missing revision contents cannot be reconstructed."
+			for _, event := range report.Events {
+				if strings.Contains(event.Details, "older ReplicaSet was reused") && event.Revision != "" {
+					gapDetail += " Revision " + joinValues(missing, ", ") + " may have been reused as revision " + event.Revision + " during rollback; the original revision entry is unavailable."
+					break
+				}
+			}
+			report.Limitations = appendUnique(report.Limitations, gapDetail)
 		}
 	}
 
@@ -281,7 +289,7 @@ func podReady(pod corev1.Pod) bool {
 func podFailureStart(pod corev1.Pod) *time.Time {
 	var earliest time.Time
 	for _, condition := range pod.Status.Conditions {
-		if condition.Status == corev1.ConditionFalse && condition.Type != corev1.PodReady && !condition.LastTransitionTime.IsZero() {
+		if condition.Status == corev1.ConditionFalse && (condition.Type != corev1.PodReady || pod.Status.Phase == corev1.PodRunning) && !condition.LastTransitionTime.IsZero() {
 			if earliest.IsZero() || condition.LastTransitionTime.Time.Before(earliest) { earliest = condition.LastTransitionTime.Time }
 		}
 	}
