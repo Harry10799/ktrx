@@ -3,6 +3,8 @@ package cli
 import (
 	"testing"
 	"context"
+	"crypto/x509"
+	"net"
 	"encoding/json"
 	"strings"
 
@@ -128,6 +130,32 @@ func TestExternalCheckVerdict(t *testing.T) {
  report = urlTraceReport{Verdict:"HEALTHY", TLS:&urlTraceTLS{Error:"certificate expired"}}
  applyURLExternalCheckVerdict(&report)
  if report.Verdict != "FAILED" { t.Fatalf("TLS error should fail, got %s", report.Verdict) }
+}
+
+func TestExternalReachabilityErrorsAreConservative(t *testing.T) {
+	timeoutErr := &net.DNSError{Err:"i/o timeout", IsTimeout:true}
+	nxdomainErr := &net.DNSError{Err:"no such host", IsNotFound:true}
+	if isURLDNSNotFound(timeoutErr) { t.Fatal("DNS timeout must not be classified as NXDOMAIN") }
+	if !isURLDNSNotFound(nxdomainErr) { t.Fatal("NXDOMAIN should be classified as a definitive DNS failure") }
+
+	report := urlTraceReport{Verdict:"HEALTHY", DNS:&urlTraceDNS{Status:"UNKNOWN", Error:timeoutErr.Error()}}
+	applyURLExternalCheckVerdict(&report)
+	if report.Verdict != "HEALTHY" { t.Fatalf("local DNS timeout must not fail cluster verdict, got %s", report.Verdict) }
+	report = urlTraceReport{Verdict:"HEALTHY", DNS:&urlTraceDNS{Status:"FAILED", Error:nxdomainErr.Error()}}
+	applyURLExternalCheckVerdict(&report)
+	if report.Verdict != "FAILED" { t.Fatalf("NXDOMAIN should fail, got %s", report.Verdict) }
+
+	report = urlTraceReport{Verdict:"HEALTHY", TLS:&urlTraceTLS{Status:"UNKNOWN", Error:"i/o timeout"}}
+	applyURLExternalCheckVerdict(&report)
+	if report.Verdict != "HEALTHY" { t.Fatalf("TLS timeout must not fail cluster verdict, got %s", report.Verdict) }
+}
+
+func TestExpiredCertificateIsRecognizedAsCertificateFailure(t *testing.T) {
+	err := x509.CertificateInvalidError{Reason:x509.Expired}
+	if !isURLCertificateError(err) { t.Fatal("x509 expired certificate error should be definitive") }
+	report := urlTraceReport{Verdict:"HEALTHY", TLS:&urlTraceTLS{Status:"FAILED", Error:"x509: certificate has expired"}}
+	applyURLExternalCheckVerdict(&report)
+	if report.Verdict != "FAILED" { t.Fatalf("expired certificate should fail, got %s", report.Verdict) }
 }
 
 func TestTargetGroupBindingMatchesNamedServicePort(t *testing.T) {
