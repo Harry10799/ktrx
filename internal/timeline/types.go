@@ -5,8 +5,12 @@ import "time"
 type EventType string
 
 const (
-	EventRollout EventType = "ROLLOUT"
-	EventConfig  EventType = "CONFIG"
+	EventRollout    EventType = "ROLLOUT"
+	EventConfig     EventType = "CONFIG"
+	EventKubernetes EventType = "KUBERNETES"
+	EventFailure    EventType = "FAILURE"
+	EventRestart    EventType = "RESTART"
+	EventGitOps     EventType = "GITOPS"
 )
 
 type Change struct {
@@ -17,21 +21,22 @@ type Change struct {
 
 type TimelineEvent struct {
 	Timestamp  *time.Time `json:"timestamp,omitempty"`
-	Type       EventType `json:"type"`
-	Resource   string    `json:"resource"`
-	Revision   string    `json:"revision,omitempty"`
-	Current    bool      `json:"current,omitempty"`
-	Action     string    `json:"action"`
-	Changes    []Change  `json:"changes,omitempty"`
-	Source     string    `json:"source"`
-	Confidence string    `json:"confidence"`
-	Details    string    `json:"details,omitempty"`
+	Type       EventType  `json:"type"`
+	Resource   string     `json:"resource"`
+	Revision   string     `json:"revision,omitempty"`
+	Current    bool       `json:"current,omitempty"`
+	Action     string     `json:"action"`
+	Changes    []Change   `json:"changes,omitempty"`
+	Source     string     `json:"source"`
+	Confidence string     `json:"confidence"`
+	Details    string     `json:"details,omitempty"`
 }
 
 type Report struct {
-	Namespace   string          `json:"namespace"`
-	Target      string          `json:"target"`
-	GeneratedAt time.Time       `json:"generatedAt"`
-	Events      []TimelineEvent `json:"events"`
-	Limitations []string        `json:"limitations,omitempty"`
+	Namespace         string          `json:"namespace"`
+	Target            string          `json:"target"`
+	GeneratedAt       time.Time       `json:"generatedAt"`
+	FailureStartedAt  *time.Time      `json:"failureStartedAt,omitempty"`
+	Events            []TimelineEvent `json:"events"`
+	Limitations       []string        `json:"limitations,omitempty"`
 }
