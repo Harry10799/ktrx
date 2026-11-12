@@ -136,6 +136,7 @@ func discoverIngressRoutes(ctx context.Context, client kubernetes.Interface, nam
 	var routes []urlTraceRoute
 	for i := range list.Items {
 		ing := &list.Items[i]
+		routeStart := len(routes)
 		add := func(host, path, match, service, port string) {
 			if !urlHostMatches(host, target.Hostname()) || !urlPathMatches(path, target.Path, match) { return }
 			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:namespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match,
@@ -152,7 +153,7 @@ func discoverIngressRoutes(ctx context.Context, client kubernetes.Interface, nam
 				add(host, path, match, b.Name, ingressPortString(b.Port.Name, b.Port.Number))
 			}
 		}
-		if len(routes) == 0 && ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
+		if len(routes) == routeStart && ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
 			b := ing.Spec.DefaultBackend.Service
 			add("*", "/", "Prefix", b.Name, ingressPortString(b.Port.Name, b.Port.Number))
 		}
