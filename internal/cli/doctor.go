@@ -144,9 +144,13 @@ func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequ
 		{name: "Read referenced Secret metadata only", verb: "get", resource: "secrets", namespace: namespace},
 		{name: "Discover Ingress controller Pods across namespaces", verb: "list", resource: "pods"},
 		{name: "List Flux Kustomizations (optional)", verb: "list", group: "kustomize.toolkit.fluxcd.io", resource: "kustomizations", namespace: namespace, optional: true},
+		{name: "List Flux Kustomizations in flux-system (optional)", verb: "list", group: "kustomize.toolkit.fluxcd.io", resource: "kustomizations", namespace: "flux-system", optional: true},
 		{name: "List Flux HelmReleases (optional)", verb: "list", group: "helm.toolkit.fluxcd.io", resource: "helmreleases", namespace: namespace, optional: true},
+		{name: "List Flux HelmReleases in flux-system (optional)", verb: "list", group: "helm.toolkit.fluxcd.io", resource: "helmreleases", namespace: "flux-system", optional: true},
 		{name: "Get Flux GitRepositories (optional)", verb: "get", group: "source.toolkit.fluxcd.io", resource: "gitrepositories", namespace: namespace, optional: true},
+		{name: "Get Flux GitRepositories in flux-system (optional)", verb: "get", group: "source.toolkit.fluxcd.io", resource: "gitrepositories", namespace: "flux-system", optional: true},
 		{name: "List Argo CD Applications (optional)", verb: "list", group: "argoproj.io", resource: "applications", namespace: "argocd", optional: true},
+		{name: "List Argo CD Applications in workload namespace (optional)", verb: "list", group: "argoproj.io", resource: "applications", namespace: namespace, optional: true},
 	}
 	if includeNetcheck {
 		requirements = append(requirements, accessRequirement{name: "Execute explicit in-Pod network probes", verb: "create", resource: "pods", subresource: "exec", namespace: namespace})
