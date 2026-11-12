@@ -135,7 +135,53 @@ ktrx trace-url https://api.example.com/health --all-namespaces --ingress-class a
 
 KTRX performs read-only route discovery and follows matching Kubernetes Ingress or Gateway API HTTPRoute rules to their Service backends, EndpointSlices and referenced Pods. Host and path matching is applied before resolving backends. Routes are ordered by host specificity and path precedence. The trace includes ready and not-ready EndpointSlice targets, Pod readiness/restarts, IngressClass, Ingress load-balancer hostnames and matching AWS TargetGroupBinding metadata when its CRD is installed. Use `--all-namespaces` to search cluster-wide or `--ingress-class CLASS` to filter Ingresses.
 
-This is **configuration-path tracing**, not a live HTTP probe: it does not resolve public DNS, validate TLS, contact an external load balancer, or prove that a client can reach the application. Gateway API parent/listener attachment readiness and cross-namespace backend references are not verified yet. AWS TargetGroupBinding metadata is Kubernetes-side association only; AWS target health and unhealthy reasons are not queried by this command. HTTPRoute support is optional and requires the Gateway API CRD plus read permissions. If the API is absent or access is denied, KTRX reports a limitation rather than treating it as an application failure.
+KTRX marks the highest-precedence matching route as **selected** and labels additional matches separately. For Gateway API routes, it inspects parent status conditions (`Accepted` and `ResolvedRefs`) and validates cross-namespace Service references against `ReferenceGrant` objects. For AWS Load Balancer Controller installations, it shows the Ingress ALB hostname, configured ALB health-check path, readiness-probe path comparison, and matching `TargetGroupBinding` metadata. Unhealthy or not-ready Pods are linked to KTRX Pod-analyzer findings where available.
+
+Optional live checks can be requested explicitly:
+
+~~~bash
+ktrx trace-url https://api.example.com/health -n production --check-dns
+ktrx trace-url https://api.example.com/health -n production --check-tls
+ktrx trace-url https://api.example.com/health -n production --check-dns --check-tls --output markdown
+~~~
+
+`--check-dns` performs a DNS lookup for the URL hostname. `--check-tls` performs a TLS/SNI handshake and reports the peer certificate expiry (HTTPS URLs only). These checks require network access from the machine running KTRX; they do not prove that the browser/client network can reach the service. KTRX does not send an HTTP request.
+
+**Request path represented by `trace-url`:**
+
+~~~text
+URL
+ |
+ v
+Ingress / Gateway API HTTPRoute
+ |
+ v
+AWS Application Load Balancer (when configured)
+ |
+ v
+Listener rule (represented by the matching Kubernetes route)
+ |
+ v
+TargetGroupBinding (Kubernetes-side association)
+ |
+ v
+AWS Target Group
+ |
+ +-- Target 10.0.1.10  HEALTHY       [AWS API check: planned optional --aws]
+ |
+ +-- Target 10.0.1.11  UNHEALTHY     [reason, e.g. Target.Timeout: planned]
+ |
+ v
+Kubernetes Service
+ |
+ v
+EndpointSlice (ready / not-ready addresses)
+ |
+ v
+Pod (phase, readiness, restarts and KTRX findings)
+~~~
+
+**AWS target-health boundary:** the current command reads `TargetGroupBinding` objects from Kubernetes and can show the associated target-group ARN. It does **not** currently call the AWS API, inspect listener rules directly, or retrieve per-target `HEALTHY`/`UNHEALTHY` state and reason codes such as `Target.Timeout`. Those are a planned opt-in AWS integration; the diagram labels that part explicitly so Kubernetes-side evidence is not confused with AWS control-plane evidence. HTTPRoute support is optional and requires the Gateway API CRDs and read permissions. Missing APIs or denied access are reported as limitations rather than treated as application failures.
 
 ### 7. Inspect Deployment change history
 
@@ -234,10 +280,6 @@ Bug reports, reproducible examples, test cases and focused pull requests are wel
 
 Please do not attach kubeconfig files, Secret manifests, access tokens or unredacted production logs.
 
-## License
-
-KTRX is licensed under the [Apache License 2.0](LICENSE).
-
 
 ## Deployment change timeline
 
@@ -263,3 +305,7 @@ The timeline includes:
 Flux support is read-only and optional. Missing CRDs or insufficient RBAC are reported as limitations rather than treated as application failures.
 
 **History limitations:** The timeline defaults to the last 24 hours; change this with `--since` (for example, `--since 7d`). Kubernetes Events may expire according to cluster configuration. ReplicaSet history can be pruned or reused during rollback. ConfigMap/Secret resourceVersions are opaque identifiers; the metadata-only API provides current metadata and managedFields timestamps, not historical object versions or a full audit trail. GitOps revisions are linked only when workload labels or controller inventory identify the owning application. Failure start means earliest retained evidence for a currently unhealthy workload; correlations are temporal clues, not proof of causation.
+
+## License
+
+KTRX is licensed under the [Apache License 2.0](LICENSE).
