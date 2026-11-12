@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"sort"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -131,8 +129,6 @@ func discoverIngressRoutes(ctx context.Context, client kubernetes.Interface, nam
 	var routes []urlTraceRoute
 	for i := range list.Items {
 		ing := &list.Items[i]
-		appendBackend := func(host, path, match string, backend *corev1.TypedLocalObjectReference) {}
-		_ = appendBackend
 		add := func(host, path, match, service, port string) {
 			if !urlHostMatches(host, target.Hostname()) || !urlPathMatches(path, target.EscapedPath(), match) { return }
 			routes = append(routes, urlTraceRoute{Kind:"Ingress", Namespace:namespace, Name:ing.Name, Host:hostOrWildcard(host), Path:path, Match:match,
@@ -295,5 +291,3 @@ func printURLTrace(report urlTraceReport) {
 	fmt.Println("\nNote: This traces Kubernetes routing configuration only; it does not test DNS, TLS, external load balancers or live HTTP reachability.")
 }
 
-var _ = net.IP{}
-var _ = discoveryv1.EndpointSlice{}
