@@ -172,8 +172,7 @@ func newTraceURLCommand() *cobra.Command {
 					if backend.HealthcheckMismatch { /* Different ALB and readiness paths can be intentional; informational only. */ }
 				}
 			}
-			if report.DNS != nil { if report.DNS.Error != "" || len(report.DNS.Resolved) == 0 { report.Verdict = "FAILED" } else if !report.DNS.MatchesALB && report.Verdict != "FAILED" { report.Verdict = "WARN" } }
-			if report.TLS != nil { if report.TLS.Error != "" || report.TLS.DaysRemaining < 0 { report.Verdict = "FAILED" } else if report.TLS.DaysRemaining <= 14 && report.Verdict != "FAILED" { report.Verdict = "WARN" } }
+			applyURLExternalCheckVerdict(&report)
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(os.Stdout); enc.SetIndent("", "  "); return enc.Encode(report)
 			}
@@ -194,6 +193,15 @@ func newTraceURLCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&checkDNS, "check-dns", false, "Perform an opt-in DNS lookup for the URL hostname")
 	cmd.Flags().BoolVar(&checkTLS, "check-tls", false, "Perform an opt-in TLS/SNI handshake and certificate expiry check")
 	return cmd
+}
+
+func applyURLExternalCheckVerdict(report *urlTraceReport) {
+	if report.DNS != nil {
+		if report.DNS.Error != "" || len(report.DNS.Resolved) == 0 { report.Verdict = "FAILED" } else if !report.DNS.MatchesALB && report.Verdict != "FAILED" { report.Verdict = "WARN" }
+	}
+	if report.TLS != nil {
+		if report.TLS.Error != "" || report.TLS.DaysRemaining < 0 { report.Verdict = "FAILED" } else if report.TLS.DaysRemaining <= 14 && report.Verdict != "FAILED" { report.Verdict = "WARN" }
+	}
 }
 
 func discoverIngressRoutes(ctx context.Context, client kubernetes.Interface, namespace string, target *url.URL) ([]urlTraceRoute, []string) {
