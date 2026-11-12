@@ -16,6 +16,7 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 - **Dependency clues:** Correlates literal same-namespace Service references in container environment values/commands with selected backend Pod health.
 - **Runtime checks:** Explicit DNS, TCP and HTTP(S) probes from an existing Pod container.
 - **Comparison:** Compare a known-good Pod with a candidate to surface configuration and evidence differences.
+- **Change timeline (initial):** Compare retained Deployment-owned ReplicaSet revisions, including image, environment-variable names and resource request/limit changes. Environment variable values are never displayed.
 - **Preflight:** Check Kubernetes API connectivity and the RBAC permissions KTRX uses.
 - **Output:** Colorized terminal, JSON and Markdown (command-specific output support is noted below).
 
@@ -121,6 +122,16 @@ ktrx compare api-good-abc api-bad-xyz -n production
 ~~~
 
 **Argument order matters:** reference Pod first, candidate Pod second. Differences are investigation clues, not proof of causation.
+
+### 6. Inspect Deployment change history
+
+~~~bash
+ktrx timeline deploy/api -n production
+ktrx timeline deploy/api -n production --output json
+ktrx timeline deploy/api -n production --output markdown
+~~~
+
+The initial timeline implementation compares ReplicaSets still retained by Kubernetes and reports their revision timestamps and supported Pod-template changes (container images, environment variable names/references, and CPU/memory requests and limits). It filters ReplicaSets by the Deployment's controller owner reference, not labels alone. Environment variable values are never emitted. Kubernetes does not retain deleted ReplicaSets indefinitely, and ReplicaSet creation timestamps are not an audit log; the output explicitly reports these history limitations and does not claim causation.
 
 ### Common options
 
