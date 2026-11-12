@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"time"
 
 	"github.com/Harry10799/ktrx/internal/kube"
 	"github.com/Harry10799/ktrx/internal/timeline"
@@ -57,6 +58,11 @@ func newTimelineCommand() *cobra.Command {
 	return cmd
 }
 
+func formatTimelineTime(value time.Time) string {
+	if value.IsZero() { return "time unavailable (rollback likely)" }
+	return value.UTC().Format("2006-01-02 15:04:05Z")
+}
+
 func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 	style := func(color, value string) string {
 		if !colorEnabled {
@@ -65,12 +71,14 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
 	fmt.Printf("%s  %s\n", style("39", "◆ KTRX CHANGE TIMELINE"), report.Namespace+"/"+report.Target)
-	fmt.Printf("Generated: %s\n\n", report.GeneratedAt.Format("2006-01-02 15:04:05 MST"))
+	fmt.Printf("Generated: %s\n\n", formatTimelineTime(report.GeneratedAt))
 	if len(report.Events) == 0 {
 		fmt.Println("No retained Deployment ReplicaSets found.")
 	}
 	for _, event := range report.Events {
-		fmt.Printf("%s  %s  %s  revision=%s\n", event.Timestamp.Format("15:04:05"), style("39", string(event.Type)), event.Resource, event.Revision)
+		current := ""
+		if event.Current { current = " ◀ current" }
+		fmt.Printf("%s  %s  %s  revision=%s%s\n", formatTimelineTime(event.Timestamp), style("39", string(event.Type)), event.Resource, event.Revision, current)
 		fmt.Printf("       %s\n", event.Action)
 		if event.Details != "" {
 			fmt.Printf("       %s\n", event.Details)
@@ -88,12 +96,14 @@ func printTimelineTerminal(report *timeline.Report, colorEnabled bool) error {
 
 func printTimelineMarkdown(report *timeline.Report) error {
 	fmt.Printf("# Change timeline: %s\n\n", report.Namespace+"/"+report.Target)
-	fmt.Printf("Generated: %s\n\n", report.GeneratedAt.Format(time.RFC3339))
+	fmt.Printf("Generated: %s\n\n", formatTimelineTime(report.GeneratedAt))
 	if len(report.Events) == 0 {
 		fmt.Println("No retained Deployment ReplicaSets found.")
 	}
 	for _, event := range report.Events {
-		fmt.Printf("## %s — %s (revision %s)\n\n", event.Timestamp.Format(time.RFC3339), event.Resource, event.Revision)
+		current := ""
+		if event.Current { current = " — CURRENT" }
+		fmt.Printf("## %s — %s (revision %s)%s\n\n", formatTimelineTime(event.Timestamp), event.Resource, event.Revision, current)
 		fmt.Printf("%s\n\n", event.Action)
 		for _, change := range event.Changes {
 			fmt.Printf("- **%s:** %s → %s\n", change.Field, change.Before, change.After)
