@@ -77,3 +77,17 @@ func TestBuildCorrelationsRanksNearestChangeFirst(t *testing.T) {
 		t.Fatal("correlation must state that causation is not established")
 	}
 }
+
+func TestCurrentRolloutStartUsesConservativeBoundaryForRollback(t *testing.T) {
+	oldCreation := time.Date(2026, 11, 12, 8, 0, 0, 0, time.UTC)
+	newCreation := oldCreation.Add(time.Hour)
+	deployment := &appsv1.Deployment{}
+	replicaSets := []appsv1.ReplicaSet{
+		{ObjectMeta: metav1.ObjectMeta{UID: "old", CreationTimestamp: metav1.NewTime(oldCreation), Annotations: map[string]string{revisionAnnotation: "4"}}},
+		{ObjectMeta: metav1.ObjectMeta{UID: "new", CreationTimestamp: metav1.NewTime(newCreation), Annotations: map[string]string{revisionAnnotation: "3"}}},
+	}
+	got := currentRolloutStart(deployment, replicaSets, "4")
+	if !got.Equal(newCreation) {
+		t.Fatalf("without a rollback condition timestamp, want conservative boundary %s, got %s", newCreation, got)
+	}
+}
