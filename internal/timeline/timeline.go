@@ -113,6 +113,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		}
 		event := TimelineEvent{
 			Timestamp: timePointer(current.CreationTimestamp.Time),
+			SortTime: timePointer(current.CreationTimestamp.Time),
 			Type: EventRollout,
 			Resource: "ReplicaSet/" + current.Name,
 			Revision: revision,
@@ -127,9 +128,12 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 				report.Limitations = appendUnique(report.Limitations, "Rollback reused an older ReplicaSet; its creation timestamp is historical, not the rollback time.")
 				if lastConditionUpdate.After(previousCreation) && !lastConditionUpdate.After(now) {
 					event.Timestamp = timePointer(lastConditionUpdate)
+					event.SortTime = timePointer(lastConditionUpdate)
 					event.Details += " Deployment condition lastUpdateTime is an approximation, not an audit timestamp."
 				} else {
 					event.Timestamp = nil
+					sortTime := previousCreation.Add(time.Nanosecond)
+					event.SortTime = &sortTime
 				}
 			}
 			event.Changes = compareTemplates(previous, current)
@@ -256,15 +260,21 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	filterTimelineSince(report, since)
 	buildCorrelations(report)
 	sort.SliceStable(report.Events, func(i, j int) bool {
-		if report.Events[i].Timestamp == nil { return false }
-		if report.Events[j].Timestamp == nil { return true }
-		return report.Events[i].Timestamp.Before(*report.Events[j].Timestamp)
+		left, right := report.Events[i].SortTime, report.Events[j].SortTime
+		if left == nil { left = report.Events[i].Timestamp }
+		if right == nil { right = report.Events[j].Timestamp }
+		if left == nil { return false }
+		if right == nil { return true }
+		return left.Before(*right)
 	})
 	return report, nil
 }
 
 func eventTimestamp(event *corev1.Event) *time.Time {
-	for _, value := range []time.Time{event.EventTime.Time, event.LastTimestamp.Time, event.FirstTimestamp.Time, event.CreationTimestamp.Time} {
+	values := []time.Time{}
+	if event.Series != nil { values = append(values, event.Series.LastObservedTime.Time) }
+	values = append(values, event.EventTime.Time, event.LastTimestamp.Time, event.FirstTimestamp.Time, event.CreationTimestamp.Time)
+	for _, value := range values {
 		if !value.IsZero() { return timePointer(value) }
 	}
 	return nil
@@ -430,6 +440,10 @@ func currentRolloutStart(deployment *appsv1.Deployment, replicaSets []appsv1.Rep
 	for _, condition := range deployment.Status.Conditions {
 		if condition.LastUpdateTime.Time.After(conditionUpdate) { conditionUpdate = condition.LastUpdateTime.Time }
 	}
-	if conditionUpdate.After(revisionCreation) { return conditionUpdate }
+	newestCreation := latestReplicaSetTime(replicaSets)
+	if !revisionCreation.IsZero() && revisionCreation.Before(newestCreation) && conditionUpdate.After(newestCreation) {
+		return conditionUpdate
+	}
+	if revisionCreation.IsZero() { return conditionUpdate }
 	return revisionCreation
 }
