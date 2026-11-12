@@ -243,6 +243,7 @@ The timeline includes:
 - Pod restart counts, retained previous-termination timestamps, and the earliest available failure evidence.
 - Referenced ConfigMap and Secret metadata through the Kubernetes metadata-only API: resourceVersion, managedFields manager names, and timestamps. Secret payloads are never fetched. Missing required references are surfaced as failures.
 - Optional Flux Kustomization/HelmRelease and Argo CD Application history, including Git revisions and GitHub/GitLab commit links where resolvable.
+- A Recent Deployment Changes section in `ktrx pod` reports for Deployment-owned Pods, including nearest-first potential correlations.
 - Current-rollout failure evidence and nearest-first potential correlations to earlier rollout, config or GitOps changes. Correlations explicitly do not establish causation.
 
 Flux support is read-only and optional. Missing CRDs or insufficient RBAC are reported as limitations rather than treated as application failures.
