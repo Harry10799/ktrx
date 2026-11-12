@@ -11,13 +11,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/dynamic"
 )
 
 const revisionAnnotation = "deployment.kubernetes.io/revision"
 
 type Analyzer struct {
-	Client kubernetes.Interface
-	Now    func() time.Time
+	Client  kubernetes.Interface
+	Dynamic dynamic.Interface
+	Now     func() time.Time
 }
 
 func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string) (*Report, error) {
@@ -154,6 +156,10 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	}
 
 	addConfigResourceEvents(ctx, a.Client, report, owned)
+	labels := map[string]string{}
+	for key, value := range deployment.Labels { labels[key] = value }
+	for key, value := range deployment.Spec.Template.Labels { labels[key] = value }
+	addGitOpsEvents(ctx, a.Dynamic, report, labels)
 
 	pods, podErr := a.Client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 	podItems := []corev1.Pod{}
