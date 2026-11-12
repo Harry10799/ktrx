@@ -133,3 +133,28 @@ func TestAnalyzeDeploymentUsesCurrentRolloutFailuresAndRetainsScalingEvents(t *t
 		t.Fatalf("expected scale, active BackOff and deleted-Pod warning evidence; events=%+v", report.Events)
 	}
 }
+
+func TestBuildCorrelationsRanksTemporalConfidenceBeforeScore(t *testing.T) {
+	failureAt := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
+	oldRollout := failureAt.Add(-5*time.Hour)
+	recentConfig := failureAt.Add(-10*time.Minute)
+	report := &Report{
+		FailureStartedAt: &failureAt,
+		Events: []TimelineEvent{
+			{Timestamp:&oldRollout, Type:EventRollout, Resource:"ReplicaSet/older", Action:"Older rollout", Current:true, Changes:[]Change{{Field:"image", Before:"v1", After:"v2"}}},
+			{Timestamp:&recentConfig, Type:EventConfig, Resource:"ConfigMap/recent", Action:"Recent config change"},
+		},
+	}
+	buildCorrelations(report, 5)
+	if len(report.Correlations) != 2 { t.Fatalf("expected two correlations, got %+v", report.Correlations) }
+	if report.Correlations[0].Resource != "ConfigMap/recent" || report.Correlations[0].Confidence != "high temporal relevance" {
+		t.Fatalf("recent high-confidence change should rank first even with lower score: %+v", report.Correlations)
+	}
+	if report.Correlations[1].Resource != "ReplicaSet/older" || report.Correlations[1].Confidence != "low temporal relevance" {
+		t.Fatalf("older low-confidence rollout should rank second: %+v", report.Correlations)
+	}
+	if report.Correlations[1].Score <= report.Correlations[0].Score {
+		t.Fatalf("test requires older rollout to have higher raw score: recent=%d old=%d", report.Correlations[0].Score, report.Correlations[1].Score)
+	}
+}
+
