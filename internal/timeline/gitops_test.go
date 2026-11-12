@@ -42,27 +42,27 @@ func TestAddGitOpsEventsReadsKustomizationAndGitCommit(t *testing.T) {
 	revisionTime := "2026-11-12T09:30:00Z"
 	kustomization := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
-		"kind": "Kustomization",
-		"metadata": map[string]interface{}{"name": "apps", "namespace": "flux-system"},
-		"spec": map[string]interface{}{"sourceRef": map[string]interface{}{"kind": "GitRepository", "name": "platform"}},
+		"kind":       "Kustomization",
+		"metadata":   map[string]interface{}{"name": "apps", "namespace": "flux-system"},
+		"spec":       map[string]interface{}{"sourceRef": map[string]interface{}{"kind": "GitRepository", "name": "platform"}},
 		"status": map[string]interface{}{
 			"lastAppliedRevision": "main@sha1:0123456789abcdef0123456789abcdef01234567",
-			"conditions": []interface{}{map[string]interface{}{"lastTransitionTime": revisionTime}},
-			"inventory": map[string]interface{}{"entries": []interface{}{map[string]interface{}{"id": "production_orders_apps_Deployment"}}},
+			"conditions":          []interface{}{map[string]interface{}{"lastTransitionTime": revisionTime}},
+			"inventory":           map[string]interface{}{"entries": []interface{}{map[string]interface{}{"id": "production_orders_apps_Deployment"}}},
 		},
 	}}
 	gitRepository := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "source.toolkit.fluxcd.io/v1",
-		"kind": "GitRepository",
-		"metadata": map[string]interface{}{"name": "platform", "namespace": "flux-system"},
-		"spec": map[string]interface{}{"url": "https://github.com/example/platform.git"},
+		"kind":       "GitRepository",
+		"metadata":   map[string]interface{}{"name": "platform", "namespace": "flux-system"},
+		"spec":       map[string]interface{}{"url": "https://github.com/example/platform.git"},
 	}}
 	client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
-  {Group:"kustomize.toolkit.fluxcd.io", Version:"v1", Resource:"kustomizations"}:"KustomizationList",
-  {Group:"helm.toolkit.fluxcd.io", Version:"v2", Resource:"helmreleases"}:"HelmReleaseList",
-  {Group:"argoproj.io", Version:"v1alpha1", Resource:"applications"}:"ApplicationList",
-  {Version:"v1", Resource:"events"}:"EventList",
- }, kustomization, gitRepository)
+		{Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Resource: "kustomizations"}: "KustomizationList",
+		{Group: "helm.toolkit.fluxcd.io", Version: "v2", Resource: "helmreleases"}:        "HelmReleaseList",
+		{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}:             "ApplicationList",
+		{Version: "v1", Resource: "events"}:                                               "EventList",
+	}, kustomization, gitRepository)
 	report := &Report{Namespace: "production", Target: "Deployment/orders"}
 	addGitOpsEvents(context.Background(), client, report, map[string]string{})
 	if len(report.Events) != 1 {
@@ -80,9 +80,9 @@ func TestAddGitOpsEventsReadsKustomizationAndGitCommit(t *testing.T) {
 func TestArgoCDHistoryMatchesDeploymentAndResolvesCommit(t *testing.T) {
 	app := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "argoproj.io/v1alpha1",
-		"kind": "Application",
-		"metadata": map[string]interface{}{"name": "orders", "namespace": "argocd"},
-		"spec": map[string]interface{}{"source": map[string]interface{}{"repoURL": "https://github.com/example/orders.git"}},
+		"kind":       "Application",
+		"metadata":   map[string]interface{}{"name": "orders", "namespace": "argocd"},
+		"spec":       map[string]interface{}{"source": map[string]interface{}{"repoURL": "https://github.com/example/orders.git"}},
 		"status": map[string]interface{}{
 			"resources": []interface{}{map[string]interface{}{"group": "apps", "kind": "Deployment", "namespace": "production", "name": "orders"}},
 			"history": []interface{}{map[string]interface{}{
@@ -107,9 +107,9 @@ func TestFluxKustomizationTimestampDoesNotReuseStaleReadyTransition(t *testing.T
 	object := unstructured.Unstructured{Object: map[string]interface{}{
 		"metadata": map[string]interface{}{"generation": int64(4)},
 		"status": map[string]interface{}{
-			"lastAppliedRevision": "main@sha1:0123456789abcdef0123456789abcdef01234567",
+			"lastAppliedRevision":   "main@sha1:0123456789abcdef0123456789abcdef01234567",
 			"lastAttemptedRevision": "main@sha1:0123456789abcdef0123456789abcdef01234567",
-			"conditions": []interface{}{map[string]interface{}{"type":"Ready", "status":"True", "lastTransitionTime":"2026-01-01T00:00:00Z"}},
+			"conditions":            []interface{}{map[string]interface{}{"type": "Ready", "status": "True", "lastTransitionTime": "2026-01-01T00:00:00Z"}},
 		},
 	}}
 	if got := fluxKustomizationTime(object); got != nil {
@@ -122,24 +122,32 @@ func TestFluxKustomizationTimestampDoesNotReuseStaleReadyTransition(t *testing.T
 }
 
 func TestFluxKustomizationEventProvidesAppliedRevisionAndTimestamp(t *testing.T) {
- event := &unstructured.Unstructured{Object:map[string]interface{}{
-  "apiVersion":"v1", "kind":"Event",
-  "metadata":map[string]interface{}{"name":"apps.123", "namespace":"flux-system", "creationTimestamp":"2026-11-12T09:31:00Z"},
-  "involvedObject":map[string]interface{}{"kind":"Kustomization", "name":"apps", "namespace":"flux-system"},
-  "reason":"ReconciliationSucceeded", "message":"Kustomization applied revision: main@sha1:0123456789abcdef0123456789abcdef01234567",
- }}
- client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
-  {Version:"v1", Resource:"events"}:"EventList",
- }, event)
- object := unstructured.Unstructured{Object:map[string]interface{}{"metadata":map[string]interface{}{"name":"apps", "namespace":"flux-system"}}}
- timestamp, revision, found := fluxKustomizationEvent(context.Background(), client, object)
- if !found || timestamp == nil { t.Fatalf("expected successful Flux Event timestamp, found=%t timestamp=%v", found, timestamp) }
- if timestamp.UTC().Format(time.RFC3339) != "2026-11-12T09:31:00Z" { t.Fatalf("unexpected Event timestamp: %v", timestamp) }
- if revision != "main@sha1:0123456789abcdef0123456789abcdef01234567" { t.Fatalf("unexpected applied revision: %q", revision) }
+	event := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "v1", "kind": "Event",
+		"metadata":       map[string]interface{}{"name": "apps.123", "namespace": "flux-system", "creationTimestamp": "2026-11-12T09:31:00Z"},
+		"involvedObject": map[string]interface{}{"kind": "Kustomization", "name": "apps", "namespace": "flux-system"},
+		"reason":         "ReconciliationSucceeded", "message": "Kustomization applied revision: main@sha1:0123456789abcdef0123456789abcdef01234567",
+	}}
+	client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+		{Version: "v1", Resource: "events"}: "EventList",
+	}, event)
+	object := unstructured.Unstructured{Object: map[string]interface{}{"metadata": map[string]interface{}{"name": "apps", "namespace": "flux-system"}}}
+	timestamp, revision, found := fluxKustomizationEvent(context.Background(), client, object)
+	if !found || timestamp == nil {
+		t.Fatalf("expected successful Flux Event timestamp, found=%t timestamp=%v", found, timestamp)
+	}
+	if timestamp.UTC().Format(time.RFC3339) != "2026-11-12T09:31:00Z" {
+		t.Fatalf("unexpected Event timestamp: %v", timestamp)
+	}
+	if revision != "main@sha1:0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("unexpected applied revision: %q", revision)
+	}
 }
 
 func TestBitbucketCommitURL(t *testing.T) {
 	got := gitRepositoryCommitURL("https://bitbucket.org/example/platform.git", "0123456789abcdef0123456789abcdef01234567")
 	want := "https://bitbucket.org/example/platform/commits/0123456789abcdef0123456789abcdef01234567"
-	if got != want { t.Fatalf("got %q, want %q", got, want) }
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
 }

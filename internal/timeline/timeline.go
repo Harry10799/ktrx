@@ -19,13 +19,13 @@ import (
 const revisionAnnotation = "deployment.kubernetes.io/revision"
 
 type Analyzer struct {
-	Client   kubernetes.Interface
-	Dynamic  dynamic.Interface
-	Metadata metadata.Interface
-	Since    time.Duration
-	FailureAt *time.Time
+	Client          kubernetes.Interface
+	Dynamic         dynamic.Interface
+	Metadata        metadata.Interface
+	Since           time.Duration
+	FailureAt       *time.Time
 	MaxCorrelations int
-	Now      func() time.Time
+	Now             func() time.Time
 }
 
 func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string) (*Report, error) {
@@ -79,7 +79,9 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		now = a.Now()
 	}
 	sinceDuration := a.Since
-	if sinceDuration <= 0 { sinceDuration = 24 * time.Hour }
+	if sinceDuration <= 0 {
+		sinceDuration = 24 * time.Hour
+	}
 	since := now.Add(-sinceDuration)
 	report := &Report{
 		Namespace: namespace, Target: "Deployment/" + name, GeneratedAt: now, Since: since,
@@ -114,14 +116,14 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			seenRevisions[number] = struct{}{}
 		}
 		event := TimelineEvent{
-			Timestamp: timePointer(current.CreationTimestamp.Time),
-			SortTime: timePointer(current.CreationTimestamp.Time),
-			Type: EventRollout,
-			Resource: "ReplicaSet/" + current.Name,
-			Revision: revision,
-			Current: revision != "unknown" && revision == currentRevision,
-			Action: "Deployment revision observed",
-			Source: "replicaset-template",
+			Timestamp:  timePointer(current.CreationTimestamp.Time),
+			SortTime:   timePointer(current.CreationTimestamp.Time),
+			Type:       EventRollout,
+			Resource:   "ReplicaSet/" + current.Name,
+			Revision:   revision,
+			Current:    revision != "unknown" && revision == currentRevision,
+			Action:     "Deployment revision observed",
+			Source:     "replicaset-template",
 			Confidence: "observed",
 		}
 		if previous != nil {
@@ -156,8 +158,12 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	if len(seenRevisions) > 0 {
 		minRevision, maxRevision := int(^uint(0)>>1), 0
 		for revision := range seenRevisions {
-			if revision < minRevision { minRevision = revision }
-			if revision > maxRevision { maxRevision = revision }
+			if revision < minRevision {
+				minRevision = revision
+			}
+			if revision > maxRevision {
+				maxRevision = revision
+			}
 		}
 		missing := make([]string, 0)
 		for revision := minRevision; revision <= maxRevision; revision++ {
@@ -183,8 +189,12 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	}
 	addConfigResourceEvents(ctx, a.Metadata, report, owned, currentRevision, since)
 	labels := map[string]string{}
-	for key, value := range deployment.Labels { labels[key] = value }
-	for key, value := range deployment.Spec.Template.Labels { labels[key] = value }
+	for key, value := range deployment.Labels {
+		labels[key] = value
+	}
+	for key, value := range deployment.Spec.Template.Labels {
+		labels[key] = value
+	}
 	addGitOpsEvents(ctx, a.Dynamic, report, labels)
 	filterTimelineSince(report, since)
 
@@ -215,7 +225,9 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 				})
 			}
 			failureTime := podFailureStart(pod)
-			if !podOwnedByReplicaSet(pod, currentReplicaSetUIDs) || !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(rolloutStart) || failureTime.Before(since) { failureTime = nil }
+			if !podOwnedByReplicaSet(pod, currentReplicaSetUIDs) || !podCurrentlyUnhealthy(pod) || failureTime == nil || failureTime.Before(rolloutStart) || failureTime.Before(since) {
+				failureTime = nil
+			}
 			if failureTime != nil {
 				activeUnhealthyPod = true
 				report.Events = append(report.Events, TimelineEvent{
@@ -239,8 +251,12 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	} else {
 		for _, item := range events.Items {
 			_, relevant := ownedUIDs[string(item.InvolvedObject.UID)]
-			if !relevant && item.InvolvedObject.Kind != "Pod" { continue }
-			if item.InvolvedObject.Kind == "Pod" && !podEventBelongsToDeployment(item, podItems, owned) { continue }
+			if !relevant && item.InvolvedObject.Kind != "Pod" {
+				continue
+			}
+			if item.InvolvedObject.Kind == "Pod" && !podEventBelongsToDeployment(item, podItems, owned) {
+				continue
+			}
 			if !isRelevantDeploymentEvent(item) {
 				continue
 			}
@@ -261,20 +277,30 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			report.Events = append(report.Events, TimelineEvent{
 				Timestamp: timestamp, Type: eventType,
 				Resource: item.InvolvedObject.Kind + "/" + item.InvolvedObject.Name,
-				Action: action, Source: "kubernetes-event", Confidence: confidence,
+				Action:   action, Source: "kubernetes-event", Confidence: confidence,
 				Details: fmt.Sprintf("%s (count=%d): %s", item.Type, maxEventCount(item), item.Message),
 			})
 		}
 	}
 	filterTimelineSince(report, since)
-	if a.FailureAt != nil { report.FailureStartedAt = timePointer(*a.FailureAt) }
+	if a.FailureAt != nil {
+		report.FailureStartedAt = timePointer(*a.FailureAt)
+	}
 	buildCorrelations(report, a.MaxCorrelations)
 	sort.SliceStable(report.Events, func(i, j int) bool {
 		left, right := report.Events[i].SortTime, report.Events[j].SortTime
-		if left == nil { left = report.Events[i].Timestamp }
-		if right == nil { right = report.Events[j].Timestamp }
-		if left == nil { return false }
-		if right == nil { return true }
+		if left == nil {
+			left = report.Events[i].Timestamp
+		}
+		if right == nil {
+			right = report.Events[j].Timestamp
+		}
+		if left == nil {
+			return false
+		}
+		if right == nil {
+			return true
+		}
 		return left.Before(*right)
 	})
 	return report, nil
@@ -282,23 +308,31 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 
 func eventTimestamp(event *corev1.Event) *time.Time {
 	values := []time.Time{}
-	if event.Series != nil { values = append(values, event.Series.LastObservedTime.Time) }
+	if event.Series != nil {
+		values = append(values, event.Series.LastObservedTime.Time)
+	}
 	values = append(values, event.EventTime.Time, event.LastTimestamp.Time, event.FirstTimestamp.Time, event.CreationTimestamp.Time)
 	for _, value := range values {
-		if !value.IsZero() { return timePointer(value) }
+		if !value.IsZero() {
+			return timePointer(value)
+		}
 	}
 	return nil
 }
 
 func maxEventCount(event corev1.Event) int32 {
-	if event.Count < 1 { return 1 }
+	if event.Count < 1 {
+		return 1
+	}
 	return event.Count
 }
 
 func podOwnedByReplicaSet(pod corev1.Pod, owners map[string]struct{}) bool {
 	for _, owner := range pod.OwnerReferences {
 		if owner.Kind == "ReplicaSet" {
-			if _, ok := owners[string(owner.UID)]; ok { return true }
+			if _, ok := owners[string(owner.UID)]; ok {
+				return true
+			}
 		}
 	}
 	return false
@@ -306,17 +340,23 @@ func podOwnedByReplicaSet(pod corev1.Pod, owners map[string]struct{}) bool {
 
 func podEventBelongsToDeployment(event corev1.Event, pods []corev1.Pod, replicaSets []appsv1.ReplicaSet) bool {
 	for _, pod := range pods {
-		if event.InvolvedObject.Name == pod.Name || (event.InvolvedObject.UID != "" && event.InvolvedObject.UID == pod.UID) { return true }
+		if event.InvolvedObject.Name == pod.Name || (event.InvolvedObject.UID != "" && event.InvolvedObject.UID == pod.UID) {
+			return true
+		}
 	}
 	for _, rs := range replicaSets {
-		if strings.HasPrefix(event.InvolvedObject.Name, rs.Name+"-") { return true }
+		if strings.HasPrefix(event.InvolvedObject.Name, rs.Name+"-") {
+			return true
+		}
 	}
 	return false
 }
 
 func podReady(pod corev1.Pod) bool {
 	for _, condition := range pod.Status.Conditions {
-		if condition.Type == corev1.PodReady { return condition.Status == corev1.ConditionTrue }
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
 	}
 	return false
 }
@@ -325,12 +365,16 @@ func podFailureStart(pod corev1.Pod) *time.Time {
 	var earliest time.Time
 	for _, condition := range pod.Status.Conditions {
 		if condition.Status == corev1.ConditionFalse && (condition.Type != corev1.PodReady || pod.Status.Phase == corev1.PodRunning) && !condition.LastTransitionTime.IsZero() {
-			if earliest.IsZero() || condition.LastTransitionTime.Time.Before(earliest) { earliest = condition.LastTransitionTime.Time }
+			if earliest.IsZero() || condition.LastTransitionTime.Time.Before(earliest) {
+				earliest = condition.LastTransitionTime.Time
+			}
 		}
 	}
 	for _, status := range pod.Status.ContainerStatuses {
 		if terminated := status.LastTerminationState.Terminated; terminated != nil && !terminated.FinishedAt.IsZero() && status.RestartCount > 0 {
-			if earliest.IsZero() || terminated.FinishedAt.Time.Before(earliest) { earliest = terminated.FinishedAt.Time }
+			if earliest.IsZero() || terminated.FinishedAt.Time.Before(earliest) {
+				earliest = terminated.FinishedAt.Time
+			}
 		}
 	}
 	return timePointer(earliest)
@@ -339,20 +383,26 @@ func podFailureStart(pod corev1.Pod) *time.Time {
 func joinValues(values []string, separator string) string {
 	result := ""
 	for i, value := range values {
-		if i > 0 { result += separator }
+		if i > 0 {
+			result += separator
+		}
 		result += value
 	}
 	return result
 }
 
 func timePointer(value time.Time) *time.Time {
-	if value.IsZero() { return nil }
+	if value.IsZero() {
+		return nil
+	}
 	return &value
 }
 
 func appendUnique(items []string, value string) []string {
 	for _, item := range items {
-		if item == value { return items }
+		if item == value {
+			return items
+		}
 	}
 	return append(items, value)
 }
@@ -360,21 +410,31 @@ func appendUnique(items []string, value string) []string {
 func latestReplicaSetTime(replicaSets []appsv1.ReplicaSet) time.Time {
 	var latest time.Time
 	for _, rs := range replicaSets {
-		if rs.CreationTimestamp.Time.After(latest) { latest = rs.CreationTimestamp.Time }
+		if rs.CreationTimestamp.Time.After(latest) {
+			latest = rs.CreationTimestamp.Time
+		}
 	}
 	return latest
 }
 
 func podCurrentlyUnhealthy(pod corev1.Pod) bool {
-	if pod.Status.Phase == corev1.PodFailed { return true }
+	if pod.Status.Phase == corev1.PodFailed {
+		return true
+	}
 	if pod.Status.Phase == corev1.PodPending {
 		for _, condition := range pod.Status.Conditions {
-			if condition.Type == corev1.PodScheduled && condition.Status == corev1.ConditionFalse && condition.Reason == "Unschedulable" { return true }
+			if condition.Type == corev1.PodScheduled && condition.Status == corev1.ConditionFalse && condition.Reason == "Unschedulable" {
+				return true
+			}
 		}
 	}
-	if pod.Status.Phase == corev1.PodRunning && !podReady(pod) { return true }
+	if pod.Status.Phase == corev1.PodRunning && !podReady(pod) {
+		return true
+	}
 	for _, status := range append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...), pod.Status.ContainerStatuses...) {
-		if status.State.Waiting == nil { continue }
+		if status.State.Waiting == nil {
+			continue
+		}
 		switch status.State.Waiting.Reason {
 		case "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "RunContainerError":
 			return true
@@ -384,8 +444,12 @@ func podCurrentlyUnhealthy(pod corev1.Pod) bool {
 }
 
 func earlierTime(current, candidate *time.Time) *time.Time {
-	if candidate == nil { return current }
-	if current == nil || candidate.Before(*current) { return candidate }
+	if candidate == nil {
+		return current
+	}
+	if current == nil || candidate.Before(*current) {
+		return candidate
+	}
 	return current
 }
 
@@ -443,18 +507,28 @@ func warningIndicatesActiveFailure(reason string) bool {
 func warningBelongsToCurrentUnhealthyWorkload(event corev1.Event, pods []corev1.Pod, replicaSets []appsv1.ReplicaSet, currentReplicaSets map[string]struct{}) bool {
 	if event.InvolvedObject.Kind == "Pod" {
 		for _, pod := range pods {
-			if event.InvolvedObject.Name != pod.Name && (event.InvolvedObject.UID == "" || event.InvolvedObject.UID != pod.UID) { continue }
-			if !podOwnedByReplicaSet(pod, currentReplicaSets) { return false }
+			if event.InvolvedObject.Name != pod.Name && (event.InvolvedObject.UID == "" || event.InvolvedObject.UID != pod.UID) {
+				continue
+			}
+			if !podOwnedByReplicaSet(pod, currentReplicaSets) {
+				return false
+			}
 			return podCurrentlyUnhealthy(pod)
 		}
 		return false
 	}
 	if event.InvolvedObject.Kind == "ReplicaSet" {
 		for _, rs := range replicaSets {
-			if rs.Name != event.InvolvedObject.Name { continue }
-			if _, current := currentReplicaSets[string(rs.UID)]; !current { return false }
+			if rs.Name != event.InvolvedObject.Name {
+				continue
+			}
+			if _, current := currentReplicaSets[string(rs.UID)]; !current {
+				return false
+			}
 			for _, pod := range pods {
-				if podOwnedByReplicaSet(pod, map[string]struct{}{string(rs.UID): {}}) && podCurrentlyUnhealthy(pod) { return true }
+				if podOwnedByReplicaSet(pod, map[string]struct{}{string(rs.UID): {}}) && podCurrentlyUnhealthy(pod) {
+					return true
+				}
 			}
 		}
 	}
@@ -462,7 +536,9 @@ func warningBelongsToCurrentUnhealthyWorkload(event corev1.Event, pods []corev1.
 }
 
 func isRelevantDeploymentEvent(event corev1.Event) bool {
-	if event.Type == corev1.EventTypeWarning { return warningIndicatesActiveFailure(event.Reason) }
+	if event.Type == corev1.EventTypeWarning {
+		return warningIndicatesActiveFailure(event.Reason)
+	}
 	switch event.Reason {
 	case "ScalingReplicaSet", "SuccessfulCreate", "SuccessfulDelete":
 		return true
@@ -474,43 +550,68 @@ func isRelevantDeploymentEvent(event corev1.Event) bool {
 func filterTimelineSince(report *Report, since time.Time) {
 	filtered := report.Events[:0]
 	for _, event := range report.Events {
-		if event.Timestamp == nil || !event.Timestamp.Before(since) { filtered = append(filtered, event) }
+		if event.Timestamp == nil || !event.Timestamp.Before(since) {
+			filtered = append(filtered, event)
+		}
 	}
 	report.Events = filtered
 }
 
 func buildCorrelations(report *Report, maxResults int) {
 	report.Correlations = nil
-	if report.FailureStartedAt == nil { return }
+	if report.FailureStartedAt == nil {
+		return
+	}
 	candidates := make([]Correlation, 0)
 	for _, event := range report.Events {
-		if event.Timestamp == nil || !event.Timestamp.Before(*report.FailureStartedAt) { continue }
-		if event.Type != EventRollout && event.Type != EventConfig && event.Type != EventGitOps { continue }
+		if event.Timestamp == nil || !event.Timestamp.Before(*report.FailureStartedAt) {
+			continue
+		}
+		if event.Type != EventRollout && event.Type != EventConfig && event.Type != EventGitOps {
+			continue
+		}
 		delta := report.FailureStartedAt.Sub(*event.Timestamp)
 		score := 0
 		switch {
-		case delta <= 15*time.Minute: score += 40
-		case delta <= time.Hour: score += 30
-		case delta <= 6*time.Hour: score += 20
-		case delta <= 24*time.Hour: score += 10
+		case delta <= 15*time.Minute:
+			score += 40
+		case delta <= time.Hour:
+			score += 30
+		case delta <= 6*time.Hour:
+			score += 20
+		case delta <= 24*time.Hour:
+			score += 10
 		}
 		switch event.Type {
-		case EventRollout: score += 35
-		case EventConfig: score += 35
-		case EventGitOps: score += 20
+		case EventRollout:
+			score += 35
+		case EventConfig:
+			score += 35
+		case EventGitOps:
+			score += 20
 		}
-		if len(event.Changes) > 0 { score += 20 }
-		if event.Current { score += 5 }
+		if len(event.Changes) > 0 {
+			score += 20
+		}
+		if event.Current {
+			score += 5
+		}
 		summary := event.Action
 		if len(event.Changes) > 0 {
 			summary += ": "
 			for i, change := range event.Changes {
-				if i > 0 { summary += "; " }
+				if i > 0 {
+					summary += "; "
+				}
 				summary += change.Field + " " + change.Before + " -> " + change.After
 			}
 		}
 		confidence := "low temporal relevance"
-		if delta <= 15*time.Minute { confidence = "high temporal relevance" } else if delta <= time.Hour { confidence = "medium temporal relevance" }
+		if delta <= 15*time.Minute {
+			confidence = "high temporal relevance"
+		} else if delta <= time.Hour {
+			confidence = "medium temporal relevance"
+		}
 		candidates = append(candidates, Correlation{
 			Timestamp: event.Timestamp, Type: event.Type, Resource: event.Resource,
 			Summary: summary, Delta: delta.Round(time.Second).String() + " before failure", Confidence: confidence, Score: score,
@@ -527,13 +628,23 @@ func buildCorrelations(report *Report, maxResults int) {
 			return candidate.Score - agePenalty
 		}
 		leftRank, rightRank := rankScore(candidates[i]), rankScore(candidates[j])
-		if leftRank != rightRank { return leftRank > rightRank }
-		if candidates[i].Score != candidates[j].Score { return candidates[i].Score > candidates[j].Score }
+		if leftRank != rightRank {
+			return leftRank > rightRank
+		}
+		if candidates[i].Score != candidates[j].Score {
+			return candidates[i].Score > candidates[j].Score
+		}
 		return candidates[i].Timestamp.After(*candidates[j].Timestamp)
 	})
-	if maxResults <= 0 { maxResults = 5 }
-	if len(candidates) > maxResults { candidates = candidates[:maxResults] }
-	for i := range candidates { candidates[i].Rank = i + 1 }
+	if maxResults <= 0 {
+		maxResults = 5
+	}
+	if len(candidates) > maxResults {
+		candidates = candidates[:maxResults]
+	}
+	for i := range candidates {
+		candidates[i].Rank = i + 1
+	}
 	report.Correlations = candidates
 }
 
@@ -545,17 +656,25 @@ func currentRolloutStart(deployment *appsv1.Deployment, replicaSets []appsv1.Rep
 			break
 		}
 	}
-	if revisionCreation.IsZero() { revisionCreation = latestReplicaSetTime(replicaSets) }
+	if revisionCreation.IsZero() {
+		revisionCreation = latestReplicaSetTime(replicaSets)
+	}
 	var conditionUpdate time.Time
 	for _, condition := range deployment.Status.Conditions {
-		if condition.LastUpdateTime.Time.After(conditionUpdate) { conditionUpdate = condition.LastUpdateTime.Time }
+		if condition.LastUpdateTime.Time.After(conditionUpdate) {
+			conditionUpdate = condition.LastUpdateTime.Time
+		}
 	}
 	newestCreation := latestReplicaSetTime(replicaSets)
 	if !revisionCreation.IsZero() && revisionCreation.Before(newestCreation) {
-		if conditionUpdate.After(newestCreation) { return conditionUpdate }
+		if conditionUpdate.After(newestCreation) {
+			return conditionUpdate
+		}
 		return newestCreation
 	}
-	if revisionCreation.IsZero() { return conditionUpdate }
+	if revisionCreation.IsZero() {
+		return conditionUpdate
+	}
 	return revisionCreation
 }
 
@@ -563,13 +682,17 @@ func currentReplicaSetUIDs(replicaSets []appsv1.ReplicaSet, currentRevision stri
 	result := map[string]struct{}{}
 	if currentRevision != "" {
 		for _, rs := range replicaSets {
-			if rs.Annotations[revisionAnnotation] == currentRevision { result[string(rs.UID)] = struct{}{} }
+			if rs.Annotations[revisionAnnotation] == currentRevision {
+				result[string(rs.UID)] = struct{}{}
+			}
 		}
 	}
 	if len(result) == 0 && len(replicaSets) > 0 {
 		latest := replicaSets[0]
 		for _, rs := range replicaSets[1:] {
-			if rs.CreationTimestamp.Time.After(latest.CreationTimestamp.Time) { latest = rs }
+			if rs.CreationTimestamp.Time.After(latest.CreationTimestamp.Time) {
+				latest = rs
+			}
 		}
 		result[string(latest.UID)] = struct{}{}
 	}

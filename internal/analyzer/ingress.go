@@ -380,7 +380,6 @@ func valueOrUnknown(v string) string {
 	return v
 }
 
-
 // supportsIngressControllerDiscovery reports controller implementations for
 // which KTRX currently has reliable Pod discovery rules.
 func supportsIngressControllerDiscovery(controller string) bool {

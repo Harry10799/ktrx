@@ -166,17 +166,23 @@ func TestBuildCorrelationsRanksEvidenceAndTimeTogether(t *testing.T) {
 	report := &Report{
 		FailureStartedAt: &failure,
 		Events: []TimelineEvent{
-			{Timestamp:&recentGitOps, Type:EventGitOps, Resource:"ArgoCD Application/argocd/orders", Action:"GitOps revision observed"},
-			{Timestamp:&olderRollout, Type:EventRollout, Resource:"ReplicaSet/orders-2", Action:"Deployment revision changed", Changes:[]Change{{Field:"image", Before:"v1", After:"v2"}}},
+			{Timestamp: &recentGitOps, Type: EventGitOps, Resource: "ArgoCD Application/argocd/orders", Action: "GitOps revision observed"},
+			{Timestamp: &olderRollout, Type: EventRollout, Resource: "ReplicaSet/orders-2", Action: "Deployment revision changed", Changes: []Change{{Field: "image", Before: "v1", After: "v2"}}},
 		},
 	}
 	buildCorrelations(report, 5)
-	if len(report.Correlations) != 2 { t.Fatalf("got %d correlations", len(report.Correlations)) }
+	if len(report.Correlations) != 2 {
+		t.Fatalf("got %d correlations", len(report.Correlations))
+	}
 	if report.Correlations[0].Type != EventRollout {
 		t.Fatalf("change-rich rollout should outrank recency-only GitOps event: %+v", report.Correlations)
 	}
-	if report.Correlations[0].Confidence != "low temporal relevance" { t.Fatalf("5-hour-old event must have low temporal confidence, got %q", report.Correlations[0].Confidence) }
-	if report.Correlations[0].Delta != "2h0m0s before failure" { t.Fatalf("unexpected time delta: %q", report.Correlations[0].Delta) }
+	if report.Correlations[0].Confidence != "low temporal relevance" {
+		t.Fatalf("5-hour-old event must have low temporal confidence, got %q", report.Correlations[0].Confidence)
+	}
+	if report.Correlations[0].Delta != "2h0m0s before failure" {
+		t.Fatalf("unexpected time delta: %q", report.Correlations[0].Delta)
+	}
 	if report.Correlations[0].Score <= report.Correlations[1].Score {
 		t.Fatalf("expected descending evidence score: %+v", report.Correlations)
 	}
@@ -187,20 +193,26 @@ func TestBuildCorrelationsRanksEvidenceAndTimeTogether(t *testing.T) {
 
 func TestWarningEvidenceIncludesUnhealthyAndFailedSchedulingWhenPodIsActive(t *testing.T) {
 	for _, reason := range []string{"Unhealthy", "FailedScheduling", "BackOff"} {
-		if !warningIndicatesActiveFailure(reason) { t.Errorf("%s should remain visible as actionable warning evidence", reason) }
+		if !warningIndicatesActiveFailure(reason) {
+			t.Errorf("%s should remain visible as actionable warning evidence", reason)
+		}
 	}
 	for _, reason := range []string{"SuccessfulCreate", "SuccessfulDelete"} {
-		if warningIndicatesActiveFailure(reason) { t.Errorf("%s must not count as failure evidence", reason) }
+		if warningIndicatesActiveFailure(reason) {
+			t.Errorf("%s must not count as failure evidence", reason)
+		}
 	}
 	controller := true
-	rs := appsv1.ReplicaSet{ObjectMeta:metav1.ObjectMeta{Name:"api-rs", UID:types.UID("rs-uid")}}
+	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs", UID: types.UID("rs-uid")}}
 	pod := corev1.Pod{
-		ObjectMeta:metav1.ObjectMeta{Name:"api-rs-abc", UID:types.UID("pod-uid"), OwnerReferences:[]metav1.OwnerReference{{Kind:"ReplicaSet", UID:rs.UID, Controller:&controller}}},
-		Status:corev1.PodStatus{Phase:corev1.PodPending, Conditions:[]corev1.PodCondition{{Type:corev1.PodScheduled, Status:corev1.ConditionFalse, Reason:"Unschedulable"}}},
+		ObjectMeta: metav1.ObjectMeta{Name: "api-rs-abc", UID: types.UID("pod-uid"), OwnerReferences: []metav1.OwnerReference{{Kind: "ReplicaSet", UID: rs.UID, Controller: &controller}}},
+		Status:     corev1.PodStatus{Phase: corev1.PodPending, Conditions: []corev1.PodCondition{{Type: corev1.PodScheduled, Status: corev1.ConditionFalse, Reason: "Unschedulable"}}},
 	}
-	event := corev1.Event{InvolvedObject:corev1.ObjectReference{Kind:"Pod", Name:pod.Name, UID:pod.UID}, Reason:"FailedScheduling", Type:corev1.EventTypeWarning}
-	current := map[string]struct{}{string(rs.UID):{}}
-	if !podCurrentlyUnhealthy(pod) { t.Fatal("unschedulable Pending Pod should be unhealthy evidence") }
+	event := corev1.Event{InvolvedObject: corev1.ObjectReference{Kind: "Pod", Name: pod.Name, UID: pod.UID}, Reason: "FailedScheduling", Type: corev1.EventTypeWarning}
+	current := map[string]struct{}{string(rs.UID): {}}
+	if !podCurrentlyUnhealthy(pod) {
+		t.Fatal("unschedulable Pending Pod should be unhealthy evidence")
+	}
 	if !warningBelongsToCurrentUnhealthyWorkload(event, []corev1.Pod{pod}, []appsv1.ReplicaSet{rs}, current) {
 		t.Fatal("FailedScheduling event should match active unhealthy Pod in current ReplicaSet")
 	}

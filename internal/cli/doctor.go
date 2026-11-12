@@ -40,7 +40,7 @@ type doctorReport struct {
 
 type accessRequirement struct {
 	name, verb, group, resource, namespace, subresource string
-	optional bool
+	optional                                            bool
 }
 
 func newDoctorCommand() *cobra.Command {
@@ -89,10 +89,14 @@ func newDoctorCommand() *cobra.Command {
 						report.Passed++
 					case "DENIED":
 						report.Denied++
-						if !req.optional { report.Ready = false }
+						if !req.optional {
+							report.Ready = false
+						}
 					default:
 						report.Unknown++
-						if !req.optional { report.Ready = false }
+						if !req.optional {
+							report.Ready = false
+						}
 					}
 				}
 			}
@@ -237,7 +241,9 @@ func printDoctorTerminal(cmd *cobra.Command, report doctorReport, colorEnabled b
 			target += " (all namespaces)"
 		}
 		name := check.Name
-		if check.Optional { name += " (optional)" }
+		if check.Optional {
+			name += " (optional)"
+		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  %s %-8s %-48s %s\n", style(color, symbol), check.Status, name, target)
 		if check.Reason != "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "      %s\n", check.Reason)

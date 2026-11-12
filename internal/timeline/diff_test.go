@@ -1,8 +1,8 @@
 package timeline
 
 import (
-	"testing"
 	"strings"
+	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -13,12 +13,12 @@ import (
 func TestCompareTemplatesReportsRolloutChangesWithoutLeakingEnvValues(t *testing.T) {
 	before := &appsv1.ReplicaSet{Spec: appsv1.ReplicaSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
 		Name: "api", Image: "api:v1",
-		Env: []corev1.EnvVar{{Name: "TOKEN", Value: "old-secret-value"}},
+		Env:       []corev1.EnvVar{{Name: "TOKEN", Value: "old-secret-value"}},
 		Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("512Mi")}},
 	}}}}}}
 	after := &appsv1.ReplicaSet{Spec: appsv1.ReplicaSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{
 		Name: "api", Image: "api:v2",
-		Env: []corev1.EnvVar{{Name: "TOKEN", Value: "new-secret-value"}},
+		Env:       []corev1.EnvVar{{Name: "TOKEN", Value: "new-secret-value"}},
 		Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("256Mi")}},
 	}}}}}}
 
@@ -42,11 +42,10 @@ func TestCompareTemplatesDetectsAddedAndRemovedContainers(t *testing.T) {
 	}
 }
 
-
 func TestCompareTemplatesDetectsChecksumAnnotationsWithoutLeakingSensitiveAnnotations(t *testing.T) {
 	before := &appsv1.ReplicaSet{Spec: appsv1.ReplicaSetSpec{Template: corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-			"checksum/config": "old-checksum",
+			"checksum/config":      "old-checksum",
 			"example.com/password": "old-secret",
 		}},
 	}}}

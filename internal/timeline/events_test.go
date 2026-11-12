@@ -13,11 +13,11 @@ import (
 func TestFailureStartIgnoresRecoveredPodAndOldTermination(t *testing.T) {
 	pod := corev1.Pod{
 		Status: corev1.PodStatus{
-			Phase: corev1.PodRunning,
+			Phase:      corev1.PodRunning,
 			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
 			ContainerStatuses: []corev1.ContainerStatus{{
-				RestartCount: 1,
-				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(time.Now().Add(-48*time.Hour))}},
+				RestartCount:         1,
+				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{FinishedAt: metav1.NewTime(time.Now().Add(-48 * time.Hour))}},
 			}},
 		},
 	}
@@ -31,7 +31,7 @@ func TestFailureStartIgnoresRecoveredPodAndOldTermination(t *testing.T) {
 
 func TestFailureStartRecognizesActiveCrashLoop(t *testing.T) {
 	pod := corev1.Pod{Status: corev1.PodStatus{
-		Phase: corev1.PodRunning,
+		Phase:             corev1.PodRunning,
 		ContainerStatuses: []corev1.ContainerStatus{{State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}}}},
 	}}
 	if !podCurrentlyUnhealthy(pod) {

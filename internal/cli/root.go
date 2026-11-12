@@ -343,7 +343,9 @@ func printTerminal(r *analyzer.PodReport, colorEnabled, includeLogs bool) error 
 			fmt.Printf("    #%d %s %s — %s\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
 		}
 	}
-	if r.RecentChangesNote != "" { fmt.Printf("  Note: %s\n", r.RecentChangesNote) }
+	if r.RecentChangesNote != "" {
+		fmt.Printf("  Note: %s\n", r.RecentChangesNote)
+	}
 	fmt.Printf("\n%s\n", section("Logs:"))
 	if !includeLogs {
 		fmt.Println("  • Error/non-2xx matches only; use --logs for full logs")
@@ -426,7 +428,9 @@ func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
 		fmt.Printf("- **%s %s** — %s (count: %d): %s\n", v.Type, v.Timestamp, v.Reason, v.Count, strings.ReplaceAll(v.Message, "bytes", " bytes"))
 	}
 	fmt.Println("\n### Recent Deployment Changes")
-	if r.RecentFailureStartedAt != "" { fmt.Printf("- Failure started: %s (current unhealthy evidence)\n", r.RecentFailureStartedAt) }
+	if r.RecentFailureStartedAt != "" {
+		fmt.Printf("- Failure started: %s (current unhealthy evidence)\n", r.RecentFailureStartedAt)
+	}
 	for _, change := range r.RecentChanges {
 		fmt.Printf("- %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
 	}
@@ -436,7 +440,9 @@ func printMarkdown(r *analyzer.PodReport, includeLogs bool) error {
 			fmt.Printf("- #%d %s %s — %s\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
 		}
 	}
-	if r.RecentChangesNote != "" { fmt.Printf("\n%s\n", r.RecentChangesNote) }
+	if r.RecentChangesNote != "" {
+		fmt.Printf("\n%s\n", r.RecentChangesNote)
+	}
 	fmt.Println("\n### Logs")
 	if !includeLogs {
 		fmt.Println("Error/non-2xx matches only; use --logs for full logs.")
@@ -547,7 +553,9 @@ func printDeploymentTerminal(name string, reports []*analyzer.PodReport, colorEn
 		for _, change := range reports[0].RecentChanges {
 			fmt.Printf("  • %s [%s] %s — %s\n", change.Timestamp, change.Type, change.Resource, change.Summary)
 		}
-		if reports[0].RecentChangesNote != "" { fmt.Printf("  Note: %s\n", reports[0].RecentChangesNote) }
+		if reports[0].RecentChangesNote != "" {
+			fmt.Printf("  Note: %s\n", reports[0].RecentChangesNote)
+		}
 		for _, item := range reports[0].RecentCorrelations {
 			fmt.Printf("  #%d %s %s — %s (potential correlation, not causation)\n", item.Rank, item.Timestamp, item.Resource, item.Summary)
 		}
@@ -609,11 +617,15 @@ func shortPodName(name string) string {
 }
 
 func addRecentChangesToPodReports(ctx context.Context, client kubernetes.Interface, reports []*analyzer.PodReport, target, namespace, kubeconfig, contextName string) {
-	if len(reports) == 0 { return }
+	if len(reports) == 0 {
+		return
+	}
 	deploymentName := ""
 	if strings.HasPrefix(target, "deploy/") || strings.HasPrefix(target, "deployment/") {
 		parts := strings.SplitN(target, "/", 2)
-		if len(parts) == 2 { deploymentName = parts[1] }
+		if len(parts) == 2 {
+			deploymentName = parts[1]
+		}
 	} else {
 		for _, owner := range reports[0].OwnerChain {
 			if strings.HasPrefix(owner, "Deployment/") {
@@ -623,7 +635,9 @@ func addRecentChangesToPodReports(ctx context.Context, client kubernetes.Interfa
 		}
 	}
 	if deploymentName == "" {
-		for _, report := range reports { report.RecentChangesNote = "Recent Deployment changes are available only for Pods owned by a Deployment." }
+		for _, report := range reports {
+			report.RecentChangesNote = "Recent Deployment changes are available only for Pods owned by a Deployment."
+		}
 		return
 	}
 	restConfig, err := kube.NewRESTConfig(kubeconfig, contextName, 0)
@@ -642,22 +656,28 @@ func addRecentChangesToPodReports(ctx context.Context, client kubernetes.Interfa
 		return
 	}
 	timelineReport, err := (&timeline.Analyzer{
-		Client: client, Dynamic: dynamicClient, Metadata: metadataClient, Since: 24*time.Hour,
+		Client: client, Dynamic: dynamicClient, Metadata: metadataClient, Since: 24 * time.Hour,
 	}).AnalyzeDeployment(ctx, namespace, deploymentName)
 	if err != nil {
 		setRecentChangesNote(reports, "Recent changes unavailable: "+err.Error())
 		return
 	}
 	events := timelineReport.Events
-	if len(events) > 10 { events = events[len(events)-10:] }
+	if len(events) > 10 {
+		events = events[len(events)-10:]
+	}
 	changes := make([]analyzer.RecentChange, 0, len(events))
 	for _, event := range events {
 		timestamp := "time unavailable"
-		if event.Timestamp != nil { timestamp = event.Timestamp.UTC().Format(time.RFC3339) }
+		if event.Timestamp != nil {
+			timestamp = event.Timestamp.UTC().Format(time.RFC3339)
+		}
 		summary := event.Action
 		if len(event.Changes) > 0 {
 			fields := make([]string, 0, len(event.Changes))
-			for _, change := range event.Changes { fields = append(fields, change.Field) }
+			for _, change := range event.Changes {
+				fields = append(fields, change.Field)
+			}
 			summary += " (" + strings.Join(fields, ", ") + ")"
 		}
 		changes = append(changes, analyzer.RecentChange{
@@ -667,18 +687,24 @@ func addRecentChangesToPodReports(ctx context.Context, client kubernetes.Interfa
 	correlations := make([]analyzer.RecentCorrelation, 0, len(timelineReport.Correlations))
 	for _, item := range timelineReport.Correlations {
 		timestamp := "time unavailable"
-		if item.Timestamp != nil { timestamp = item.Timestamp.UTC().Format(time.RFC3339) }
+		if item.Timestamp != nil {
+			timestamp = item.Timestamp.UTC().Format(time.RFC3339)
+		}
 		correlations = append(correlations, analyzer.RecentCorrelation{
 			Rank: item.Rank, Timestamp: timestamp, Resource: item.Resource,
 			Summary: item.Summary, Disclaimer: item.Disclaimer,
 		})
 	}
 	failureStarted := ""
-	if timelineReport.FailureStartedAt != nil { failureStarted = timelineReport.FailureStartedAt.UTC().Format(time.RFC3339) }
+	if timelineReport.FailureStartedAt != nil {
+		failureStarted = timelineReport.FailureStartedAt.UTC().Format(time.RFC3339)
+	}
 	note := "Timeline window: last 24h."
 	if len(timelineReport.Limitations) > 0 {
 		limitations := timelineReport.Limitations
-		if len(limitations) > 2 { limitations = limitations[:2] }
+		if len(limitations) > 2 {
+			limitations = limitations[:2]
+		}
 		note += " " + strings.Join(limitations, " ")
 	}
 	for _, report := range reports {
@@ -690,5 +716,7 @@ func addRecentChangesToPodReports(ctx context.Context, client kubernetes.Interfa
 }
 
 func setRecentChangesNote(reports []*analyzer.PodReport, note string) {
-	for _, report := range reports { report.RecentChangesNote = note }
+	for _, report := range reports {
+		report.RecentChangesNote = note
+	}
 }

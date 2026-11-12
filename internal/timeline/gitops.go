@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -35,7 +34,9 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 		report.Limitations = appendUnique(report.Limitations, "Flux Kustomization history is unavailable (CRD missing or RBAC denied).")
 	} else {
 		for _, object := range kustomizations {
-			if !kustomizationTargetsDeployment(object, report.Namespace, report.Target, labels) { continue }
+			if !kustomizationTargetsDeployment(object, report.Namespace, report.Target, labels) {
+				continue
+			}
 			revision, _, _ := unstructured.NestedString(object.Object, "status", "lastAppliedRevision")
 			if revision == "" {
 				revision, _, _ = unstructured.NestedString(object.Object, "status", "lastAttemptedRevision")
@@ -43,12 +44,22 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			sourceKind, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "kind")
 			sourceName, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "name")
 			sourceNamespace, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "namespace")
-			if sourceNamespace == "" { sourceNamespace = object.GetNamespace() }
+			if sourceNamespace == "" {
+				sourceNamespace = object.GetNamespace()
+			}
 			timestamp, eventRevision, eventFound := fluxKustomizationEvent(ctx, client, object)
-			if eventRevision != "" { revision = eventRevision }
+			if eventRevision != "" {
+				revision = eventRevision
+			}
 			details := "sourceRef=" + sourceKind + "/" + sourceName
-			if eventFound { details += " successful kustomize-controller reconciliation Event observed" } else { details += " successful reconcile Event timestamp unavailable; status timestamps are not treated as deployment time" }
-			if revision != "" { details += " revision=" + revision }
+			if eventFound {
+				details += " successful kustomize-controller reconciliation Event observed"
+			} else {
+				details += " successful reconcile Event timestamp unavailable; status timestamps are not treated as deployment time"
+			}
+			if revision != "" {
+				details += " revision=" + revision
+			}
 			if hash := commitHash(revision); hash != "" {
 				details += " commit=" + hash
 				if commitURL := gitCommitURL(ctx, client, sourceNamespace, sourceKind, sourceName, hash); commitURL != "" {
@@ -58,8 +69,8 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			report.Events = append(report.Events, TimelineEvent{
 				Timestamp: timestamp, Type: EventGitOps,
 				Resource: "Kustomization/" + object.GetName(),
-				Action: "Flux Kustomization reconciliation state observed",
-				Source: "flux-kustomization-event", Confidence: "controller-event",
+				Action:   "Flux Kustomization reconciliation state observed",
+				Source:   "flux-kustomization-event", Confidence: "controller-event",
 				Details: details,
 			})
 		}
@@ -69,22 +80,26 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 		report.Limitations = appendUnique(report.Limitations, "Flux HelmRelease history is unavailable (CRD missing or RBAC denied).")
 	} else {
 		for _, object := range helmReleases {
-			if !helmReleaseTargetsDeployment(object, labels) { continue }
+			if !helmReleaseTargetsDeployment(object, labels) {
+				continue
+			}
 			history, _, _ := unstructured.NestedSlice(object.Object, "status", "history")
 			if len(history) == 0 {
 				revision, _, _ := unstructured.NestedInt64(object.Object, "status", "lastAttemptedRevision")
 				report.Events = append(report.Events, TimelineEvent{
 					Timestamp: latestConditionTime(object), Type: EventGitOps,
 					Resource: "HelmRelease/" + object.GetName(),
-					Action: "Flux HelmRelease status observed",
-					Source: "flux-helmrelease-status", Confidence: "controller-status",
+					Action:   "Flux HelmRelease status observed",
+					Source:   "flux-helmrelease-status", Confidence: "controller-status",
 					Details: fmt.Sprintf("lastAttemptedRevision=%d", revision),
 				})
 				continue
 			}
 			for _, raw := range history {
 				entry, ok := raw.(map[string]interface{})
-				if !ok { continue }
+				if !ok {
+					continue
+				}
 				version := nestedString(entry, "version")
 				chart := nestedString(entry, "chartName")
 				chartVersion := nestedString(entry, "chartVersion")
@@ -94,8 +109,12 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 				configDigest := nestedString(entry, "configDigest")
 				timestamp := parseHistoryTime(nestedString(entry, "lastDeployed"))
 				details := "chart=" + chart + " chartVersion=" + chartVersion + " appVersion=" + appVersion + " status=" + status
-				if digest != "" { details += " digest=" + digest }
-				if configDigest != "" { details += " configDigest=" + configDigest }
+				if digest != "" {
+					details += " digest=" + digest
+				}
+				if configDigest != "" {
+					details += " configDigest=" + configDigest
+				}
 				report.Events = append(report.Events, TimelineEvent{
 					Timestamp: timestamp, Type: EventGitOps,
 					Resource: "HelmRelease/" + object.GetName(),
@@ -112,7 +131,9 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 func fluxKustomizationEvent(ctx context.Context, client dynamic.Interface, object unstructured.Unstructured) (*time.Time, string, bool) {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "events"}
 	list, err := client.Resource(gvr).Namespace(object.GetNamespace()).List(ctx, metav1.ListOptions{})
-	if err != nil { return nil, "", false }
+	if err != nil {
+		return nil, "", false
+	}
 	var latest *time.Time
 	var revision string
 	for i := range list.Items {
@@ -120,12 +141,19 @@ func fluxKustomizationEvent(ctx context.Context, client dynamic.Interface, objec
 		kind, _, _ := unstructured.NestedString(event.Object, "involvedObject", "kind")
 		name, _, _ := unstructured.NestedString(event.Object, "involvedObject", "name")
 		namespace, _, _ := unstructured.NestedString(event.Object, "involvedObject", "namespace")
-		if kind != "Kustomization" || name != object.GetName() || (namespace != "" && namespace != object.GetNamespace()) { continue }
+		if kind != "Kustomization" || name != object.GetName() || (namespace != "" && namespace != object.GetNamespace()) {
+			continue
+		}
 		reason, _, _ := unstructured.NestedString(event.Object, "reason")
 		message, _, _ := unstructured.NestedString(event.Object, "message")
-		if !strings.Contains(strings.ToLower(reason), "succeeded") && !strings.Contains(strings.ToLower(message), "applied revision") { continue }
+		if !strings.Contains(strings.ToLower(reason), "succeeded") && !strings.Contains(strings.ToLower(message), "applied revision") {
+			continue
+		}
 		timestamp := fluxEventTime(event)
-		if timestamp != nil && (latest == nil || timestamp.After(*latest)) { latest = timestamp; revision = fluxEventRevision(message) }
+		if timestamp != nil && (latest == nil || timestamp.After(*latest)) {
+			latest = timestamp
+			revision = fluxEventRevision(message)
+		}
 	}
 	return latest, revision, latest != nil
 }
@@ -133,7 +161,9 @@ func fluxKustomizationEvent(ctx context.Context, client dynamic.Interface, objec
 func fluxEventTime(event *unstructured.Unstructured) *time.Time {
 	for _, field := range []string{"eventTime", "lastTimestamp", "firstTimestamp"} {
 		value, _, _ := unstructured.NestedString(event.Object, field)
-		if parsed := parseHistoryTime(value); parsed != nil { return parsed }
+		if parsed := parseHistoryTime(value); parsed != nil {
+			return parsed
+		}
 	}
 	return timePointer(event.GetCreationTimestamp().Time)
 }
@@ -142,11 +172,17 @@ func fluxEventRevision(message string) string {
 	const marker = "applied revision:"
 	lower := strings.ToLower(message)
 	index := strings.Index(lower, marker)
-	if index < 0 { return "" }
+	if index < 0 {
+		return ""
+	}
 	value := strings.TrimSpace(message[index+len(marker):])
-	if newline := strings.IndexAny(value, "\r\n"); newline >= 0 { value = value[:newline] }
+	if newline := strings.IndexAny(value, "\r\n"); newline >= 0 {
+		value = value[:newline]
+	}
 	fields := strings.Fields(value)
-	if len(fields) == 0 { return "" }
+	if len(fields) == 0 {
+		return ""
+	}
 	return strings.Trim(fields[0], " ,;")
 }
 
@@ -156,7 +192,9 @@ func listAcrossNamespaces(ctx context.Context, client dynamic.Interface, namespa
 	var lastErr error
 	seen := map[string]struct{}{}
 	for _, namespace := range namespaces {
-		if _, exists := seen[namespace]; exists { continue }
+		if _, exists := seen[namespace]; exists {
+			continue
+		}
 		seen[namespace] = struct{}{}
 		items, err := listFirstAvailable(ctx, client, namespace, resources)
 		if err != nil {
@@ -167,7 +205,9 @@ func listAcrossNamespaces(ctx context.Context, client dynamic.Interface, namespa
 		successes++
 		combined = append(combined, items...)
 	}
-	if successes == 0 { return nil, lastErr }
+	if successes == 0 {
+		return nil, lastErr
+	}
 	return combined, nil
 }
 
@@ -175,7 +215,9 @@ func listFirstAvailable(ctx context.Context, client dynamic.Interface, namespace
 	var lastErr error
 	for _, resource := range resources {
 		list, err := client.Resource(resource).Namespace(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil { return list.Items, nil }
+		if err == nil {
+			return list.Items, nil
+		}
 		lastErr = err
 	}
 	return nil, lastErr
@@ -184,14 +226,20 @@ func listFirstAvailable(ctx context.Context, client dynamic.Interface, namespace
 func kustomizationTargetsDeployment(object unstructured.Unstructured, namespace, target string, labels map[string]string) bool {
 	name := labels["kustomize.toolkit.fluxcd.io/name"]
 	labelNamespace := labels["kustomize.toolkit.fluxcd.io/namespace"]
-	if name != "" && object.GetName() == name && (labelNamespace == "" || labelNamespace == object.GetNamespace()) { return true }
+	if name != "" && object.GetName() == name && (labelNamespace == "" || labelNamespace == object.GetNamespace()) {
+		return true
+	}
 	entries, _, _ := unstructured.NestedSlice(object.Object, "status", "inventory", "entries")
 	deploymentName := strings.TrimPrefix(target, "Deployment/")
 	for _, raw := range entries {
 		entry, ok := raw.(map[string]interface{})
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		id := nestedString(entry, "id")
-		if fluxInventoryMatchesDeployment(id, namespace, deploymentName) { return true }
+		if fluxInventoryMatchesDeployment(id, namespace, deploymentName) {
+			return true
+		}
 	}
 	return false
 }
@@ -199,8 +247,12 @@ func kustomizationTargetsDeployment(object unstructured.Unstructured, namespace,
 func helmReleaseTargetsDeployment(object unstructured.Unstructured, labels map[string]string) bool {
 	instance := labels["app.kubernetes.io/instance"]
 	releaseName := labels["helm.toolkit.fluxcd.io/name"]
-	if instance != "" && object.GetName() == instance { return true }
-	if releaseName != "" && object.GetName() == releaseName { return true }
+	if instance != "" && object.GetName() == instance {
+		return true
+	}
+	if releaseName != "" && object.GetName() == releaseName {
+		return true
+	}
 	return false
 }
 
@@ -209,12 +261,18 @@ func latestConditionTime(object unstructured.Unstructured) *time.Time {
 	var latest time.Time
 	for _, raw := range conditions {
 		entry, ok := raw.(map[string]interface{})
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		value := nestedString(entry, "lastTransitionTime")
 		parsed := parseHistoryTime(value)
-		if parsed != nil && parsed.After(latest) { latest = *parsed }
+		if parsed != nil && parsed.After(latest) {
+			latest = *parsed
+		}
 	}
-	if latest.IsZero() { return nil }
+	if latest.IsZero() {
+		return nil
+	}
 	return &latest
 }
 
@@ -226,9 +284,13 @@ func fluxKustomizationTime(object unstructured.Unstructured) *time.Time {
 }
 
 func parseHistoryTime(value string) *time.Time {
-	if value == "" { return nil }
+	if value == "" {
+		return nil
+	}
 	parsed, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	return &parsed
 }
 
@@ -239,11 +301,17 @@ func nestedString(values map[string]interface{}, key string) string {
 
 func commitHash(revision string) string {
 	index := strings.LastIndex(revision, "sha1:")
-	if index < 0 { return "" }
+	if index < 0 {
+		return ""
+	}
 	hash := revision[index+len("sha1:"):]
-	if len(hash) != 40 { return "" }
+	if len(hash) != 40 {
+		return ""
+	}
 	for _, char := range hash {
-		if !strings.ContainsRune("0123456789abcdefABCDEF", char) { return "" }
+		if !strings.ContainsRune("0123456789abcdefABCDEF", char) {
+			return ""
+		}
 	}
 	return hash
 }
@@ -302,16 +370,24 @@ func fluxInventoryMatchesDeployment(id, namespace, name string) bool {
 func addArgoCDHistory(ctx context.Context, client dynamic.Interface, report *Report, labels map[string]string) {
 	gvr := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "applications"}
 	namespaces := []string{"argocd"}
-	if report.Namespace != "argocd" { namespaces = append(namespaces, report.Namespace) }
+	if report.Namespace != "argocd" {
+		namespaces = append(namespaces, report.Namespace)
+	}
 	seen := map[string]struct{}{}
 	foundAPI := false
 	for _, namespace := range namespaces {
 		applications, err := client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		foundAPI = true
 		for _, app := range applications.Items {
-			if _, ok := seen[app.GetNamespace()+"/"+app.GetName()]; ok { continue }
-			if !argoApplicationTargetsDeployment(app, report.Namespace, report.Target, labels) { continue }
+			if _, ok := seen[app.GetNamespace()+"/"+app.GetName()]; ok {
+				continue
+			}
+			if !argoApplicationTargetsDeployment(app, report.Namespace, report.Target, labels) {
+				continue
+			}
 			seen[app.GetNamespace()+"/"+app.GetName()] = struct{}{}
 			repoURL, _, _ := unstructured.NestedString(app.Object, "spec", "source", "repoURL")
 			history, _, _ := unstructured.NestedSlice(app.Object, "status", "history")
@@ -322,12 +398,16 @@ func addArgoCDHistory(ctx context.Context, client dynamic.Interface, report *Rep
 			}
 			for _, raw := range history {
 				entry, ok := raw.(map[string]interface{})
-				if !ok { continue }
+				if !ok {
+					continue
+				}
 				revision := nestedString(entry, "revision")
 				timestamp := parseHistoryTime(nestedString(entry, "deployedAt"))
 				details := "historyID=" + fmt.Sprint(entry["id"])
 				if source, ok := entry["source"].(map[string]interface{}); ok {
-					if targetRevision := nestedString(source, "targetRevision"); targetRevision != "" { details += " targetRevision=" + targetRevision }
+					if targetRevision := nestedString(source, "targetRevision"); targetRevision != "" {
+						details += " targetRevision=" + targetRevision
+					}
 				}
 				appendArgoHistoryEvent(report, app, revision, timestamp, repoURL, details)
 			}
@@ -342,27 +422,37 @@ func argoApplicationTargetsDeployment(app unstructured.Unstructured, namespace, 
 	appName := app.GetName()
 	appNamespace := app.GetNamespace()
 	instance := labels["argocd.argoproj.io/instance"]
-	if instance == appName || instance == appNamespace+"_"+appName || instance == appNamespace+"/"+appName { return true }
+	if instance == appName || instance == appNamespace+"_"+appName || instance == appNamespace+"/"+appName {
+		return true
+	}
 	deploymentName := strings.TrimPrefix(target, "Deployment/")
 	resources, _, _ := unstructured.NestedSlice(app.Object, "status", "resources")
 	for _, raw := range resources {
 		resource, ok := raw.(map[string]interface{})
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		if nestedString(resource, "kind") == "Deployment" &&
 			nestedString(resource, "namespace") == namespace &&
 			nestedString(resource, "name") == deploymentName {
 			group := nestedString(resource, "group")
-			if group == "" || group == "apps" { return true }
+			if group == "" || group == "apps" {
+				return true
+			}
 		}
 	}
 	return false
 }
 
 func appendArgoHistoryEvent(report *Report, app unstructured.Unstructured, revision string, timestamp *time.Time, repoURL, details string) {
-	if revision != "" { details += " revision=" + revision }
+	if revision != "" {
+		details += " revision=" + revision
+	}
 	if hash := normalizeCommitHash(revision); hash != "" {
 		details += " commit=" + hash
-		if link := gitRepositoryCommitURL(repoURL, hash); link != "" { details += " commitURL=" + link }
+		if link := gitRepositoryCommitURL(repoURL, hash); link != "" {
+			details += " commitURL=" + link
+		}
 	}
 	report.Events = append(report.Events, TimelineEvent{
 		Timestamp: timestamp, Type: EventGitOps,
@@ -375,11 +465,15 @@ func appendArgoHistoryEvent(report *Report, app unstructured.Unstructured, revis
 
 func normalizeCommitHash(revision string) string {
 	hash := commitHash(revision)
-	if hash != "" { return hash }
+	if hash != "" {
+		return hash
+	}
 	value := strings.TrimSpace(revision)
 	if len(value) == 40 {
 		for _, char := range value {
-			if !strings.ContainsRune("0123456789abcdefABCDEF", char) { return "" }
+			if !strings.ContainsRune("0123456789abcdefABCDEF", char) {
+				return ""
+			}
 		}
 		return value
 	}
@@ -388,7 +482,9 @@ func normalizeCommitHash(revision string) string {
 
 func gitRepositoryCommitURL(repositoryURL, hash string) string {
 	parsed, err := url.Parse(repositoryURL)
-	if err != nil || parsed.Host == "" || hash == "" { return "" }
+	if err != nil || parsed.Host == "" || hash == "" {
+		return ""
+	}
 	repositoryPath := strings.TrimSuffix(parsed.Path, ".git")
 	switch strings.ToLower(parsed.Host) {
 	case "github.com":

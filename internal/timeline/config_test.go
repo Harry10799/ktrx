@@ -30,7 +30,7 @@ func TestConfigMetadataUsesMetadataOnlyClientAndNeverSerializesSecretData(t *tes
 	client := metadatafake.NewSimpleMetadataClient(scheme, secret)
 	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs", Annotations: map[string]string{revisionAnnotation: "1"}}, Spec: appsv1.ReplicaSetSpec{
 		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
-			Volumes: []corev1.Volume{{Name: "credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "db-credentials"}}}},
+			Volumes:    []corev1.Volume{{Name: "credentials", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "db-credentials"}}}},
 			Containers: []corev1.Container{{Name: "api", Image: "api:v1"}},
 		}},
 	}}
@@ -40,7 +40,9 @@ func TestConfigMetadataUsesMetadataOnlyClientAndNeverSerializesSecretData(t *tes
 		t.Fatalf("expected metadata-only Secret event, got %+v", report.Events)
 	}
 	encoded, err := json.Marshal(report)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(string(encoded), `"data":`) || strings.Contains(string(encoded), "super-secret-value") {
 		t.Fatalf("secret payload leaked into report: %s", encoded)
 	}
@@ -53,7 +55,7 @@ func TestConfigMetadataUsesMetadataOnlyClientAndNeverSerializesSecretData(t *tes
 func TestMissingRequiredConfigMapIsFailure(t *testing.T) {
 	rs := appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: "api-rs", Annotations: map[string]string{revisionAnnotation: "1"}}, Spec: appsv1.ReplicaSetSpec{
 		Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
-			Volumes: []corev1.Volume{{Name: "config", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "missing-config"}}}}},
+			Volumes:    []corev1.Volume{{Name: "config", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "missing-config"}}}}},
 			Containers: []corev1.Container{{Name: "api", Image: "api:v1"}},
 		}},
 	}}

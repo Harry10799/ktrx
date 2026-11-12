@@ -114,7 +114,7 @@ func TestIsIngressControllerPodRequiresIngressNginxIdentity(t *testing.T) {
 func TestTraceIngressMarksUnsupportedControllerAsInfo(t *testing.T) {
 	className := "edge"
 	path := networkingv1.HTTPIngressPath{
-		Path: "/",
+		Path:    "/",
 		Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{Name: "web"}},
 	}
 	ing := &networkingv1.Ingress{
@@ -129,7 +129,7 @@ func TestTraceIngressMarksUnsupportedControllerAsInfo(t *testing.T) {
 	}
 	class := &networkingv1.IngressClass{
 		ObjectMeta: metav1.ObjectMeta{Name: className},
-		Spec: networkingv1.IngressClassSpec{Controller: "traefik.io/ingress-controller"},
+		Spec:       networkingv1.IngressClassSpec{Controller: "traefik.io/ingress-controller"},
 	}
 	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"}}
 	client := fake.NewSimpleClientset(ing, class, svc)
