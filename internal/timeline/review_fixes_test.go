@@ -46,12 +46,12 @@ func TestAnalyzeDeploymentRollbackTimestampAndCurrentMarker(t *testing.T) {
  newTime:=metav1.NewTime(time.Date(2026,1,2,10,0,0,0,time.UTC))
  deployment:=&appsv1.Deployment{ObjectMeta:metav1.ObjectMeta{Name:"orders",Namespace:"prod",UID:types.UID("dep"),Annotations:map[string]string{revisionAnnotation:"3"}},Spec:appsv1.DeploymentSpec{Selector:&metav1.LabelSelector{MatchLabels:map[string]string{"app":"orders"}}}}
  makeRS:=func(name,rev string,created metav1.Time)*appsv1.ReplicaSet{return &appsv1.ReplicaSet{ObjectMeta:metav1.ObjectMeta{Name:name,Namespace:"prod",CreationTimestamp:created,Labels:map[string]string{"app":"orders"},Annotations:map[string]string{revisionAnnotation:rev},OwnerReferences:[]metav1.OwnerReference{{Kind:"Deployment",Name:"orders",UID:deployment.UID,Controller:&controller}}}}}
- client:=fake.NewSimpleClientset(deployment,makeRS("old","1",oldTime),makeRS("rollback","3",newTime))
+ client:=fake.NewSimpleClientset(deployment,makeRS("old","1",oldTime),makeRS("new","2",newTime),makeRS("rollback","3",oldTime.Add(time.Minute)))
  report,err:=(&Analyzer{Client:client,Now:func()time.Time{return newTime.Add(time.Hour)}}).AnalyzeDeployment(context.Background(),"prod","orders")
  if err!=nil{t.Fatal(err)}
- if len(report.Events)!=2{t.Fatalf("events=%d",len(report.Events))}
- if !report.Events[1].Current{t.Fatal("current revision not marked")}
- if !report.Events[1].Timestamp.IsZero()||!strings.Contains(report.Events[1].Details,"rollback likely"){t.Fatalf("expected honest rollback timestamp: %+v",report.Events[1])}
+ if len(report.Events)!=3{t.Fatalf("events=%d",len(report.Events))}
+ if !report.Events[2].Current{t.Fatal("current revision not marked")}
+ if !report.Events[2].Timestamp.IsZero()||!strings.Contains(report.Events[2].Details,"rollback likely"){t.Fatalf("expected honest rollback timestamp: %+v",report.Events[2])}
 }
 
 func TestAnalyzeDeploymentRejectsMissingSelector(t *testing.T) {
