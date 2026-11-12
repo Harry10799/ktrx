@@ -36,6 +36,7 @@ type urlTracePod struct {
 	Restarts            int32    `json:"restarts"`
 	EndpointReady       bool     `json:"endpointReady"`
 	ReadinessProbePaths []string `json:"readinessProbePaths,omitempty"`
+	IPs                 []string `json:"ips,omitempty"`
 	Findings            []string `json:"findings,omitempty"`
 	NextCommand         string   `json:"nextCommand,omitempty"`
 }
@@ -50,6 +51,7 @@ type urlTraceBackend struct {
 	ReadyEndpoints      int                          `json:"readyEndpoints"`
 	NotReadyEndpoints   int                          `json:"notReadyEndpoints"`
 	TargetGroupBindings []urlTraceTargetGroupBinding `json:"targetGroupBindings,omitempty"`
+	AWSTargetGroups     []urlTraceAWSTargetGroupHealth `json:"awsTargetGroups,omitempty"`
 	Pods                []urlTracePod                `json:"pods,omitempty"`
 	Notes               []string                     `json:"notes,omitempty"`
 	ReadinessProbePaths []string                     `json:"readinessProbePaths,omitempty"`
@@ -112,11 +114,12 @@ type urlTraceTLS struct {
 
 func newTraceURLCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output, ingressClass string
-	var allNamespaces, checkDNS, checkTLS bool
+	var allNamespaces, checkDNS, checkTLS, checkAWS bool
+	var awsRegion string
 	cmd := &cobra.Command{
 		Use:   "trace-url URL",
 		Short: "Trace an HTTP(S) URL through Kubernetes routes to Services and Pods",
-		Long:  "Read-only discovery of matching Ingress and Gateway API HTTPRoute rules, Service backends, EndpointSlices and target Pods. Optional --check-dns and --check-tls flags perform explicit live DNS/TLS checks; no HTTP request is sent.",
+		Long:  "Read-only discovery of matching Ingress and Gateway API HTTPRoute rules, Service backends, EndpointSlices and target Pods. Optional --check-dns and --check-tls flags perform explicit live DNS/TLS checks. --aws additionally reads AWS ELB target health using the standard AWS credential chain.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target, err := url.ParseRequestURI(args[0])
@@ -160,10 +163,14 @@ func newTraceURLCommand() *cobra.Command {
 			}
 			report.Limitations = append(report.Limitations, gatewayNotes...)
 			diagnosisBudget := 0
+			awsHealthCache := make(map[string]*urlTraceAWSTargetGroupHealth)
 			for i := range report.Routes {
 				for j := range report.Routes[i].Backends {
 					resolveURLBackendWithBudget(cmd.Context(), client, report.Routes[i].Namespace, &report.Routes[i].Backends[j], &diagnosisBudget)
 					resolveTargetGroupBindings(cmd.Context(), dyn, report.Routes[i].Backends[j].Namespace, &report.Routes[i].Backends[j], &report.Limitations)
+					if checkAWS {
+						attachAWSTargetHealth(cmd.Context(), &report.Routes[i].Backends[j], awsRegion, awsHealthCache, &report.Limitations)
+					}
 				}
 			}
 			sort.SliceStable(report.Routes, func(i, j int) bool {
@@ -228,6 +235,9 @@ func newTraceURLCommand() *cobra.Command {
 				}
 			}
 			applyURLExternalCheckVerdict(&report)
+			if checkAWS {
+				applyAWSTargetHealthVerdict(&report)
+			}
 			if strings.EqualFold(output, "json") {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
@@ -257,6 +267,8 @@ func newTraceURLCommand() *cobra.Command {
 	cmd.Flags().StringVar(&output, "output", "terminal", "Output format: terminal, json or markdown")
 	cmd.Flags().BoolVar(&checkDNS, "check-dns", false, "Perform an opt-in DNS lookup for the URL hostname")
 	cmd.Flags().BoolVar(&checkTLS, "check-tls", false, "Perform an opt-in TLS/SNI handshake and certificate expiry check")
+	cmd.Flags().BoolVar(&checkAWS, "aws", false, "Opt in to read-only AWS ELB target health checks for discovered TargetGroupBindings")
+	cmd.Flags().StringVar(&awsRegion, "aws-region", "", "AWS region override for --aws (defaults to the TargetGroupBinding ARN region)")
 	return cmd
 }
 
@@ -594,7 +606,14 @@ func summarizeURLPod(pod *corev1.Pod, endpointReady bool) urlTracePod {
 			probePaths = append(probePaths, p.HTTPGet.Path)
 		}
 	}
-	return urlTracePod{Name: pod.Name, Phase: string(pod.Status.Phase), Ready: ready, Restarts: restarts, EndpointReady: endpointReady, ReadinessProbePaths: uniqueSorted(probePaths)}
+	ips := make([]string, 0, len(pod.Status.PodIPs)+1)
+	if pod.Status.PodIP != "" {
+		ips = append(ips, pod.Status.PodIP)
+	}
+	for _, podIP := range pod.Status.PodIPs {
+		ips = append(ips, podIP.IP)
+	}
+	return urlTracePod{Name: pod.Name, Phase: string(pod.Status.Phase), Ready: ready, Restarts: restarts, EndpointReady: endpointReady, ReadinessProbePaths: uniqueSorted(probePaths), IPs: uniqueSorted(ips)}
 }
 
 func appendURLTraceNote(notes []string, note string) []string {
@@ -1110,6 +1129,13 @@ func printURLTraceMarkdown(w io.Writer, report urlTraceReport) error {
 			for _, binding := range backend.TargetGroupBindings {
 				fmt.Fprintf(w, "- TargetGroupBinding: %s (%s)\n", binding.Name, binding.TargetGroupARN)
 			}
+			for _, group := range backend.AWSTargetGroups {
+				fmt.Fprintf(w, "\n#### AWS Target Group %s — %s\n\n", group.TargetGroupARN, group.Status)
+				if group.Error != "" { fmt.Fprintf(w, "- Error: %s\n", group.Error) }
+				for _, target := range group.Targets {
+					fmt.Fprintf(w, "- Target %s:%d state=%s reason=%s description=%s Pod=%s\n", target.ID, target.Port, target.State, value(target.Reason), value(target.Description), value(target.KubernetesPod))
+				}
+			}
 			for _, pod := range backend.Pods {
 				fmt.Fprintf(w, "- Pod %s: phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts)
 				for _, finding := range pod.Findings {
@@ -1175,6 +1201,14 @@ func printURLTrace(w io.Writer, report urlTraceReport) {
 			fmt.Fprintf(w, "  → Service %s/%s port=%s status=%s endpoints=%d ready=%d notReady=%d\n", b.Namespace, b.Service, value(b.Port), b.ServiceStatus, b.EndpointCount, b.ReadyEndpoints, b.NotReadyEndpoints)
 			for _, binding := range b.TargetGroupBindings {
 				fmt.Fprintf(w, "      → TargetGroupBinding %s targetGroup=%s targetType=%s\n", binding.Name, binding.TargetGroupARN, binding.TargetType)
+			}
+			for _, group := range b.AWSTargetGroups {
+				fmt.Fprintf(w, "      → AWS Target Group %s status=%s\n", group.TargetGroupARN, group.Status)
+				if group.Error != "" { fmt.Fprintf(w, "          ! %s\n", group.Error) }
+				for _, target := range group.Targets {
+					fmt.Fprintf(w, "          → Target %s:%d state=%s reason=%s pod=%s\n", target.ID, target.Port, target.State, value(target.Reason), value(target.KubernetesPod))
+					if target.Description != "" { fmt.Fprintf(w, "             %s\n", target.Description) }
+				}
 			}
 			for _, pod := range b.Pods {
 				fmt.Fprintf(w, "      → Pod %s phase=%s ready=%t endpointReady=%t restarts=%d\n", pod.Name, pod.Phase, pod.Ready, pod.EndpointReady, pod.Restarts)
