@@ -5,6 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -243,4 +247,178 @@ func TestDoctorConnectivityFailureMarksChecksUnknown(t *testing.T) {
 	if got := ExitCode(doctorExitError(report)); got != 3 {
 		t.Fatalf("connectivity failure exit code = %d, want 3", got)
 	}
+}
+
+
+func TestDoctorCommandIntegration(t *testing.T) {
+	tests := []struct {
+		name          string
+		deniedGroup   string
+		deniedResource string
+		deniedVerb    string
+		wantExit      int
+		wantReady     bool
+		wantDenied    int
+	}{
+		{name: "all required and optional permissions allowed", wantExit: 0, wantReady: true},
+		{name: "required permission denied", deniedResource: "pods", deniedVerb: "get", wantExit: 2, wantReady: false, wantDenied: 1},
+		{name: "optional permission denied", deniedGroup: "gateway.networking.k8s.io", deniedResource: "httproutes", deniedVerb: "list", wantExit: 0, wantReady: true, wantDenied: 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var received []authv1.ResourceAttributes
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/version":
+					_ = json.NewEncoder(w).Encode(map[string]string{
+						"major": "1", "minor": "32", "gitVersion": "v1.32.0",
+					})
+				case "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews":
+					if r.Method != http.MethodPost {
+						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+						return
+					}
+					var review authv1.SelfSubjectAccessReview
+					if err := json.NewDecoder(r.Body).Decode(&review); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					attrs := review.Spec.ResourceAttributes
+					if attrs == nil {
+						http.Error(w, "missing resource attributes", http.StatusBadRequest)
+						return
+					}
+					received = append(received, *attrs)
+					denied := attrs.Group == tt.deniedGroup &&
+						attrs.Resource == tt.deniedResource &&
+						attrs.Verb == tt.deniedVerb
+					status := authv1.SubjectAccessReviewStatus{Allowed: !denied}
+					if denied {
+						status.Denied = true
+						status.Reason = "denied by integration test"
+					}
+					response := authv1.SelfSubjectAccessReview{
+						TypeMeta: metav1.TypeMeta{APIVersion: "authorization.k8s.io/v1", Kind: "SelfSubjectAccessReview"},
+						Status: status,
+					}
+					_ = json.NewEncoder(w).Encode(response)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			kubeconfigPath := writeDoctorTestKubeconfig(t, server.URL)
+			command := newDoctorCommand()
+			command.SilenceUsage = true
+			command.SilenceErrors = true
+			var stdout, stderr bytes.Buffer
+			command.SetOut(&stdout)
+			command.SetErr(&stderr)
+			command.SetArgs([]string{
+				"--kubeconfig", kubeconfigPath,
+				"--namespace", "production",
+				"--output", "json",
+				"--timeout", "5s",
+			})
+
+			err := command.Execute()
+			if got := ExitCode(err); got != tt.wantExit {
+				t.Fatalf("doctor exit code = %d, want %d; err=%v; stderr=%q", got, tt.wantExit, err, stderr.String())
+			}
+
+			var report doctorReport
+			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+				t.Fatalf("decode doctor JSON output %q: %v", stdout.String(), err)
+			}
+			if report.Namespace != "production" || report.Server != "v1.32.0" {
+				t.Fatalf("unexpected report identity: %+v", report)
+			}
+			if report.Ready != tt.wantReady || report.Denied != tt.wantDenied {
+				t.Fatalf("unexpected report readiness/denials: ready=%t denied=%d; report=%+v", report.Ready, report.Denied, report)
+			}
+
+			expectedRequests := ktrxAccessRequirements("production", false)
+			if len(received) != len(expectedRequests) {
+				t.Fatalf("received %d access reviews, want %d", len(received), len(expectedRequests))
+			}
+			foundNamespacedPodRead := false
+			for _, attrs := range received {
+				if attrs.Verb == "get" && attrs.Resource == "pods" && attrs.Namespace == "production" {
+					foundNamespacedPodRead = true
+					break
+				}
+			}
+			if !foundNamespacedPodRead {
+				t.Fatal("doctor did not request the expected production Pod read permission")
+			}
+		})
+	}
+}
+
+func TestDoctorCommandIntegrationWhenAPIServerIsUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	serverURL := server.URL
+	server.Close()
+
+	kubeconfigPath := writeDoctorTestKubeconfig(t, serverURL)
+	command := newDoctorCommand()
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	var stdout, stderr bytes.Buffer
+	command.SetOut(&stdout)
+	command.SetErr(&stderr)
+	command.SetArgs([]string{
+		"--kubeconfig", kubeconfigPath,
+		"--namespace", "production",
+		"--output", "json",
+		"--timeout", "2s",
+	})
+
+	err := command.Execute()
+	if got := ExitCode(err); got != 3 {
+		t.Fatalf("doctor exit code = %d, want 3; err=%v; stderr=%q", got, err, stderr.String())
+	}
+
+	var report doctorReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode connectivity-failure JSON %q: %v", stdout.String(), err)
+	}
+	if report.Ready || report.Unknown != len(ktrxAccessRequirements("production", false))+1 {
+		t.Fatalf("unexpected connectivity-failure report: %+v", report)
+	}
+	for _, check := range report.Checks {
+		if check.Status != "UNKNOWN" {
+			t.Fatalf("check %q has status %q, want UNKNOWN", check.Name, check.Status)
+		}
+	}
+}
+
+func writeDoctorTestKubeconfig(t *testing.T, serverURL string) string {
+	t.Helper()
+	config := "apiVersion: v1\n" +
+		"kind: Config\n" +
+		"clusters:\n" +
+		"- name: test\n" +
+		"  cluster:\n" +
+		"    server: " + serverURL + "\n" +
+		"    insecure-skip-tls-verify: true\n" +
+		"contexts:\n" +
+		"- name: test\n" +
+		"  context:\n" +
+		"    cluster: test\n" +
+		"    user: test\n" +
+		"    namespace: production\n" +
+		"current-context: test\n" +
+		"users:\n" +
+		"- name: test\n" +
+		"  user:\n" +
+		"    token: test\n"
+	path := filepath.Join(t.TempDir(), "kubeconfig")
+	if err := os.WriteFile(path, []byte(config), 0600); err != nil {
+		t.Fatalf("write temporary kubeconfig: %v", err)
+	}
+	return path
 }
