@@ -199,7 +199,12 @@ func TestHTTPRouteCrossNamespaceReferenceGrant(t *testing.T) {
 			"to":[]interface{}{map[string]interface{}{"group":"", "kind":"Service", "name":"api"}},
 		},
 	}}
-	dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), grant)
+	referenceGrantV1 := schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "referencegrants"}
+	referenceGrantV1beta1 := schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1beta1", Resource: "referencegrants"}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+		referenceGrantV1: "ReferenceGrantList",
+		referenceGrantV1beta1: "ReferenceGrantList",
+	}, grant)
 	if !httpRouteReferenceAllowed(context.Background(), dyn, "frontend", "backend", "api") {
 		t.Fatal("matching ReferenceGrant should allow the cross-namespace Service reference")
 	}
