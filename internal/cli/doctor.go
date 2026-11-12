@@ -135,6 +135,7 @@ func ktrxAccessRequirements(namespace string, includeNetcheck bool) []accessRequ
 		{name: "List Ingresses across namespaces (--all-namespaces, optional)", verb: "list", group: "networking.k8s.io", resource: "ingresses", optional: true},
 		{name: "List Gateway API HTTPRoutes (optional)", verb: "list", group: "gateway.networking.k8s.io", resource: "httproutes", namespace: namespace, optional: true},
 		{name: "List Gateway API HTTPRoutes across namespaces (optional)", verb: "list", group: "gateway.networking.k8s.io", resource: "httproutes", optional: true},
+		{name: "List Gateway API ReferenceGrants in backend namespaces (optional)", verb: "list", group: "gateway.networking.k8s.io", resource: "referencegrants", optional: true},
 		{name: "List AWS TargetGroupBindings (optional)", verb: "list", group: "elbv2.k8s.aws", resource: "targetgroupbindings", namespace: namespace, optional: true},
 		{name: "List AWS TargetGroupBindings across namespaces (optional)", verb: "list", group: "elbv2.k8s.aws", resource: "targetgroupbindings", optional: true},
 		{name: "Read IngressClasses", verb: "get", group: "networking.k8s.io", resource: "ingressclasses"},
