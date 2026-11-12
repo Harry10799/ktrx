@@ -70,6 +70,7 @@ func TestAnalyzeDeploymentUsesCurrentRolloutFailuresAndRetainsScalingEvents(t *t
 		return &appsv1.ReplicaSet{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name, Namespace: "production", UID: uid, CreationTimestamp: metav1.NewTime(created),
+				Labels: map[string]string{"app": "orders"},
 				Annotations: map[string]string{revisionAnnotation: revision},
 				OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "Deployment", Name: "orders", UID: deployment.UID, Controller: &controller}},
 			},
