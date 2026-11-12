@@ -249,6 +249,9 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			action := item.Reason
 			confidence := "observed"
 			if item.Type == corev1.EventTypeWarning {
+				if !warningEventMatchesCurrentPodState(item, podItems, currentReplicaSetUIDs) {
+					continue
+				}
 				eventType = EventFailure
 				action = "Warning event: " + item.Reason
 				if activeFailure && timestamp != nil && !timestamp.Before(rolloutStart) && !timestamp.Before(since) && warningIndicatesActiveFailure(item.Reason) && warningBelongsToCurrentUnhealthyWorkload(item, podItems, owned, currentReplicaSetUIDs) {
@@ -386,6 +389,48 @@ func earlierTime(current, candidate *time.Time) *time.Time {
 	return current
 }
 
+func warningEventMatchesCurrentPodState(event corev1.Event, pods []corev1.Pod, currentReplicaSets map[string]struct{}) bool {
+	if event.InvolvedObject.Kind != "Pod" {
+		return true
+	}
+	for _, pod := range pods {
+		if event.InvolvedObject.Name != pod.Name && (event.InvolvedObject.UID == "" || event.InvolvedObject.UID != pod.UID) {
+			continue
+		}
+		// Keep warnings for old ReplicaSets as historical evidence. For the
+		// current ReplicaSet, require the warning to agree with current Pod state.
+		if !podOwnedByReplicaSet(pod, currentReplicaSets) {
+			return true
+		}
+		if !podCurrentlyUnhealthy(pod) {
+			return false
+		}
+		hasCrashLoop := false
+		for _, status := range append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...), pod.Status.ContainerStatuses...) {
+			if status.State.Waiting != nil && (status.State.Waiting.Reason == "CrashLoopBackOff" || status.State.Waiting.Reason == "ImagePullBackOff" || status.State.Waiting.Reason == "ErrImagePull") {
+				hasCrashLoop = true
+			}
+		}
+		switch event.Reason {
+		case "FailedScheduling":
+			for _, condition := range pod.Status.Conditions {
+				if condition.Type == corev1.PodScheduled && condition.Status == corev1.ConditionFalse && condition.Reason == "Unschedulable" {
+					return true
+				}
+			}
+			return false
+		case "Unhealthy":
+			// A generic probe warning is superseded by a more specific active
+			// container-waiting failure such as CrashLoopBackOff.
+			return !hasCrashLoop && pod.Status.Phase == corev1.PodRunning && !podReady(pod)
+		default:
+			return true
+		}
+	}
+	// The Pod may already have been deleted; retain its Event as historical evidence.
+	return true
+}
+
 func warningIndicatesActiveFailure(reason string) bool {
 	switch reason {
 	case "SuccessfulCreate", "SuccessfulDelete":
@@ -473,14 +518,15 @@ func buildCorrelations(report *Report, maxResults int) {
 		})
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
-		confidenceRank := func(value string) int {
-			switch value {
-			case "high temporal relevance": return 3
-			case "medium temporal relevance": return 2
-			default: return 1
-			}
+		rankScore := func(candidate Correlation) int {
+			// Preserve the published evidence score, but discount older evidence
+			// when ordering. This lets a strong, recent-enough rollout beat a
+			// recency-only GitOps signal without allowing stale changes to dominate.
+			delta := report.FailureStartedAt.Sub(*candidate.Timestamp)
+			agePenalty := int(delta.Hours() * 5)
+			return candidate.Score - agePenalty
 		}
-		leftRank, rightRank := confidenceRank(candidates[i].Confidence), confidenceRank(candidates[j].Confidence)
+		leftRank, rightRank := rankScore(candidates[i]), rankScore(candidates[j])
 		if leftRank != rightRank { return leftRank > rightRank }
 		if candidates[i].Score != candidates[j].Score { return candidates[i].Score > candidates[j].Score }
 		return candidates[i].Timestamp.After(*candidates[j].Timestamp)
