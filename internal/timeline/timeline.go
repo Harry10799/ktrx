@@ -27,7 +27,9 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	if err != nil {
 		return nil, fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
 	}
-	if deployment.Spec.Selector == nil { return nil, fmt.Errorf("deployment %s/%s has no selector", namespace, name) }
+	if deployment.Spec.Selector == nil {
+		return nil, fmt.Errorf("deployment %s/%s has no selector", namespace, name)
+	}
 	selector, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("deployment has invalid selector: %w", err)
@@ -65,7 +67,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 		Limitations: []string{
 			"Only ReplicaSets still present in the Kubernetes API can be compared; deleted revision history is unavailable.",
 			"ReplicaSet creation timestamps indicate rollout object creation, not the exact time each field was applied.",
-			"Environment variable values are never included; changed variables are identified by name only.",
+			"Environment variable values, command contents, and argument contents are never included; safe reference names may be shown.",
 			"This timeline reports observed changes and does not establish causation.",
 		},
 	}
@@ -74,7 +76,9 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	var previousCreation time.Time
 	var lastConditionUpdate time.Time
 	for _, condition := range deployment.Status.Conditions {
-		if condition.LastUpdateTime.Time.After(lastConditionUpdate) { lastConditionUpdate = condition.LastUpdateTime.Time }
+		if condition.LastUpdateTime.Time.After(lastConditionUpdate) {
+			lastConditionUpdate = condition.LastUpdateTime.Time
+		}
 	}
 	for i := range owned {
 		current := &owned[i]
@@ -84,7 +88,7 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			report.Limitations = appendUnique(report.Limitations, "One or more ReplicaSets lack the revision annotation; their ordering uses creation timestamps.")
 		}
 		event := TimelineEvent{
-			Timestamp: current.CreationTimestamp.Time,
+			Timestamp: timePointer(current.CreationTimestamp.Time),
 			Type: EventRollout,
 			Resource: "ReplicaSet/" + current.Name,
 			Revision: revision,
@@ -97,7 +101,12 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 			if current.CreationTimestamp.Time.Before(previousCreation) {
 				event.Details = "Revision order conflicts with ReplicaSet creation time: older ReplicaSet reused (rollback likely). Exact rollback time is unavailable."
 				report.Limitations = appendUnique(report.Limitations, "Rollback reused an older ReplicaSet; its creation timestamp is historical, not the rollback time.")
-				if lastConditionUpdate.After(previousCreation) && !lastConditionUpdate.After(now) { event.Timestamp = lastConditionUpdate; event.Details += " Deployment condition lastUpdateTime is an approximation, not an audit timestamp." } else { event.Timestamp = time.Time{} }
+				if lastConditionUpdate.After(previousCreation) && !lastConditionUpdate.After(now) {
+					event.Timestamp = timePointer(lastConditionUpdate)
+					event.Details += " Deployment condition lastUpdateTime is an approximation, not an audit timestamp."
+				} else {
+					event.Timestamp = nil
+				}
 			}
 			event.Changes = compareTemplates(previous, current)
 			if len(event.Changes) == 0 {
@@ -117,8 +126,18 @@ func (a *Analyzer) AnalyzeDeployment(ctx context.Context, namespace, name string
 	return report, nil
 }
 
+func timePointer(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	return &value
+}
 
 func appendUnique(items []string, value string) []string {
-	for _, item := range items { if item == value { return items } }
+	for _, item := range items {
+		if item == value {
+			return items
+		}
+	}
 	return append(items, value)
 }
