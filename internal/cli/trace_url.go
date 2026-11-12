@@ -702,7 +702,7 @@ func printURLTrace(report urlTraceReport) {
 	fmt.Printf("Verdict: %s  Namespace: %s\n", report.Verdict, report.Namespace)
 	if len(report.Routes) == 0 { fmt.Println("No matching route was established.") }
 	if report.DNS != nil { fmt.Printf("\nDNS: resolved=%s CNAME=%s matchesALB=%t checked=%t method=%s\n", strings.Join(report.DNS.Resolved, ","), value(report.DNS.CNAME), report.DNS.MatchesALB, report.DNS.Checked, value(report.DNS.MatchMethod)); if report.DNS.PointsTo != "" { fmt.Printf("  DNS target: %s\n", report.DNS.PointsTo) }; if report.DNS.Error != "" { fmt.Printf("  DNS error: %s\n", report.DNS.Error) } }
-	if report.TLS != nil { fmt.Printf("TLS: status=%s serverName=%s expires=%s daysRemaining=%d\n", report.TLS.ServerName, value(report.TLS.NotAfter), report.TLS.DaysRemaining); if report.TLS.Error != "" { fmt.Printf("  TLS error: %s\n", report.TLS.Error) } }
+	if report.TLS != nil { fmt.Printf("TLS: status=%s serverName=%s expires=%s daysRemaining=%d\\n", value(report.TLS.Status), report.TLS.ServerName, value(report.TLS.NotAfter), report.TLS.DaysRemaining); if report.TLS.Error != "" { fmt.Printf("  TLS error: %s\\n", report.TLS.Error) } }
 	for routeIndex, route := range report.Routes {
 		selection := "also matches"; if routeIndex == 0 { selection = "selected" }
 		fmt.Printf("\n%s %s/%s  host=%s path=%s (%s) class=%s\n", route.Kind, route.Namespace, route.Name, route.Host, route.Path, route.Match, value(route.IngressClass))
