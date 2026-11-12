@@ -16,7 +16,7 @@ func TestCommitHashExtractsFluxRevision(t *testing.T) {
 		want     string
 	}{
 		{revision: "main@sha1:0123456789abcdef", want: "0123456789abcdef"},
-		{revision: "release@sha256:abcdef012345", want: "abcdef012345"},
+		{revision: "release@sha256:abcdef012345", want: ""},
 		{revision: "main@branch", want: ""},
 	}
 	for _, test := range tests {
@@ -93,4 +93,28 @@ func TestArgoCDHistoryMatchesDeploymentAndResolvesCommit(t *testing.T) {
 	if event.Source != "argocd-application-history" || !strings.Contains(event.Details, "commitURL=https://github.com/example/orders/commit/0123456789abcdef0123456789abcdef01234567") {
 		t.Fatalf("Argo commit history not resolved: %+v", event)
 	}
+}
+
+func TestFluxKustomizationTimestampDoesNotReuseStaleReadyTransition(t *testing.T) {
+	object := unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{"generation": int64(4)},
+		"status": map[string]interface{}{
+			"lastAppliedRevision": "main@sha1:0123456789abcdef0123456789abcdef01234567",
+			"lastAttemptedRevision": "main@sha1:0123456789abcdef0123456789abcdef01234567",
+			"conditions": []interface{}{map[string]interface{}{"type":"Ready", "status":"True", "lastTransitionTime":"2026-01-01T00:00:00Z"}},
+		},
+	}}
+	if got := fluxKustomizationTime(object); got != nil {
+		t.Fatalf("stale Ready transition must not be used as reconcile time: %v", got)
+	}
+	object.Object["status"].(map[string]interface{})["lastHandledReconcileAt"] = "2026-11-12T09:30:00Z"
+	if got := fluxKustomizationTime(object); got == nil || got.UTC().Format("2006-01-02T15:04:05Z") != "2026-11-12T09:30:00Z" {
+		t.Fatalf("expected controller reconcile timestamp, got %v", got)
+	}
+}
+
+func TestBitbucketCommitURL(t *testing.T) {
+	got := gitRepositoryCommitURL("https://bitbucket.org/example/platform.git", "0123456789abcdef0123456789abcdef01234567")
+	want := "https://bitbucket.org/example/platform/commits/0123456789abcdef0123456789abcdef01234567"
+	if got != want { t.Fatalf("got %q, want %q", got, want) }
 }
