@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"time"
-	"time"
 
 	"github.com/Harry10799/ktrx/internal/kube"
 	"github.com/Harry10799/ktrx/internal/timeline"
