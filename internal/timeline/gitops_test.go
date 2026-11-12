@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -109,9 +110,24 @@ func TestFluxKustomizationTimestampDoesNotReuseStaleReadyTransition(t *testing.T
 		t.Fatalf("stale Ready transition must not be used as reconcile time: %v", got)
 	}
 	object.Object["status"].(map[string]interface{})["lastHandledReconcileAt"] = "2026-11-12T09:30:00Z"
-	if got := fluxKustomizationTime(object); got == nil || got.UTC().Format("2006-01-02T15:04:05Z") != "2026-11-12T09:30:00Z" {
-		t.Fatalf("expected controller reconcile timestamp, got %v", got)
+	if got := fluxKustomizationTime(object); got != nil {
+		t.Fatalf("lastHandledReconcileAt echoes requestedAt and must not be treated as apply time: %v", got)
 	}
+}
+
+func TestFluxKustomizationEventProvidesAppliedRevisionAndTimestamp(t *testing.T) {
+ event := &unstructured.Unstructured{Object:map[string]interface{}{
+  "apiVersion":"v1", "kind":"Event",
+  "metadata":map[string]interface{}{"name":"apps.123", "namespace":"flux-system", "creationTimestamp":"2026-11-12T09:31:00Z"},
+  "involvedObject":map[string]interface{}{"kind":"Kustomization", "name":"apps", "namespace":"flux-system"},
+  "reason":"ReconciliationSucceeded", "message":"Kustomization applied revision: main@sha1:0123456789abcdef0123456789abcdef01234567",
+ }}
+ client := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), event)
+ object := unstructured.Unstructured{Object:map[string]interface{}{"metadata":map[string]interface{}{"name":"apps", "namespace":"flux-system"}}}
+ timestamp, revision, found := fluxKustomizationEvent(context.Background(), client, object)
+ if !found || timestamp == nil { t.Fatalf("expected successful Flux Event timestamp, found=%t timestamp=%v", found, timestamp) }
+ if timestamp.UTC().Format(time.RFC3339) != "2026-11-12T09:31:00Z" { t.Fatalf("unexpected Event timestamp: %v", timestamp) }
+ if revision != "main@sha1:0123456789abcdef0123456789abcdef01234567" { t.Fatalf("unexpected applied revision: %q", revision) }
 }
 
 func TestBitbucketCommitURL(t *testing.T) {
