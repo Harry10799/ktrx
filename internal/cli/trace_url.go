@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
