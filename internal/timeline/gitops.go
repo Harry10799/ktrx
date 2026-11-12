@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+ corev1 "k8s.io/api/core/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -43,9 +45,10 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 			sourceName, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "name")
 			sourceNamespace, _, _ := unstructured.NestedString(object.Object, "spec", "sourceRef", "namespace")
 			if sourceNamespace == "" { sourceNamespace = object.GetNamespace() }
-			timestamp := fluxKustomizationTime(object)
+			timestamp, eventRevision, eventFound := fluxKustomizationEvent(ctx, client, object)
+			if eventRevision != "" { revision = eventRevision }
 			details := "sourceRef=" + sourceKind + "/" + sourceName
-			details += " successful reconcile Event timestamp unavailable from status; status timestamps are not treated as deployment time"
+			if eventFound { details += " successful kustomize-controller reconciliation Event observed" } else { details += " successful reconcile Event timestamp unavailable; status timestamps are not treated as deployment time" }
 			if revision != "" { details += " revision=" + revision }
 			if hash := commitHash(revision); hash != "" {
 				details += " commit=" + hash
@@ -57,7 +60,7 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 				Timestamp: timestamp, Type: EventGitOps,
 				Resource: "Kustomization/" + object.GetName(),
 				Action: "Flux Kustomization reconciliation state observed",
-				Source: "flux-kustomization-status", Confidence: "controller-status",
+				Source: "flux-kustomization-event", Confidence: "controller-event",
 				Details: details,
 			})
 		}
@@ -105,6 +108,47 @@ func addGitOpsEvents(ctx context.Context, client dynamic.Interface, report *Repo
 		}
 	}
 	addArgoCDHistory(ctx, client, report, labels)
+}
+
+func fluxKustomizationEvent(ctx context.Context, client dynamic.Interface, object unstructured.Unstructured) (*time.Time, string, bool) {
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: "events"}
+	list, err := client.Resource(gvr).Namespace(object.GetNamespace()).List(ctx, metav1.ListOptions{})
+	if err != nil { return nil, "", false }
+	var latest *time.Time
+	var revision string
+	for i := range list.Items {
+		event := &list.Items[i]
+		kind, _, _ := unstructured.NestedString(event.Object, "involvedObject", "kind")
+		name, _, _ := unstructured.NestedString(event.Object, "involvedObject", "name")
+		namespace, _, _ := unstructured.NestedString(event.Object, "involvedObject", "namespace")
+		if kind != "Kustomization" || name != object.GetName() || (namespace != "" && namespace != object.GetNamespace()) { continue }
+		reason, _, _ := unstructured.NestedString(event.Object, "reason")
+		message, _, _ := unstructured.NestedString(event.Object, "message")
+		if !strings.Contains(strings.ToLower(reason+" "+message), "reconcil") && !strings.Contains(strings.ToLower(message), "applied revision") { continue }
+		timestamp := fluxEventTime(event)
+		if timestamp != nil && (latest == nil || timestamp.After(*latest)) { latest = timestamp; revision = fluxEventRevision(message) }
+	}
+	return latest, revision, latest != nil
+}
+
+func fluxEventTime(event *unstructured.Unstructured) *time.Time {
+	for _, field := range []string{"eventTime", "lastTimestamp", "firstTimestamp"} {
+		value, _, _ := unstructured.NestedString(event.Object, field)
+		if parsed := parseHistoryTime(value); parsed != nil { return parsed }
+	}
+	return timePointer(event.GetCreationTimestamp().Time)
+}
+
+func fluxEventRevision(message string) string {
+	const marker = "applied revision:"
+	lower := strings.ToLower(message)
+	index := strings.Index(lower, marker)
+	if index < 0 { return "" }
+	value := strings.TrimSpace(message[index+len(marker):])
+	if newline := strings.IndexAny(value, "\r\n"); newline >= 0 { value = value[:newline] }
+	fields := strings.Fields(value)
+	if len(fields) == 0 { return "" }
+	return strings.Trim(fields[0], " ,;")
 }
 
 func listAcrossNamespaces(ctx context.Context, client dynamic.Interface, namespaces []string, resources []schema.GroupVersionResource, report *Report) ([]unstructured.Unstructured, error) {
