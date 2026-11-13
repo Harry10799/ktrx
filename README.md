@@ -21,6 +21,42 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 - **AWS load balancer health (opt-in):** With `trace-url --aws`, read AWS ELB target-group health, preserve target states/reason codes, and correlate IP targets with Kubernetes Pod IPs.
 - **Output:** Colorized terminal, JSON and Markdown (command-specific output support is noted below).
 
+## KTRX feature highlights
+
+KTRX is designed for engineers who want a **terminal-first, evidence-backed investigation** without deploying a monitoring agent or switching between several commands and dashboards.
+
+### Where KTRX brings a useful combination
+
+| KTRX capability | What it gives you | Why it matters |
+| --- | --- | --- |
+| **URL-to-workload trace** | Follows matching Ingress / Gateway API HTTPRoute rules through Service, EndpointSlice and Pods; includes AWS TargetGroupBinding context and optional ELB target health. | Connects an external URL to the Kubernetes backends that actually serve it. |
+| **In-Pod runtime probes** | Runs explicit DNS, TCP and HTTP(S) checks from an existing Pod container. | Tests connectivity from the workload's network context without creating a temporary debug Pod. |
+| **Change-to-failure timeline** | Correlates retained ReplicaSet revisions, template diffs, scaling, Warning events, restarts and available GitOps revision context. | Helps narrow down what changed around the time a workload became unhealthy. |
+| **Known-good vs candidate comparison** | Compares two Pods and surfaces configuration and evidence differences. | Gives responders a concrete baseline instead of relying only on memory. |
+| **Evidence and verdicts** | Reports HEALTHY / WARN / FAILED / UNKNOWN findings with supporting evidence and explicit limitations. | Makes uncertainty visible; missing evidence is not silently treated as healthy. |
+| **Automation-friendly CLI** | JSON / Markdown output where supported, plus stable exit codes (0–3). | Makes diagnostics usable in scripts, CI jobs and incident evidence collection. |
+| **Optional AWS target health** | Reads ELBv2 target-group health only when `--aws` is explicitly enabled; maps IP targets to Pod IPs where possible. | Adds load-balancer target state to the Kubernetes route investigation without requiring AWS access for normal commands. |
+| **No always-on KTRX agent** | Uses the caller's Kubernetes access for read-only inspection; runtime probes are explicit and execute in the selected existing container. | Keeps the default footprint small. AWS integration is also opt-in and read-only. |
+
+### Capability comparison: what is distinctive, and what is not
+
+This is a **documented-capability comparison**, not a claim that competitors are incapable of being extended. “Not a core documented feature” means we did not find it presented as a native, built-in workflow in the product's public documentation; a plugin, integration, script or custom workflow may provide something similar. “Partial / adjacent” means the tool covers part of the workflow, but not the same end-to-end KTRX path.
+
+| Capability / workflow | KTRX | Komodor (paid platform) | Robusta (OSS + paid SaaS) | K9s (free) | Popeye (free) | Headlamp (free) | kubectl (free) | Stern (free) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| URL → Ingress / HTTPRoute → Service → EndpointSlice → Pod trace | **Native** | Partial / adjacent | Not a core documented feature | Not a core documented feature | Not a core documented feature | Plugin / manual workflow | Manual commands | Not a core documented feature |
+| Optional AWS ELB target health correlated with Pod IPs | **Native, opt-in** | Cloud / integration context; not the same KTRX CLI workflow | Integration-dependent | Not a core documented feature | Not a core documented feature | Plugin / manual workflow | Manual AWS + Kubernetes commands | Not a core documented feature |
+| DNS / TCP / HTTP(S) probes from an existing workload container | **Native** | Troubleshooting / integrations; not the same explicit in-Pod CLI probe workflow | Partial / integration-dependent | Manual interactive workflow | Not a core documented feature | Plugin / manual workflow | Manual exec / debug commands | Not a core documented feature |
+| Retained rollout + event + restart + GitOps context in one CLI timeline | **Native** | **Native / broader change intelligence** | Partial / alert and event-driven context | Partial / manual inspection | Not a core documented feature | Plugin / manual workflow | Manual commands across resources | Not a core documented feature |
+| Known-good Pod vs candidate Pod evidence comparison | **Native** | Partial / adjacent investigation | Not a core documented feature | Manual inspection | Not a core documented feature | Plugin / manual workflow | Manual commands / diff | Not a core documented feature |
+| Explicit UNKNOWN verdict when important evidence is unavailable | **Native** | Product health / investigation status; different model | Alert / investigation status; different model | Not a core documented feature | Scan findings; different model | Not a core documented feature | Not a core documented feature | Not a core documented feature |
+| Stable diagnostic exit codes for CI decisions | **Native (0–3)** | Platform / API workflow; not the same CLI contract | Automation / integration workflows | Not a core documented feature | CLI scan exit status (adjacent) | Not a core documented feature | Native command exit status, not KTRX verdict model | CLI exit status, log-following use case |
+| Interactive cluster UI / navigation | CLI only | **Native** | UI / SaaS capabilities | **Native terminal UI** | Not a core documented feature | **Native web UI** | CLI only | CLI log viewer |
+| AI-assisted RCA and remediation | Not currently built in | **Native** | **Native / available in product offerings** | Not built in | Not built in | Not built in by default | Not built in | Not built in |
+| Cluster-wide hygiene / sanitization scan | Limited; not KTRX's primary workflow | Broader platform capabilities | **Native capability** | Manual inspection | **Native core strength** | Plugin / manual workflow | Manual commands | Not a core documented feature |
+
+**The honest takeaway:** KTRX does not beat every tool at its specialty. Komodor has broader AI-driven operations and change intelligence; Robusta focuses on alert-driven automation and AI; K9s and Headlamp are better interactive navigation experiences; Popeye is purpose-built for cluster hygiene; kubectl and Stern are foundational command-line tools. KTRX's differentiator is the **combination** of URL-to-backend tracing, explicit in-Pod network probes, rollout/change evidence, Pod comparison, uncertainty-aware verdicts and CI-friendly exit codes in one small CLI.
+
 ## Tool comparison
 
 The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings or benchmark results. The overall row is the **unweighted arithmetic mean of the 10 category scores above**, rounded to one decimal place. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change.
