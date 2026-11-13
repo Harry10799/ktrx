@@ -38,6 +38,20 @@ The table below compares KTRX with commonly used Kubernetes troubleshooting and 
 | AI-assisted analysis and remediation | 1.0 | 9.5 | 2.0 | 9.0 | 1.0 | 2.0 | 1.0 | 1.0 |
 | Scriptable output and CI integration | 9.0 | 7.5 | 6.5 | 8.0 | 7.0 | 5.5 | 9.5 | 8.0 |
 | **Overall average (10 categories)** | **6.8** | **8.8** | **6.7** | **8.2** | **5.7** | **6.3** | **6.1** | **3.7** |
+| **Pricing / availability** | **Free · Open source** | **Commercial · Paid plans** | **Free · Open source** | **Mixed · Free OSS + paid SaaS tiers** | **Free · Open source** | **Free · Open source** | **Free · Open source** | **Free · Open source** |
+
+**Pricing and licensing notes (checked November 2026)**
+
+- **KTRX — Free / open source:** Apache-2.0. No paid tier is currently offered.
+- **Komodor — Commercial / paid:** Public pricing lists custom-priced Starter and Enterprise plans; a trial is offered. Contact Komodor for a quote.
+- **K9s — Free / open source:** Apache-2.0. Community-maintained CLI/TUI; sponsorship is optional.
+- **Robusta — Mixed:** Robusta Classic and HolmesGPT open-source components are free/open source (MIT). The SaaS platform is free to get started, with paid tiers for larger teams and advanced features; self-hosted UI requires an Enterprise plan.
+- **Popeye — Free / open source:** Apache-2.0.
+- **Headlamp — Free / open source:** Apache-2.0; its official FAQ describes it as available at no charge, including commercial use.
+- **kubectl — Free / open source:** Apache-2.0 as part of the Kubernetes project.
+- **Stern — Free / open source:** Apache-2.0.
+
+“Free” describes the software/license tier, not the infrastructure needed to run it, optional hosted services, support contracts, or third-party cloud costs. Robusta is deliberately marked **Mixed**, not simply free, because its open-source components and hosted/self-hosted platform have different pricing. Komodor is marked **Paid** based on its published custom-priced plans; confirm current commercial terms directly with the vendor.
 
 **How to read this comparison**
 
