@@ -15,6 +15,7 @@ KTRX helps answer **“what can we prove from the Kubernetes API right now?”**
 - **Events and logs:** Pod event timeline, common error patterns and HTTP 4xx/5xx access-log entries; optional full current/previous logs.
 - **Dependency clues:** Correlates literal same-namespace Service references in container environment values/commands with selected backend Pod health.
 - **Runtime checks:** Explicit DNS, TCP and HTTP(S) probes from an existing Pod container.
+- **Namespace topology:** Map Pods, Services, Service-selector relationships and DNS hostnames declared in container environment/arguments for one namespace; export terminal, JSON or Markdown.
 - **Comparison:** Compare a known-good Pod with a candidate to surface configuration and evidence differences.
 - **Change timeline:** Compare retained Deployment-owned ReplicaSet revisions, Pod-template annotations/checksums, Deployment scaling events, Pod Warning events and restarts. Optionally read Flux Kustomization and HelmRelease history, including Git revisions. Referenced ConfigMap/Secret metadata is shown without displaying values.
 - **Preflight:** Check Kubernetes API connectivity and the RBAC permissions KTRX uses.
@@ -310,6 +311,18 @@ ktrx timeline deploy/api -n production --output markdown
 
 The initial timeline implementation compares ReplicaSets still retained by Kubernetes and reports their revision timestamps and supported Pod-template changes (container images, environment variable names/references, and CPU/memory requests and limits). It filters ReplicaSets by the Deployment's controller owner reference, not labels alone. Environment variable values are never emitted. Kubernetes does not retain deleted ReplicaSets indefinitely, and ReplicaSet creation timestamps are not an audit log; the output explicitly reports these history limitations and does not claim causation.
 
+### 8. Map a namespace topology
+
+~~~bash
+ktrx topology -n production
+ktrx topology -n production --output json
+ktrx topology -n production --output markdown
+~~~
+
+The topology is scoped to the selected namespace. It shows Pod and Service nodes, Service-selector-to-Pod relationships, DNS hostnames found in selected container environment values, commands/arguments and hostAliases, and DNS-name matches to Services in that namespace. Service nodes include their ClusterIP (or headless status); Pod nodes include phase/readiness and Pod IP.
+
+DNS relationships are explicitly labelled as **declared references**. KTRX does not claim these are observed DNS queries, and it does not resolve external hostnames from the machine running KTRX because that would not represent the Pod's resolver/network context. A DNS name matching a Service follows Kubernetes naming conventions; this topology view does not prove that a lookup or connection succeeds. Use `ktrx netcheck` from an existing Pod to perform an explicit runtime DNS/TCP/HTTP check.
+
 ### Common options
 
 ~~~bash
@@ -364,7 +377,7 @@ KTRX does not create diagnostic Pods or modify workload resources during normal 
 
 The caller needs read permissions for the resources used by the selected checks, including:
 
-- Pods, Services, EndpointSlices and legacy Endpoints.
+- Pods and Services for namespace topology; EndpointSlices and legacy Endpoints for workload/route inspection.
 - Ingresses and IngressClasses; Gateway API HTTPRoutes (optional); AWS TargetGroupBindings (optional).
 - NetworkPolicies, Events and pods/log.
 - ReplicaSets for owner-chain inspection and Deployment timelines.
@@ -393,7 +406,7 @@ The script requires Bash, Go, kubectl and a reachable cluster; Minikube is optio
 
 KTRX is an aid for investigation, not an autonomous root-cause oracle.
 
-- Dependency discovery is limited to literal same-namespace Service references in container environment values and command arguments. It does not resolve values stored only in Secrets/ConfigMaps or discover arbitrary cross-namespace/external dependencies.
+- Dependency discovery and namespace topology are limited to declared literal references in visible Pod configuration. They do not resolve values stored only in Secrets/ConfigMaps or discover arbitrary cross-namespace/external dependencies. Topology Service-to-Pod edges represent selector matches, not guaranteed ready endpoints or network reachability.
 - NetworkPolicy analysis describes declared policy configuration. Runtime probe failures can also be caused by DNS, routing, firewalls, TLS or application health; KTRX does not claim a failed probe proves NetworkPolicy is responsible.
 - Runtime probes require suitable utilities inside the chosen container and execute in that container's network context.
 - Ingress controller Pod discovery currently supports ingress-nginx. Other controllers can still have their Ingress routes inspected, but controller-Pod health discovery is not implemented for them.
