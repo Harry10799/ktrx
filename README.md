@@ -273,6 +273,15 @@ Pod (phase, readiness, restarts and KTRX findings)
 
 **AWS integration boundary:** `--aws` is strictly opt-in. Without it, KTRX does not load AWS configuration, resolve AWS credentials or make AWS SDK calls. When enabled, KTRX uses the standard AWS SDK credential chain (environment, shared config/credentials, web identity, or attached workload/instance role) and the target-group ARN region by default; `--aws-region` can override that region. The current AWS integration calls only the read-only ELBv2 `DescribeTargetHealth` API. It does not yet inspect ALB listener rules, resolve instance-type targets to EC2 instances, or analyze Security Group reachability. IP targets are correlated with Kubernetes Pod IPs where they match. AWS credentials/API failures and missing optional permissions remain limitations; they do not by themselves mark the Kubernetes route as failed. The AWS permission needed for this stage is `elasticloadbalancing:DescribeTargetHealth` on the relevant target groups. HTTPRoute support is optional and requires the Gateway API CRDs and read permissions.
 
+**Test AWS integration without an AWS account or cluster:** KTRX includes a local mock fixture with one healthy and one unhealthy ALB IP target. The test runs the response through target-health parsing, Pod-IP correlation, verdict calculation, JSON serialization and terminal rendering. It makes no AWS API calls and does not need Kubernetes.
+
+~~~bash
+bash scripts/test-aws-mock.sh
+~~~
+
+The script runs the focused mock scenario, the full Go test suite and `go vet`. The fixture is at `internal/cli/testdata/aws_target_health_mock.json`; edit it to try other target states and Pod IP mappings. This validates KTRX's handling of a simulated AWS response, not live AWS credentials, IAM permissions, ALB configuration or a real Kubernetes route.
+
+
 ### 7. Inspect Deployment change history
 
 ~~~bash
