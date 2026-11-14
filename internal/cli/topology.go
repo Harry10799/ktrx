@@ -345,12 +345,6 @@ func printTopologyGraph(w io.Writer, report topologyReport, style func(string, s
 	}
 }
 
-func value(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
-}
 
 func printTopologyMarkdown(w io.Writer, report topologyReport) error {
 	fmt.Fprintf(w, "# KTRX namespace topology: %s\n\nGenerated: %s\n\n", report.Namespace, report.GeneratedAt)
