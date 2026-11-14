@@ -379,7 +379,7 @@ Use ktrx doctor -n NAMESPACE to inspect the required permissions. Grant only the
 
 ## Live demo
 
-[View the captured KTRX command output](docs/DEMO.md). The report is generated from a real Kubernetes cluster and may reflect that cluster's RBAC, installed controllers and available container utilities.
+[View the captured KTRX command output](docs/DEMO.md). The report starts with a live runtime snapshot (Pod readiness, restarts, warning Events, Deployment state and Service endpoints), followed by the actual captured KTRX command output. AWS target health is marked not configured when running without AWS.
 
 To regenerate it in your own environment:
 
