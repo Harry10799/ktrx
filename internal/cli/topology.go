@@ -140,7 +140,11 @@ func buildTopologyReport(namespace string, pods []corev1.Pod, services []corev1.
 			dnsSearches = strings.Join(pod.Spec.DNSConfig.Searches, ", ")
 			for _, option := range pod.Spec.DNSConfig.Options {
 				if option != nil {
-					dnsOptions = appendCommaValue(dnsOptions, option.Name+"="+value(option.Value))
+					optionValue := option.Name
+					if option.Value != "" {
+						optionValue += "=" + option.Value
+					}
+					dnsOptions = appendCommaValue(dnsOptions, optionValue)
 				}
 			}
 		}
