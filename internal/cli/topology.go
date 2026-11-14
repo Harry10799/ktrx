@@ -47,11 +47,20 @@ type topologyReport struct {
 var topologyHostPattern = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]{1,}\b`)
 
 func newTopologyCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "topology",
+		Short: "Explore namespace-scoped Kubernetes topology",
+	}
+	cmd.AddCommand(newDNSTopologyCommand())
+	return cmd
+}
+
+func newDNSTopologyCommand() *cobra.Command {
 	var namespace, kubeconfig, contextName, output string
 	var noColor bool
 	cmd := &cobra.Command{
-		Use:   "topology",
-		Short: "Explore namespace-scoped Pod, Service and DNS relationships",
+		Use:   "dns",
+		Short: "Map Pod-to-DNS and Service relationships in one namespace",
 		Long:  "Read-only namespace topology built from Kubernetes API configuration and status. DNS edges are declared references, not a record of historical DNS queries.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(namespace) == "" {
