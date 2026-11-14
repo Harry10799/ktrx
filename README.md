@@ -314,7 +314,7 @@ The initial timeline implementation compares ReplicaSets still retained by Kuber
 ### 8. Map a namespace topology
 
 ~~~bash
-ktrx topology -n production
+ktrx topology dns -n production
 ktrx topology -n production --output json
 ktrx topology -n production --output markdown
 ~~~
