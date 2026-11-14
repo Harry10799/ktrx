@@ -1,0 +1,10 @@
+.git
+.github
+.vscode
+.idea
+*.log
+ktrx
+dist/
+docs/DEMO.md
+docs/AWS_DEMO.md
+docs/AWS_MOCK_DEMO.md
