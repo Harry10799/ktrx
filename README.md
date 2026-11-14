@@ -136,6 +136,54 @@ go build -o ktrx ./cmd/ktrx
 ./ktrx --help
 ~~~
 
+## Install prebuilt binaries (GitHub Releases)
+
+Download the archive for your OS and CPU architecture from the [latest KTRX release](https://github.com/Harry10799/ktrx/releases/latest), extract it, and place the `ktrx` binary on your PATH. Windows users should extract `ktrx.exe`. Verify the download with the published `checksums.txt`.
+
+To build release archives locally (Linux, macOS and Windows; amd64 and arm64):
+
+```bash
+bash scripts/build-release.sh v0.1.0
+```
+
+Artifacts are written to `dist/`. Upload the generated archives and `checksums.txt` as assets when creating a GitHub Release. This script builds binaries only; it does not create a GitHub Release or upload files.
+
+## Run KTRX as a container (GHCR)
+
+Pull the public image:
+
+```bash
+docker pull ghcr.io/harry10799/ktrx:latest
+```
+
+Pass your kubeconfig into the container. For example, inspect a Deployment:
+
+```bash
+docker run --rm \
+  -v "$HOME/.kube:/home/ktrx/.kube:ro" \
+  -e KUBECONFIG=/home/ktrx/.kube/config \
+  ghcr.io/harry10799/ktrx:latest deploy/api -n production
+```
+
+For a different kubeconfig path, mount the file and set `KUBECONFIG` accordingly. The container uses the kubeconfig and credentials you provide; it does not include cluster credentials. For AWS target health, pass AWS credentials using your normal secure runtime method and use the explicit `--aws` flag. Avoid baking kubeconfig files, tokens or AWS credentials into the image.
+
+### Build and publish the multi-architecture image manually
+
+Authenticate to GHCR with a GitHub Personal Access Token (classic) that has `write:packages` permission:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+docker buildx create --use --name ktrx-builder 2>/dev/null || docker buildx use ktrx-builder
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/harry10799/ktrx:v0.1.0 \
+  -t ghcr.io/harry10799/ktrx:latest \
+  --push .
+```
+
+After publishing, set the package visibility to **Public** in GitHub → Packages → ktrx if you want anyone to pull it without authenticating. Public package pulls are free under GitHub's published package policy; review current [GitHub Packages billing](https://docs.github.com/en/billing/concepts/product-billing/github-packages).
+
+These release and image publishing steps are manual by design; KTRX does not require a GitHub Actions workflow.
+
 ## Usage
 
 KTRX uses your current kubeconfig context by default. The namespace defaults to default.
@@ -315,8 +363,8 @@ The initial timeline implementation compares ReplicaSets still retained by Kuber
 
 ~~~bash
 ktrx topology dns -n production
-ktrx topology -n production --output json
-ktrx topology -n production --output markdown
+ktrx topology dns -n production --output json
+ktrx topology dns -n production --output markdown
 ~~~
 
 The topology is scoped to the selected namespace. It shows Pod and Service nodes, Service-selector-to-Pod relationships, DNS hostnames found in selected container environment values, commands/arguments and hostAliases, and DNS-name matches to Services in that namespace. Service nodes include their ClusterIP (or headless status); Pod nodes include phase/readiness and Pod IP.
