@@ -8,6 +8,7 @@ cd "$ROOT"
 
 command -v go >/dev/null 2>&1 || { echo "Go is required" >&2; exit 1; }
 mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 rm -f "$OUT_DIR"/ktrx_*
 
 targets=(
