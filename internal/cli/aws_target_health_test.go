@@ -37,7 +37,7 @@ func TestDescribeAWSTargetGroupHealth(t *testing.T) {
 	client := &fakeELBV2TargetHealthClient{output: &elbv2.DescribeTargetHealthOutput{
 		TargetHealthDescriptions: []elbv2types.TargetHealthDescription{
 			{
-				Target: &elbv2types.TargetDescription{Id: aws.String("10.0.1.10"), Port: aws.Int32(8080), AvailabilityZone: aws.String("ap-south-1a")},
+				Target:       &elbv2types.TargetDescription{Id: aws.String("10.0.1.10"), Port: aws.Int32(8080), AvailabilityZone: aws.String("ap-south-1a")},
 				TargetHealth: &elbv2types.TargetHealth{State: elbv2types.TargetHealthStateEnum("unhealthy"), Reason: elbv2types.TargetHealthReasonEnum("Target.Timeout"), Description: aws.String("Health checks timed out")},
 			},
 		},

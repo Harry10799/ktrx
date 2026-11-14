@@ -42,21 +42,21 @@ type urlTracePod struct {
 }
 
 type urlTraceBackend struct {
-	Namespace           string                       `json:"namespace"`
-	Service             string                       `json:"service"`
-	Port                string                       `json:"port,omitempty"`
-	ServicePort         int32                        `json:"servicePort,omitempty"`
-	ServiceStatus       string                       `json:"serviceStatus"`
-	EndpointCount       int                          `json:"endpointCount"`
-	ReadyEndpoints      int                          `json:"readyEndpoints"`
-	NotReadyEndpoints   int                          `json:"notReadyEndpoints"`
-	TargetGroupBindings []urlTraceTargetGroupBinding `json:"targetGroupBindings,omitempty"`
+	Namespace           string                         `json:"namespace"`
+	Service             string                         `json:"service"`
+	Port                string                         `json:"port,omitempty"`
+	ServicePort         int32                          `json:"servicePort,omitempty"`
+	ServiceStatus       string                         `json:"serviceStatus"`
+	EndpointCount       int                            `json:"endpointCount"`
+	ReadyEndpoints      int                            `json:"readyEndpoints"`
+	NotReadyEndpoints   int                            `json:"notReadyEndpoints"`
+	TargetGroupBindings []urlTraceTargetGroupBinding   `json:"targetGroupBindings,omitempty"`
 	AWSTargetGroups     []urlTraceAWSTargetGroupHealth `json:"awsTargetGroups,omitempty"`
-	Pods                []urlTracePod                `json:"pods,omitempty"`
-	Notes               []string                     `json:"notes,omitempty"`
-	ReadinessProbePaths []string                     `json:"readinessProbePaths,omitempty"`
-	HealthcheckMismatch bool                         `json:"healthcheckMismatch,omitempty"`
-	ALBHealthcheckPath  string                       `json:"albHealthcheckPath,omitempty"`
+	Pods                []urlTracePod                  `json:"pods,omitempty"`
+	Notes               []string                       `json:"notes,omitempty"`
+	ReadinessProbePaths []string                       `json:"readinessProbePaths,omitempty"`
+	HealthcheckMismatch bool                           `json:"healthcheckMismatch,omitempty"`
+	ALBHealthcheckPath  string                         `json:"albHealthcheckPath,omitempty"`
 }
 
 type urlTraceTargetGroupBinding struct {
@@ -1137,7 +1137,9 @@ func printURLTraceMarkdown(w io.Writer, report urlTraceReport) error {
 			}
 			for _, group := range backend.AWSTargetGroups {
 				fmt.Fprintf(w, "\n#### AWS Target Group %s — %s\n\n", group.TargetGroupARN, group.Status)
-				if group.Error != "" { fmt.Fprintf(w, "- Error: %s\n", group.Error) }
+				if group.Error != "" {
+					fmt.Fprintf(w, "- Error: %s\n", group.Error)
+				}
 				for _, target := range group.Targets {
 					fmt.Fprintf(w, "- Target %s:%d state=%s reason=%s description=%s Pod=%s\n", target.ID, target.Port, target.State, value(target.Reason), value(target.Description), value(target.KubernetesPod))
 				}
@@ -1210,10 +1212,14 @@ func printURLTrace(w io.Writer, report urlTraceReport) {
 			}
 			for _, group := range b.AWSTargetGroups {
 				fmt.Fprintf(w, "      → AWS Target Group %s status=%s\n", group.TargetGroupARN, group.Status)
-				if group.Error != "" { fmt.Fprintf(w, "          ! %s\n", group.Error) }
+				if group.Error != "" {
+					fmt.Fprintf(w, "          ! %s\n", group.Error)
+				}
 				for _, target := range group.Targets {
 					fmt.Fprintf(w, "          → Target %s:%d state=%s reason=%s pod=%s\n", target.ID, target.Port, target.State, value(target.Reason), value(target.KubernetesPod))
-					if target.Description != "" { fmt.Fprintf(w, "             %s\n", target.Description) }
+					if target.Description != "" {
+						fmt.Fprintf(w, "             %s\n", target.Description)
+					}
 				}
 			}
 			for _, pod := range b.Pods {

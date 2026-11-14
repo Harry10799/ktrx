@@ -16,20 +16,20 @@ type elbv2TargetHealthAPI interface {
 }
 
 type urlTraceAWSTarget struct {
-	ID             string `json:"id"`
-	Port           int32  `json:"port,omitempty"`
+	ID               string `json:"id"`
+	Port             int32  `json:"port,omitempty"`
 	AvailabilityZone string `json:"availabilityZone,omitempty"`
-	State          string `json:"state"`
-	Reason         string `json:"reason,omitempty"`
-	Description    string `json:"description,omitempty"`
-	KubernetesPod  string `json:"kubernetesPod,omitempty"`
+	State            string `json:"state"`
+	Reason           string `json:"reason,omitempty"`
+	Description      string `json:"description,omitempty"`
+	KubernetesPod    string `json:"kubernetesPod,omitempty"`
 }
 
 type urlTraceAWSTargetGroupHealth struct {
-	TargetGroupARN string             `json:"targetGroupARN"`
-	Status         string             `json:"status"`
+	TargetGroupARN string              `json:"targetGroupARN"`
+	Status         string              `json:"status"`
 	Targets        []urlTraceAWSTarget `json:"targets,omitempty"`
-	Error          string             `json:"error,omitempty"`
+	Error          string              `json:"error,omitempty"`
 }
 
 func awsRegionFromTargetGroupARN(arn string) string {
