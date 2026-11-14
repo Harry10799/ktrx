@@ -70,7 +70,7 @@ run_section() {
   printf '\n[exit status: %s]\n' "$status" >> "$DOC"
   printf '```\n' >> "$DOC"
   rm -f "$output_file"
-  return 0
+  return "$status"
 }
 
 run_required() {
@@ -81,18 +81,18 @@ run_required() {
 }
 
 run_required "Build KTRX" go build -o "$BINARY" ./cmd/ktrx
-run_section "Kubernetes TargetGroupBindings in scope" kubectl get targetgroupbindings.elbv2.k8s.aws -n "$NAMESPACE" -o wide
-run_section "Baseline URL trace (AWS integration disabled)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" --output terminal
-run_section "Baseline URL trace (JSON)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" --output json
+run_section "Kubernetes TargetGroupBindings in scope" kubectl get targetgroupbindings.elbv2.k8s.aws -n "$NAMESPACE" -o wide || true
+run_section "Baseline URL trace (AWS integration disabled)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" --output terminal || true
+run_section "Baseline URL trace (JSON)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" --output json || true
 
 AWS_ARGS=(--aws)
 if [[ -n "$AWS_REGION" ]]; then
   AWS_ARGS+=(--aws-region "$AWS_REGION")
 fi
 
-run_section "URL trace with live AWS target health (terminal)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" "${AWS_ARGS[@]}" --output terminal
-run_section "URL trace with live AWS target health (JSON)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" "${AWS_ARGS[@]}" --output json
-run_section "URL trace with live AWS target health (Markdown)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" "${AWS_ARGS[@]}" --output markdown
+run_section "URL trace with live AWS target health (terminal)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" "${AWS_ARGS[@]}" --output terminal || true
+run_section "URL trace with live AWS target health (JSON)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" "${AWS_ARGS[@]}" --output json || true
+run_section "URL trace with live AWS target health (Markdown)" "$BINARY" trace-url "$URL" -n "$NAMESPACE" "${KUBECONFIG_ARGS[@]}" "${AWS_ARGS[@]}" --output markdown || true
 
 cat >> "$DOC" <<'EOF'
 
