@@ -357,7 +357,7 @@ ${SERVICE_ENDPOINTS:-No EndpointSlice addresses returned}
 
 ## AWS integration
 
-**Not configured — Minikube run.** No AWS account, ALB, Target Group, AWS credentials or AWS API calls are required. AWS target health is not represented as live data in this report.
+**Not configured for this run.** No AWS account, ALB, Target Group, AWS credentials or AWS API calls are required. AWS target health is not represented as live data in this report.
 
 ## How to reproduce
 
