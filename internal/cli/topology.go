@@ -16,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	"github.com/spf13/cobra"
 )
 
@@ -273,6 +272,3 @@ func printTopologyMarkdown(w io.Writer, report topologyReport) error {
 	return nil
 }
 
-// Keep this import-time assertion close to the selector matching logic: an empty
-// selector must never be interpreted as selecting every Pod.
-var _ selection.Operator = selection.Equals
