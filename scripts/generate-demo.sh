@@ -279,6 +279,53 @@ run_section "Clear transient scheduling Events after candidate is ready" kubectl
 run_section "Compare reference Pod with candidate (terminal)" "$BINARY" compare "$REF_POD" ktrx-demo-candidate -n "$NAMESPACE" --no-color || true
 run_section "Compare reference Pod with candidate (JSON)" "$BINARY" compare "$REF_POD" ktrx-demo-candidate -n "$NAMESPACE" --output json || true
 
+# Create a deliberately broken workload to demonstrate a real image-pull failure.
+cat > "$TMP_DIR/broken-image.yaml" <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ktrx-demo-broken-image
+  namespace: $NAMESPACE
+  labels:
+    app: ktrx-demo-broken-image
+spec:
+  restartPolicy: Always
+  containers:
+    - name: nginx
+      image: nginx:ktrx-intentionally-missing-20261114
+      imagePullPolicy: Always
+      ports:
+        - name: http
+          containerPort: 80
+EOF
+
+run_required "Create intentionally failing Pod (nonexistent image tag)" kubectl apply -f "$TMP_DIR/broken-image.yaml"
+run_section "Wait for image-pull failure evidence (up to 120 seconds)" bash -c '
+namespace="$1"
+pod="$2"
+for ((attempt=0; attempt<60; attempt++)); do
+  reason="$(kubectl get pod "$pod" -n "$namespace" -o jsonpath="{.status.containerStatuses[0].state.waiting.reason}" 2>/dev/null || true)"
+  case "$reason" in
+    ImagePullBackOff|ErrImagePull)
+      echo "Observed container waiting reason: $reason"
+      exit 0
+      ;;
+  esac
+  sleep 2
+done
+echo "Timed out waiting for ImagePullBackOff/ErrImagePull; current Pod state follows:"
+kubectl get pod "$pod" -n "$namespace" -o wide || true
+' _ "$NAMESPACE" ktrx-demo-broken-image || true
+run_section "Broken Pod state and image details" kubectl get pod ktrx-demo-broken-image -n "$NAMESPACE" -o wide || true
+run_section "Broken Pod Events and pull error details" kubectl describe pod ktrx-demo-broken-image -n "$NAMESPACE" || true
+run_section "Broken Pod Events (chronological)" kubectl get events -n "$NAMESPACE" --field-selector involvedObject.name=ktrx-demo-broken-image --sort-by=.lastTimestamp || true
+run_section "KTRX diagnosis of ImagePullBackOff (terminal)" "$BINARY" pod ktrx-demo-broken-image -n "$NAMESPACE" --no-color || true
+run_section "KTRX diagnosis of ImagePullBackOff (JSON)" "$BINARY" pod ktrx-demo-broken-image -n "$NAMESPACE" --output json || true
+run_section "KTRX diagnosis of ImagePullBackOff (Markdown)" "$BINARY" pod ktrx-demo-broken-image -n "$NAMESPACE" --output markdown || true
+run_section "Compare healthy reference Pod with failing image Pod" "$BINARY" compare "$REF_POD" ktrx-demo-broken-image -n "$NAMESPACE" --no-color || true
+run_section "Compare healthy reference Pod with failing image Pod (JSON)" "$BINARY" compare "$REF_POD" ktrx-demo-broken-image -n "$NAMESPACE" --output json || true
+
+
 cat >> "$DOC" <<EOF
 
 ## Cleanup
