@@ -298,6 +298,85 @@ KEEP_DEMO=1 bash scripts/generate-demo.sh
 ```
 EOF
 
+# Capture the live snapshot before the temporary namespace is removed.
+NODE_NAME="$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo unknown)"
+NODE_VERSION="$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null || echo unknown)"
+NODE_IP="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || echo unknown)"
+POD_SNAPSHOT="$(kubectl get pods -n "$NAMESPACE" --no-headers -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount' 2>/dev/null || true)"
+POD_TOTAL="$(printf '%s\n' "$POD_SNAPSHOT" | awk 'NF {n++} END {print n+0}')"
+POD_READY="$(printf '%s\n' "$POD_SNAPSHOT" | awk 'NF && $3 ~ /^true(,true)*$/ {n++} END {print n+0}')"
+POD_RESTARTS="$(printf '%s\n' "$POD_SNAPSHOT" | awk 'NF {for(i=4;i<=NF;i++){split($i,a,","); for(j in a) total+=a[j]}} END {print total+0}')"
+WARNING_EVENTS="$(kubectl get events -n "$NAMESPACE" --field-selector type=Warning --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+DEPLOYMENT_STATE="$(kubectl get deployment ktrx-demo-nginx -n "$NAMESPACE" -o jsonpath='desired={.spec.replicas},ready={.status.readyReplicas},available={.status.availableReplicas}' 2>/dev/null || echo unavailable)"
+SERVICE_ENDPOINTS="$(kubectl get endpointslice -n "$NAMESPACE" -l kubernetes.io/service-name=ktrx-demo-nginx -o jsonpath='{range .items[*].endpoints[*]}{.addresses[0]}{" "}{.conditions.ready}{"\n"}{end}' 2>/dev/null || true)"
+ENDPOINT_COUNT="$(printf '%s\n' "$SERVICE_ENDPOINTS" | awk 'NF {n++} END {print n+0}')"
+INGRESS_STATE="$(kubectl get ingress ktrx-demo-nginx -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[*].ip}{.status.loadBalancer.ingress[*].hostname}' 2>/dev/null || true)"
+[[ -n "$INGRESS_STATE" ]] || INGRESS_STATE="No ingress address reported (controller may not be installed)"
+GENERATED_AT="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+CONTEXT="$(kubectl config current-context 2>/dev/null || echo unknown)"
+
+cat > "$TMP_DIR/summary.md" <<EOF
+# KTRX — Live Kubernetes Demo
+
+> Generated from the connected cluster. All metrics below are captured at runtime; they are not sample values.
+
+| Report metadata | Live value |
+|---|---|
+| Generated | $GENERATED_AT |
+| Kubernetes context | `$CONTEXT` |
+| Node | `$NODE_NAME` |
+| Kubernetes version | `$NODE_VERSION` |
+| Node internal IP | `$NODE_IP` |
+| Demo namespace | `$NAMESPACE` |
+
+## Executive summary
+
+| Signal | Observed value |
+|---|---:|
+| Demo Pods | $POD_TOTAL |
+| Ready Pods | $POD_READY |
+| Container restarts | $POD_RESTARTS |
+| Warning Events | $WARNING_EVENTS |
+| Ready Service endpoints | $ENDPOINT_COUNT |
+
+**Deployment:** `$DEPLOYMENT_STATE`
+
+**Ingress address:** $INGRESS_STATE
+
+## Workload snapshot
+
+```text
+$POD_SNAPSHOT
+```
+
+## Service endpoint snapshot
+
+```text
+${SERVICE_ENDPOINTS:-No EndpointSlice addresses returned}
+```
+
+## AWS integration
+
+**Not configured — Minikube run.** No AWS account, ALB, Target Group, AWS credentials or AWS API calls are required. AWS target health is not represented as live data in this report.
+
+## How to reproduce
+
+```bash
+bash scripts/generate-demo.sh
+```
+
+Set `KEEP_DEMO=1` to retain the isolated namespace after report generation.
+
+---
+
+## Detailed KTRX command output
+
+The following appendix contains the actual command lines, captured output and exit statuses from this run.
+
+EOF
+
+cat "$TMP_DIR/summary.md" "$DOC" > "$TMP_DIR/complete-report.md"
+mv "$TMP_DIR/complete-report.md" "$DOC"
 if [[ "${KEEP_DEMO:-0}" == "1" ]]; then
   echo "Demo namespace retained: $NAMESPACE"
 else
