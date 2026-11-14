@@ -134,7 +134,25 @@ func buildTopologyReport(namespace string, pods []corev1.Pod, services []corev1.
 		} else {
 			status += "/NotReady"
 		}
-		report.Nodes = append(report.Nodes, topologyNode{ID: podID, Kind: "Pod", Namespace: namespace, Name: pod.Name, Status: status, Address: pod.Status.PodIP, Details: map[string]string{"node": pod.Spec.NodeName, "dnsPolicy": string(pod.Spec.DNSPolicy), "hostNetwork": fmt.Sprintf("%t", pod.Spec.HostNetwork)}})
+		dnsNameservers, dnsSearches, dnsOptions := "", "", ""
+		if pod.Spec.DNSConfig != nil {
+			dnsNameservers = strings.Join(pod.Spec.DNSConfig.Nameservers, ", ")
+			dnsSearches = strings.Join(pod.Spec.DNSConfig.Searches, ", ")
+			for _, option := range pod.Spec.DNSConfig.Options {
+				if option != nil {
+					dnsOptions = appendCommaValue(dnsOptions, option.Name+"="+value(option.Value))
+				}
+			}
+		}
+		details := map[string]string{
+			"node": pod.Spec.NodeName,
+			"dnsPolicy": string(pod.Spec.DNSPolicy),
+			"hostNetwork": fmt.Sprintf("%t", pod.Spec.HostNetwork),
+			"dnsNameservers": dnsNameservers,
+			"dnsSearches": dnsSearches,
+			"dnsOptions": dnsOptions,
+		}
+		report.Nodes = append(report.Nodes, topologyNode{ID: podID, Kind: "Pod", Namespace: namespace, Name: pod.Name, Status: status, Address: pod.Status.PodIP, Details: details})
 		for _, svc := range services {
 			if len(svc.Spec.Selector) == 0 {
 				continue
@@ -289,3 +307,10 @@ func printTopologyMarkdown(w io.Writer, report topologyReport) error {
 	return nil
 }
 
+
+func appendCommaValue(existing, next string) string {
+	if existing == "" {
+		return next
+	}
+	return existing + ", " + next
+}
