@@ -261,7 +261,7 @@ func printTopologyTerminal(w io.Writer, report topologyReport, colorEnabled bool
 			for key := range node.Details { keys = append(keys, key) }
 			sort.Strings(keys)
 			for _, key := range keys {
-				if node.Details[key] != "" { fmt.Fprintf(w, "      %s: %s\\n", key, node.Details[key]) }
+				if node.Details[key] != "" { fmt.Fprintf(w, "      %s: %s\n", key, node.Details[key]) }
 			}
 		}
 	}
