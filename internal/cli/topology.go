@@ -13,20 +13,20 @@ import (
 
 	"github.com/Harry10799/ktrx/internal/kube"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"github.com/spf13/cobra"
 )
 
 type topologyNode struct {
-	ID       string            `json:"id"`
-	Kind     string            `json:"kind"`
-	Namespace string           `json:"namespace,omitempty"`
-	Name     string            `json:"name"`
-	Status   string            `json:"status,omitempty"`
-	Address  string            `json:"address,omitempty"`
-	Details  map[string]string `json:"details,omitempty"`
+	ID        string            `json:"id"`
+	Kind      string            `json:"kind"`
+	Namespace string            `json:"namespace,omitempty"`
+	Name      string            `json:"name"`
+	Status    string            `json:"status,omitempty"`
+	Address   string            `json:"address,omitempty"`
+	Details   map[string]string `json:"details,omitempty"`
 }
 
 type topologyEdge struct {
@@ -37,11 +37,11 @@ type topologyEdge struct {
 }
 
 type topologyReport struct {
-	Namespace   string          `json:"namespace"`
-	GeneratedAt string          `json:"generatedAt"`
-	Nodes       []topologyNode  `json:"nodes"`
-	Edges       []topologyEdge  `json:"edges"`
-	Limitations []string        `json:"limitations,omitempty"`
+	Namespace   string         `json:"namespace"`
+	GeneratedAt string         `json:"generatedAt"`
+	Nodes       []topologyNode `json:"nodes"`
+	Edges       []topologyEdge `json:"edges"`
+	Limitations []string       `json:"limitations,omitempty"`
 }
 
 var topologyHostPattern = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]{1,}\b`)
@@ -147,12 +147,12 @@ func buildTopologyReport(namespace string, pods []corev1.Pod, services []corev1.
 			}
 		}
 		details := map[string]string{
-			"node": pod.Spec.NodeName,
-			"dnsPolicy": string(pod.Spec.DNSPolicy),
-			"hostNetwork": fmt.Sprintf("%t", pod.Spec.HostNetwork),
+			"node":           pod.Spec.NodeName,
+			"dnsPolicy":      string(pod.Spec.DNSPolicy),
+			"hostNetwork":    fmt.Sprintf("%t", pod.Spec.HostNetwork),
 			"dnsNameservers": dnsNameservers,
-			"dnsSearches": dnsSearches,
-			"dnsOptions": dnsOptions,
+			"dnsSearches":    dnsSearches,
+			"dnsOptions":     dnsOptions,
 		}
 		report.Nodes = append(report.Nodes, topologyNode{ID: podID, Kind: "Pod", Namespace: namespace, Name: pod.Name, Status: status, Address: pod.Status.PodIP, Details: details})
 		for _, svc := range services {
@@ -185,8 +185,12 @@ func buildTopologyReport(namespace string, pods []corev1.Pod, services []corev1.
 	}
 	sort.Slice(report.Nodes, func(i, j int) bool { return report.Nodes[i].ID < report.Nodes[j].ID })
 	sort.Slice(report.Edges, func(i, j int) bool {
-		if report.Edges[i].From != report.Edges[j].From { return report.Edges[i].From < report.Edges[j].From }
-		if report.Edges[i].To != report.Edges[j].To { return report.Edges[i].To < report.Edges[j].To }
+		if report.Edges[i].From != report.Edges[j].From {
+			return report.Edges[i].From < report.Edges[j].From
+		}
+		if report.Edges[i].To != report.Edges[j].To {
+			return report.Edges[i].To < report.Edges[j].To
+		}
 		return report.Edges[i].Relation < report.Edges[j].Relation
 	})
 	report.Limitations = []string{
@@ -200,7 +204,10 @@ func buildTopologyReport(namespace string, pods []corev1.Pod, services []corev1.
 	return report
 }
 
-type topologyDNSReference struct { Host string; Sources []string }
+type topologyDNSReference struct {
+	Host    string
+	Sources []string
+}
 
 func podDNSReferences(pod corev1.Pod) []topologyDNSReference {
 	sources := map[string]map[string]bool{}
@@ -210,7 +217,9 @@ func podDNSReferences(pod corev1.Pod) []topologyDNSReference {
 			if net.ParseIP(host) != nil {
 				continue
 			}
-			if sources[host] == nil { sources[host] = map[string]bool{} }
+			if sources[host] == nil {
+				sources[host] = map[string]bool{}
+			}
 			sources[host][source] = true
 		}
 	}
@@ -229,11 +238,19 @@ func podDNSReferences(pod corev1.Pod) []topologyDNSReference {
 			}
 		}
 	}
-	for _, c := range pod.Spec.InitContainers { inspect(c, "init container "+c.Name) }
-	for _, c := range pod.Spec.Containers { inspect(c, "container "+c.Name) }
+	for _, c := range pod.Spec.InitContainers {
+		inspect(c, "init container "+c.Name)
+	}
+	for _, c := range pod.Spec.Containers {
+		inspect(c, "container "+c.Name)
+	}
 	for _, c := range pod.Spec.EphemeralContainers {
-		for _, value := range c.Command { addText(value, "ephemeral container "+c.Name) }
-		for _, value := range c.Args { addText(value, "ephemeral container "+c.Name) }
+		for _, value := range c.Command {
+			addText(value, "ephemeral container "+c.Name)
+		}
+		for _, value := range c.Args {
+			addText(value, "ephemeral container "+c.Name)
+		}
 	}
 	for _, alias := range pod.Spec.HostAliases {
 		for _, host := range alias.Hostnames {
@@ -243,7 +260,9 @@ func podDNSReferences(pod corev1.Pod) []topologyDNSReference {
 	out := make([]topologyDNSReference, 0, len(sources))
 	for host, sourceSet := range sources {
 		list := make([]string, 0, len(sourceSet))
-		for source := range sourceSet { list = append(list, source) }
+		for source := range sourceSet {
+			list = append(list, source)
+		}
 		sort.Strings(list)
 		out = append(out, topologyDNSReference{Host: host, Sources: list})
 	}
@@ -253,13 +272,19 @@ func podDNSReferences(pod corev1.Pod) []topologyDNSReference {
 
 func podReadyForTopology(pod corev1.Pod) bool {
 	for _, condition := range pod.Status.Conditions {
-		if condition.Type == corev1.PodReady { return condition.Status == corev1.ConditionTrue }
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
 	}
 	return false
 }
 
 func topologyHasNode(nodes []topologyNode, id string) bool {
-	for _, node := range nodes { if node.ID == id { return true } }
+	for _, node := range nodes {
+		if node.ID == id {
+			return true
+		}
+	}
 	return false
 }
 
@@ -345,7 +370,6 @@ func printTopologyGraph(w io.Writer, report topologyReport, style func(string, s
 	}
 }
 
-
 func printTopologyMarkdown(w io.Writer, report topologyReport) error {
 	fmt.Fprintf(w, "# KTRX namespace topology: %s\n\nGenerated: %s\n\n", report.Namespace, report.GeneratedAt)
 	fmt.Fprintln(w, "## Nodes")
@@ -357,10 +381,11 @@ func printTopologyMarkdown(w io.Writer, report topologyReport) error {
 		fmt.Fprintf(w, "- `%s` — **%s** → `%s` (%s)\n", edge.From, edge.Relation, edge.To, edge.Evidence)
 	}
 	fmt.Fprintln(w, "\n## Limitations")
-	for _, note := range report.Limitations { fmt.Fprintf(w, "- %s\n", note) }
+	for _, note := range report.Limitations {
+		fmt.Fprintf(w, "- %s\n", note)
+	}
 	return nil
 }
-
 
 func appendCommaValue(existing, next string) string {
 	if existing == "" {

@@ -17,17 +17,17 @@ import (
 func TestAWSMockTargetHealthScenario(t *testing.T) {
 	var fixture struct {
 		TargetGroupARN string `json:"targetGroupArn"`
-		Targets []struct {
-			ID string `json:"id"`
-			Port int32 `json:"port"`
+		Targets        []struct {
+			ID               string `json:"id"`
+			Port             int32  `json:"port"`
 			AvailabilityZone string `json:"availabilityZone"`
-			State string `json:"state"`
-			Reason string `json:"reason"`
-			Description string `json:"description"`
+			State            string `json:"state"`
+			Reason           string `json:"reason"`
+			Description      string `json:"description"`
 		} `json:"targets"`
 		Pods []struct {
 			Name string `json:"name"`
-			IP string `json:"ip"`
+			IP   string `json:"ip"`
 		} `json:"pods"`
 		ExpectedVerdict string `json:"expectedVerdict"`
 	}
@@ -47,8 +47,8 @@ func TestAWSMockTargetHealthScenario(t *testing.T) {
 				AvailabilityZone: aws.String(item.AvailabilityZone),
 			},
 			TargetHealth: &elbv2types.TargetHealth{
-				State: elbv2types.TargetHealthStateEnum(item.State),
-				Reason: elbv2types.TargetHealthReasonEnum(item.Reason),
+				State:       elbv2types.TargetHealthStateEnum(item.State),
+				Reason:      elbv2types.TargetHealthReasonEnum(item.Reason),
 				Description: aws.String(item.Description),
 			},
 		})
@@ -69,11 +69,11 @@ func TestAWSMockTargetHealthScenario(t *testing.T) {
 	correlateAWSTargetsWithPods(health.Targets, pods)
 
 	report := urlTraceReport{
-		URL: "https://api.example.test/health",
+		URL:       "https://api.example.test/health",
 		Namespace: "production",
-		Host: "api.example.test",
-		Path: "/health",
-		Verdict: "HEALTHY",
+		Host:      "api.example.test",
+		Path:      "/health",
+		Verdict:   "HEALTHY",
 		Routes: []urlTraceRoute{{
 			Kind: "Ingress", Namespace: "production", Name: "api",
 			Host: "api.example.test", Path: "/", Match: "Prefix", Selected: true,
@@ -83,7 +83,7 @@ func TestAWSMockTargetHealthScenario(t *testing.T) {
 					Name: "api", TargetGroupARN: fixture.TargetGroupARN, TargetType: "ip",
 				}},
 				AWSTargetGroups: []urlTraceAWSTargetGroupHealth{*health},
-				Pods: pods,
+				Pods:            pods,
 			}},
 		}},
 	}

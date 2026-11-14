@@ -13,7 +13,7 @@ func TestBuildTopologyReportNamespaceScopeAndDNSReferences(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "api-abc", Namespace: "shop", Labels: map[string]string{"app": "api"}},
 		Spec: corev1.PodSpec{DNSPolicy: corev1.DNSClusterFirst, Containers: []corev1.Container{{
 			Name: "api",
-			Env: []corev1.EnvVar{{Name: "ORDERS_URL", Value: "http://orders.shop.svc.cluster.local:8080"}},
+			Env:  []corev1.EnvVar{{Name: "ORDERS_URL", Value: "http://orders.shop.svc.cluster.local:8080"}},
 			Args: []string{"--metrics=https://metrics.example.com/health"},
 		}}},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning, PodIP: "10.244.0.8", Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
@@ -25,7 +25,9 @@ func TestBuildTopologyReportNamespaceScopeAndDNSReferences(t *testing.T) {
 	}
 
 	report := buildTopologyReport("shop", []corev1.Pod{pod}, services)
-	if report.Namespace != "shop" { t.Fatalf("namespace = %q, want shop", report.Namespace) }
+	if report.Namespace != "shop" {
+		t.Fatalf("namespace = %q, want shop", report.Namespace)
+	}
 	if !hasTopologyEdge(report.Edges, "service/api", "pod/api-abc", "selects") {
 		t.Fatal("expected Service selector relationship")
 	}
@@ -42,13 +44,17 @@ func TestBuildTopologyReportNamespaceScopeAndDNSReferences(t *testing.T) {
 		t.Fatal("empty Service selector must not match every Pod")
 	}
 	for _, node := range report.Nodes {
-		if strings.Contains(node.ID, "default/") { t.Fatalf("unexpected cross-namespace node: %s", node.ID) }
+		if strings.Contains(node.ID, "default/") {
+			t.Fatalf("unexpected cross-namespace node: %s", node.ID)
+		}
 	}
 }
 
 func hasTopologyEdge(edges []topologyEdge, from, to, relation string) bool {
 	for _, edge := range edges {
-		if edge.From == from && edge.To == to && edge.Relation == relation { return true }
+		if edge.From == from && edge.To == to && edge.Relation == relation {
+			return true
+		}
 	}
 	return false
 }
