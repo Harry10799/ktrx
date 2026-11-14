@@ -60,21 +60,21 @@ This is a **documented-capability comparison**, not a claim that competitors are
 
 ## Tool comparison
 
-The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings or benchmark results. The overall row is the **unweighted arithmetic mean of the 10 category scores above**, rounded to one decimal place. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change.
+The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings or benchmark results. The overall row is the **unweighted arithmetic mean of the 10 category scores above**, rounded to one decimal place. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change. KTRX's workload, evidence-based investigation and request-path scores include a modest uplift for its opt-in AWS ELBv2 target-health inspection and IP-target-to-Pod correlation. This is not scored as full cloud observability: listener-rule inspection, EC2 instance-target correlation and Security Group reachability analysis are not implemented yet.
 
 | Capability / category | KTRX | Komodor | K9s | Robusta | Popeye | Headlamp | kubectl | Stern |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Workload health and troubleshooting | 8.5 | 9.5 | 8.5 | 9.0 | 8.5 | 7.5 | 7.5 | 5.5 |
-| Evidence-based root-cause investigation | 8.5 | 9.5 | 6.5 | 9.0 | 7.5 | 6.5 | 6.5 | 4.5 |
+| Workload health and troubleshooting | 8.6 | 9.5 | 8.5 | 9.0 | 8.5 | 7.5 | 7.5 | 5.5 |
+| Evidence-based root-cause investigation | 8.8 | 9.5 | 6.5 | 9.0 | 7.5 | 6.5 | 6.5 | 4.5 |
 | Change history and rollout correlation | 8.5 | 9.5 | 6.5 | 8.0 | 5.5 | 6.0 | 5.5 | 2.0 |
 | Events and log investigation | 8.0 | 9.0 | 8.5 | 9.0 | 6.5 | 7.0 | 8.0 | 9.0 |
-| Service, Ingress and request-path tracing | 8.5 | 8.5 | 6.0 | 7.0 | 5.5 | 7.0 | 6.5 | 2.0 |
+| Service, Ingress and request-path tracing | 8.8 | 8.5 | 6.0 | 7.0 | 5.5 | 7.0 | 6.5 | 2.0 |
 | Runtime network checks | 8.0 | 7.5 | 6.5 | 7.5 | 3.0 | 4.5 | 6.5 | 1.0 |
 | Cluster-wide hygiene and misconfiguration checks | 5.5 | 8.5 | 6.5 | 8.5 | 9.5 | 7.5 | 5.5 | 1.0 |
 | Interactive resource navigation / UI | 3.0 | 8.5 | 9.5 | 7.0 | 3.0 | 9.5 | 4.0 | 3.0 |
 | AI-assisted analysis and remediation | 1.0 | 9.5 | 2.0 | 9.0 | 1.0 | 2.0 | 1.0 | 1.0 |
 | Scriptable output and CI integration | 9.0 | 7.5 | 6.5 | 8.0 | 7.0 | 5.5 | 9.5 | 8.0 |
-| **Overall average (10 categories)** | **6.8** | **8.8** | **6.7** | **8.2** | **5.7** | **6.3** | **6.1** | **3.7** |
+| **Overall average (10 categories)** | **6.9** | **8.8** | **6.7** | **8.2** | **5.7** | **6.3** | **6.1** | **3.7** |
 | **Pricing / availability** | **Free · Open source** | **Commercial · Paid plans** | **Free · Open source** | **Mixed · Free OSS + paid SaaS tiers** | **Free · Open source** | **Free · Open source** | **Free · Open source** | **Free · Open source** |
 
 **Pricing and licensing notes (checked November 2026)**
