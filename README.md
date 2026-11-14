@@ -379,7 +379,7 @@ Use ktrx doctor -n NAMESPACE to inspect the required permissions. Grant only the
 
 ## Live demo
 
-[View the captured KTRX command output](docs/DEMO.md). The report starts with a live runtime snapshot (Pod readiness, restarts, warning Events, Deployment state and Service endpoints), followed by the actual captured KTRX command output. AWS target health is marked not configured when running without AWS.
+[View the captured KTRX command output](docs/DEMO.md). The report starts with a live runtime snapshot (Pod readiness, restarts, warning Events, Deployment state and Service endpoints), followed by actual captured KTRX command output. It also creates an isolated Pod with an intentionally nonexistent image tag and captures the observed `ErrImagePull` / `ImagePullBackOff` state, Kubernetes Events, KTRX terminal/JSON/Markdown diagnosis, and comparison against a healthy reference Pod. The failure scenario is diagnostic-only and is removed with the demo namespace. AWS target health is marked not configured when running without AWS.
 
 To regenerate it in your own environment:
 
