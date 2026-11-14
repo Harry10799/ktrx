@@ -138,4 +138,3 @@ func TestAWSMockTargetHealthScenario(t *testing.T) {
 		}
 	}
 }
-}
