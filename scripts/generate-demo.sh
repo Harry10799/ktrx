@@ -89,6 +89,7 @@ run_section "Cluster preflight help" "$BINARY" doctor --help || true
 run_section "Runtime network check help" "$BINARY" netcheck --help || true
 run_section "Change timeline help" "$BINARY" timeline --help || true
 run_section "URL route tracing help" "$BINARY" trace-url --help || true
+run_section "Namespace topology help" "$BINARY" topology dns --help || true
 
 if [[ "$CLUSTER_AVAILABLE" -ne 1 ]]; then
   cat >> "$DOC" <<'EOF'
@@ -130,6 +131,9 @@ spec:
       containers:
         - name: nginx
           image: nginx:1.27
+          env:
+            - name: KTRX_DEMO_UPSTREAM_URL
+              value: "http://ktrx-demo-nginx.$NAMESPACE.svc.cluster.local"
           ports:
             - name: http
               containerPort: 80
@@ -226,6 +230,10 @@ run_section "Inspect a Pod (terminal)" "$BINARY" "$REF_POD" -n "$NAMESPACE" --no
 run_section "Inspect a Pod (JSON)" "$BINARY" "$REF_POD" -n "$NAMESPACE" --output json || true
 run_section "Inspect a Pod (Markdown)" "$BINARY" "$REF_POD" -n "$NAMESPACE" --output markdown || true
 run_section "Inspect every Deployment replica" "$BINARY" deploy/ktrx-demo-nginx -n "$NAMESPACE" --all --no-color || true
+
+run_section "Namespace DNS topology (terminal)" "$BINARY" topology dns -n "$NAMESPACE" --no-color || true
+run_section "Namespace DNS topology (JSON)" "$BINARY" topology dns -n "$NAMESPACE" --output json || true
+run_section "Namespace DNS topology (Markdown)" "$BINARY" topology dns -n "$NAMESPACE" --output markdown || true
 
 run_section "Deployment change timeline (terminal)" "$BINARY" timeline deploy/ktrx-demo-nginx -n "$NAMESPACE" --since 24h --no-color || true
 run_section "Deployment change timeline (JSON)" "$BINARY" timeline deploy/ktrx-demo-nginx -n "$NAMESPACE" --since 24h --output json || true
