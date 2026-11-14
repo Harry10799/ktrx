@@ -53,6 +53,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newNetcheckCommand())
 	root.AddCommand(newTimelineCommand())
 	root.AddCommand(newTraceURLCommand())
+	root.AddCommand(newTopologyCommand())
 	return root
 }
 
