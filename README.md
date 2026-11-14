@@ -281,6 +281,14 @@ bash scripts/test-aws-mock.sh
 
 The script runs the focused mock scenario, the full Go test suite and `go vet`. The fixture is at `internal/cli/testdata/aws_target_health_mock.json`; edit it to try other target states and Pod IP mappings. This validates KTRX's handling of a simulated AWS response, not live AWS credentials, IAM permissions, ALB configuration or a real Kubernetes route.
 
+To capture the rendered mock AWS report (terminal, JSON and Markdown) without a cluster or AWS account:
+
+~~~bash
+bash scripts/generate-aws-mock-demo.sh
+~~~
+
+It writes `docs/AWS_MOCK_DEMO.md`. This uses a fake AWS SDK client and the checked-in fixture; it demonstrates report formatting and Pod-IP correlation, not an actual AWS API call.
+
 **Capture a live `--aws` example:** If you have an existing cluster using AWS Load Balancer Controller, a route-backed Service with a TargetGroupBinding, and AWS credentials, generate a report containing baseline output plus live AWS target health in terminal, JSON and Markdown formats:
 
 ```bash
