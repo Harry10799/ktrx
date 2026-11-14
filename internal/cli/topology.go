@@ -178,7 +178,7 @@ func podDNSReferences(pod corev1.Pod) []topologyDNSReference {
 	addText := func(text, source string) {
 		for _, host := range topologyHostPattern.FindAllString(text, -1) {
 			host = strings.TrimSuffix(strings.ToLower(host), ".")
-			if net.ParseIP(host) != nil || strings.HasSuffix(host, ".local") {
+			if net.ParseIP(host) != nil {
 				continue
 			}
 			if sources[host] == nil { sources[host] = map[string]bool{} }
@@ -247,6 +247,14 @@ func printTopologyTerminal(w io.Writer, report topologyReport, colorEnabled bool
 		if node.Address != "" { line += "  address="+node.Address }
 		if node.Status != "" { line += "  status="+node.Status }
 		fmt.Fprintln(w, style("39", line))
+		if len(node.Details) > 0 {
+			keys := make([]string, 0, len(node.Details))
+			for key := range node.Details { keys = append(keys, key) }
+			sort.Strings(keys)
+			for _, key := range keys {
+				if node.Details[key] != "" { fmt.Fprintf(w, "      %s: %s\\n", key, node.Details[key]) }
+			}
+		}
 	}
 	fmt.Fprintln(w, "\nRELATIONSHIPS")
 	if len(report.Edges) == 0 { fmt.Fprintln(w, "  No relationships discovered from available configuration.") }
