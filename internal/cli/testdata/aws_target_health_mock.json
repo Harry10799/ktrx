@@ -1,0 +1,24 @@
+{
+  "targetGroupArn": "arn:aws:elasticloadbalancing:ap-south-1:123456789012:targetgroup/ktrx-demo-api/0123456789abcdef",
+  "targets": [
+    {
+      "id": "10.0.1.10",
+      "port": 8080,
+      "availabilityZone": "ap-south-1a",
+      "state": "healthy"
+    },
+    {
+      "id": "10.0.1.11",
+      "port": 8080,
+      "availabilityZone": "ap-south-1b",
+      "state": "unhealthy",
+      "reason": "Target.Timeout",
+      "description": "Health checks timed out"
+    }
+  ],
+  "pods": [
+    {"name": "api-7c9d8f6b5d-a1b2c", "ip": "10.0.1.10"},
+    {"name": "api-7c9d8f6b5d-d3e4f", "ip": "10.0.1.11"}
+  ],
+  "expectedVerdict": "WARN"
+}
