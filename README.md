@@ -281,6 +281,16 @@ bash scripts/test-aws-mock.sh
 
 The script runs the focused mock scenario, the full Go test suite and `go vet`. The fixture is at `internal/cli/testdata/aws_target_health_mock.json`; edit it to try other target states and Pod IP mappings. This validates KTRX's handling of a simulated AWS response, not live AWS credentials, IAM permissions, ALB configuration or a real Kubernetes route.
 
+**Capture a live `--aws` example:** If you have an existing cluster using AWS Load Balancer Controller, a route-backed Service with a TargetGroupBinding, and AWS credentials, generate a report containing baseline output plus live AWS target health in terminal, JSON and Markdown formats:
+
+```bash
+KTRX_AWS_DEMO_URL=https://api.example.com/health \
+KTRX_AWS_DEMO_NAMESPACE=production \
+bash scripts/generate-aws-demo.sh
+```
+
+Optionally set `KTRX_AWS_DEMO_REGION=ap-south-1` to override the region parsed from the TargetGroupBinding ARN. The report is written to `docs/AWS_DEMO.md`. This script creates or changes no AWS or Kubernetes resources; it captures the real `DescribeTargetHealth` response (or the actual credential/RBAC/route limitation). Review and redact internal hostnames, IPs and ARNs before publishing.
+
 
 ### 7. Inspect Deployment change history
 
