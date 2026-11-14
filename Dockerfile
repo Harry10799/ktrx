@@ -16,6 +16,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
 # No RUN commands in the target-platform stage: this supports multi-arch
 # builds even when QEMU/binfmt emulation is not installed on the builder.
 FROM alpine:3.21
+LABEL org.opencontainers.image.source="https://github.com/Harry10799/ktrx" \
+      org.opencontainers.image.description="KTRX - Kubernetes troubleshooting and diagnostics CLI"
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/ktrx /usr/local/bin/ktrx
 USER 65532:65532
