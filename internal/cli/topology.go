@@ -265,33 +265,91 @@ func topologyHasNode(nodes []topologyNode, id string) bool {
 
 func printTopologyTerminal(w io.Writer, report topologyReport, colorEnabled bool) {
 	style := func(color, value string) string {
-		if !colorEnabled { return value }
+		if !colorEnabled {
+			return value
+		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(value)
 	}
-	fmt.Fprintf(w, "%s  namespace/%s\n", style("39", "◆ KTRX TOPOLOGY"), report.Namespace)
-	fmt.Fprintf(w, "Generated: %s\nNodes: %d  Relationships: %d\n", report.GeneratedAt, len(report.Nodes), len(report.Edges))
-	fmt.Fprintln(w, "\nNODES")
+
+	fmt.Fprintf(w, "%s  namespace/%s\n", style("39", "◆ KTRX DNS TOPOLOGY"), report.Namespace)
+	fmt.Fprintf(w, "Generated: %s\n\n", report.GeneratedAt)
+	printTopologyGraph(w, report, style)
+
+	fmt.Fprintln(w, "\nLIMITATIONS")
+	for _, note := range report.Limitations {
+		fmt.Fprintf(w, "  • %s\n", note)
+	}
+}
+
+func printTopologyGraph(w io.Writer, report topologyReport, style func(string, string) string) {
+	pods := make([]topologyNode, 0)
+	services := make(map[string]topologyNode)
+	dnsToService := make(map[string]string)
+	podToDNS := make(map[string][]string)
+
 	for _, node := range report.Nodes {
-		line := fmt.Sprintf("  [%s] %s", node.Kind, node.Name)
-		if node.Address != "" { line += "  address="+node.Address }
-		if node.Status != "" { line += "  status="+node.Status }
-		fmt.Fprintln(w, style("39", line))
-		if len(node.Details) > 0 {
-			keys := make([]string, 0, len(node.Details))
-			for key := range node.Details { keys = append(keys, key) }
-			sort.Strings(keys)
-			for _, key := range keys {
-				if node.Details[key] != "" { fmt.Fprintf(w, "      %s: %s\n", key, node.Details[key]) }
-			}
+		switch node.Kind {
+		case "Pod":
+			pods = append(pods, node)
+		case "Service":
+			services[node.ID] = node
 		}
 	}
-	fmt.Fprintln(w, "\nRELATIONSHIPS")
-	if len(report.Edges) == 0 { fmt.Fprintln(w, "  No relationships discovered from available configuration.") }
 	for _, edge := range report.Edges {
-		fmt.Fprintf(w, "  %s --(%s)--> %s\n      evidence: %s\n", edge.From, edge.Relation, edge.To, edge.Evidence)
+		switch edge.Relation {
+		case "references":
+			podToDNS[edge.From] = append(podToDNS[edge.From], edge.To)
+		case "matches Service DNS name":
+			dnsToService[edge.From] = edge.To
+		}
 	}
-	fmt.Fprintln(w, "\nLIMITATIONS")
-	for _, note := range report.Limitations { fmt.Fprintf(w, "  • %s\n", note) }
+
+	fmt.Fprintln(w, style("39", "                         DNS TOPOLOGY"))
+	if len(pods) == 0 {
+		fmt.Fprintln(w, "                 (no Pods found in this namespace)")
+		fmt.Fprintln(w, "\nServices:")
+		for _, node := range report.Nodes {
+			if node.Kind == "Service" {
+				fmt.Fprintf(w, "  %s  ->  %s\n", node.Name, value(node.Address))
+			}
+		}
+		return
+	}
+
+	for i, pod := range pods {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(w, "  Pod: %s  [%s]\n", pod.Name, value(pod.Address))
+		dnsIDs := podToDNS[pod.ID]
+		if len(dnsIDs) == 0 {
+			fmt.Fprintln(w, "    |")
+			fmt.Fprintln(w, "    +--> (no declared DNS reference found)")
+			continue
+		}
+		sort.Strings(dnsIDs)
+		for _, dnsID := range dnsIDs {
+			host := strings.TrimPrefix(dnsID, "dns/")
+			serviceID := dnsToService[dnsID]
+			if serviceID == "" {
+				fmt.Fprintf(w, "    |\n    +--> DNS: %s  [external/unmapped]\n", host)
+				continue
+			}
+			svc, ok := services[serviceID]
+			if !ok {
+				continue
+			}
+			fmt.Fprintf(w, "    |\n    +--> %s\n", svc.Name)
+			fmt.Fprintf(w, "          |\n          +--> %s  [%s]\n", value(svc.Address), svc.Status)
+		}
+	}
+}
+
+func value(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func printTopologyMarkdown(w io.Writer, report topologyReport) error {
