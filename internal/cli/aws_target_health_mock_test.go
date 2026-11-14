@@ -120,7 +120,6 @@ func TestAWSMockTargetHealthScenario(t *testing.T) {
 		t.Fatalf("terminal report missing mock AWS evidence:\n%s", terminal.String())
 	}
 
-
 	if os.Getenv("KTRX_AWS_MOCK_DEMO") == "1" {
 		fmt.Println("\n--- Mock AWS target health: terminal ---")
 		printURLTrace(os.Stdout, report)
