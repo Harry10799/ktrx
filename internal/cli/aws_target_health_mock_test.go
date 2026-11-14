@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -118,4 +119,23 @@ func TestAWSMockTargetHealthScenario(t *testing.T) {
 		!strings.Contains(terminal.String(), "Verdict: WARN") {
 		t.Fatalf("terminal report missing mock AWS evidence:\n%s", terminal.String())
 	}
+
+
+	if os.Getenv("KTRX_AWS_MOCK_DEMO") == "1" {
+		fmt.Println("\n--- Mock AWS target health: terminal ---")
+		printURLTrace(os.Stdout, report)
+
+		fmt.Println("\n--- Mock AWS target health: JSON ---")
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(report); err != nil {
+			t.Fatalf("print mock JSON report: %v", err)
+		}
+
+		fmt.Println("\n--- Mock AWS target health: Markdown ---")
+		if err := printURLTraceMarkdown(os.Stdout, report); err != nil {
+			t.Fatalf("print mock Markdown report: %v", err)
+		}
+	}
+}
 }
