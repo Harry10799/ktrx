@@ -290,8 +290,7 @@ spec:
     - name: nginx
       image: "nginx:1.27"
       ports: [{name: http, containerPort: 80}]
-      env:
-        - {name: UPSTREAM_URL, value: "http://web.${NS}.svc.cluster.local"}
+
 ---
 apiVersion: v1
 kind: Service
@@ -334,6 +333,8 @@ spec:
           ports: [{name: http, containerPort: 80}]
           readinessProbe: {httpGet: {path: /, port: http}, periodSeconds: 5}
 EOF
+# Give the topology example one explicit, namespace-correct Service DNS dependency.
+kubectl set env deployment/api -n "$NS" UPSTREAM_URL="http://web.${NS}.svc.cluster.local" >/dev/null
 mk_ingress slow-ready slow-ready.ktrx.local slow-ready 80 || true
 mk_ingress api api.ktrx.local api 80 || true
 
