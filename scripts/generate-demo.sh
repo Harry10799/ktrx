@@ -4,7 +4,7 @@
 #
 # Requirements: bash, go (or KTRX_BINARY), kubectl, a reachable cluster. minikube optional.
 # Usage:   bash scripts/generate-demo.sh
-# Options (env): KTRX_BINARY, KTRX_DEMO_DOC (default ./demo.md), KTRX_DEMO_NAMESPACE,
+# Options (env): KTRX_BINARY, KTRX_DEMO_DOC (default ./docs/demo.md), KTRX_DEMO_NAMESPACE,
 #                KEEP_DEMO=1 (keep namespace), MAX_LINES (default 40 lines per output),
 #                KTRX_DEMO_GATEWAY=0 (skip Gateway API CRDs + HTTPRoute scenarios),
 #                KTRX_DEMO_GITOPS=0  (skip simulated Argo CD / Flux objects)
