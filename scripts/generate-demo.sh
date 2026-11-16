@@ -287,9 +287,9 @@ spec:
     metadata: {labels: {app: api}}
     spec:
       containers:
-    - name: nginx
-      image: "nginx:1.27"
-      ports: [{name: http, containerPort: 80}]
+        - name: nginx
+          image: "nginx:1.27"
+          ports: [{name: http, containerPort: 80}]
 
 ---
 apiVersion: v1
