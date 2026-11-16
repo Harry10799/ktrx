@@ -96,7 +96,16 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 	default:
 		report.Evidence = append(report.Evidence, Evidence{Check: "pod-phase", Verdict: Healthy, Summary: "Pod phase is " + string(pod.Status.Phase)})
 	}
-	if !report.Ready {
+	// Completed Pods (both successful and failed Job Pods) are terminal and
+	// are not expected to become Ready. Preserve PodFailed as a phase failure,
+	// but do not add misleading readiness evidence.
+	finished := pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
+	if finished {
+		report.Evidence = append(report.Evidence, Evidence{
+			Check: "pod-readiness", Verdict: Info,
+			Summary: "Pod is " + strings.ToLower(string(pod.Status.Phase)) + "; the Ready condition does not apply to finished Pods",
+		})
+	} else if !report.Ready {
 		report.Evidence = append(report.Evidence, Evidence{Check: "pod-readiness", Verdict: Failed, Summary: "Pod Ready condition is not True", Suggestion: "Inspect readiness probe configuration and container logs."})
 	} else {
 		report.Evidence = append(report.Evidence, Evidence{Check: "pod-readiness", Verdict: Healthy, Summary: "Pod Ready condition is True"})
@@ -107,6 +116,10 @@ func (a *PodAnalyzer) Analyze(ctx context.Context, namespace, name string) (*Pod
 
 	// Group probe recommendations to avoid inflating warning counts.
 	for _, container := range pod.Spec.Containers {
+		if finished {
+			// Readiness/liveness/startup probes are not meaningful after completion.
+			continue
+		}
 		if container.ReadinessProbe == nil {
 			report.Evidence = append(report.Evidence, Evidence{Check: "probes/" + container.Name, Verdict: Warning, Summary: "No readiness probe configured", Suggestion: "Configure readiness checks so Services only send traffic when the application is ready."})
 		} else if report.Ready {
