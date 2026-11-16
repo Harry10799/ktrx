@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
@@ -43,6 +44,27 @@ func TestTraceInboundNearMatchRequiresStrongSignal(t *testing.T) {
 				t.Fatalf("near-match warning = %t, want %t; evidence=%+v", gotWarning, tt.wantWarning, evidence)
 			}
 		})
+	}
+}
+
+func TestTraceInboundPortNameAloneIsNotANearMatch(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "default"},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": "api-v2"},
+			Ports:    []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromString("http")}},
+		},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "web-abc", Namespace: "default", Labels: map[string]string{"app": "web"}},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "nginx", Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: 80}}}}},
+	}
+	client := fake.NewSimpleClientset(svc, pod)
+	_, evidence := traceInbound(context.Background(), client, pod)
+	for _, item := range evidence {
+		if item.Check == "inbound-service-selector" {
+			t.Fatalf("an unrelated Service sharing only a conventional port name must not be reported: %+v", item)
+		}
 	}
 }
 
