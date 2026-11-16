@@ -1,10 +1,51 @@
 package analyzer
 
 import (
+	"context"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
+
+func TestAnalyzeCompletedPodsDoNotReportReadinessFailures(t *testing.T) {
+	for _, phase := range []corev1.PodPhase{corev1.PodSucceeded, corev1.PodFailed} {
+		t.Run(string(phase), func(t *testing.T) {
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "job-worker", Namespace: "default"},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "worker", Image: "example/worker:v1"}},
+				},
+				Status: corev1.PodStatus{Phase: phase},
+			}
+			analyzer := &PodAnalyzer{Client: fake.NewSimpleClientset(pod)}
+			report, err := analyzer.Analyze(context.Background(), "default", "job-worker")
+			if err != nil {
+				t.Fatalf("Analyze() error = %v", err)
+			}
+			for _, item := range report.Evidence {
+				if item.Check == "pod-readiness" && item.Verdict == Failed {
+					t.Fatalf("finished Pod must not have a readiness failure: %+v", item)
+				}
+				if item.Check == "probes/worker" {
+					t.Fatalf("finished Pod must not have a missing-readiness-probe warning: %+v", item)
+				}
+			}
+			if phase == corev1.PodFailed {
+				foundPhaseFailure := false
+				for _, item := range report.Evidence {
+					if item.Check == "pod-phase" && item.Verdict == Failed {
+						foundPhaseFailure = true
+					}
+				}
+				if !foundPhaseFailure {
+					t.Fatal("PodFailed must remain a phase failure")
+				}
+			}
+		})
+	}
+}
 
 func TestContainerFailureEvidenceDistinguishesRecoveredOOM(t *testing.T) {
 	previous := &corev1.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137}
