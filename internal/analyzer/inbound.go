@@ -53,8 +53,12 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 		if !selector.AsSelector().Matches(podLabels) {
 			mismatches := make([]string, 0)
 			plausible := serviceNameRelated(svc.Name, pod.Name)
+			sharedPair := false // selector and Pod agree on at least one key=value pair
 			for key, expected := range svc.Spec.Selector {
 				actual, exists := pod.Labels[key]
+				if exists && actual == expected {
+					sharedPair = true
+				}
 				if exists && actual != expected {
 					mismatches = append(mismatches, fmt.Sprintf("%s=%s (pod has %s)", key, expected, actual))
 				} else if !exists {
@@ -66,7 +70,12 @@ func traceInbound(ctx context.Context, client kubernetes.Interface, pod *corev1.
 					}
 				}
 			}
+			// A matching port (often just the conventional name "http") is only supporting evidence;
+			// on its own it would attribute every unrelated broken Service to every Pod.
 			for _, servicePort := range svc.Spec.Ports {
+				if !sharedPair {
+					break
+				}
 				for _, container := range pod.Spec.Containers {
 					for _, containerPort := range container.Ports {
 						if servicePort.TargetPort.Type == 0 && servicePort.TargetPort.IntVal == containerPort.ContainerPort ||
