@@ -60,21 +60,21 @@ This is a **documented-capability comparison**, not a claim that competitors are
 
 ## Tool comparison
 
-The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings or benchmark results. The overall row is the **unweighted arithmetic mean of the 10 category scores above**, rounded to one decimal place. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change. KTRX's workload, evidence-based investigation and request-path scores include a modest uplift for its opt-in AWS ELBv2 target-health inspection and IP-target-to-Pod correlation. This is not scored as full cloud observability: listener-rule inspection, EC2 instance-target correlation and Security Group reachability analysis are not implemented yet.
+The table below compares KTRX with commonly used Kubernetes troubleshooting and operations tools. Ratings are **subjective feature-fit scores out of 10**, based on the capabilities each tool is designed to provide—not vendor ratings or benchmark results. The overall row is the **unweighted arithmetic mean of the 10 category scores above**, rounded to one decimal place. Scores reflect the current KTRX scope and publicly documented capabilities of the other projects; features and product editions can change. The scores are deliberately conservative for an early-stage, pre-1.0 CLI. AWS support is currently limited to opt-in, read-only ELBv2 target-health inspection and IP-target-to-Pod correlation; it does not yet provide broad cloud diagnostics.
 
 | Capability / category | KTRX | Komodor | K9s | Robusta | Popeye | Headlamp | kubectl | Stern |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Workload health and troubleshooting | 8.6 | 9.5 | 8.5 | 9.0 | 8.5 | 7.5 | 7.5 | 5.5 |
-| Evidence-based root-cause investigation | 8.8 | 9.5 | 6.5 | 9.0 | 7.5 | 6.5 | 6.5 | 4.5 |
-| Change history and rollout correlation | 8.5 | 9.5 | 6.5 | 8.0 | 5.5 | 6.0 | 5.5 | 2.0 |
-| Events and log investigation | 8.0 | 9.0 | 8.5 | 9.0 | 6.5 | 7.0 | 8.0 | 9.0 |
-| Service, Ingress and request-path tracing | 8.8 | 8.5 | 6.0 | 7.0 | 5.5 | 7.0 | 6.5 | 2.0 |
-| Runtime network checks | 8.0 | 7.5 | 6.5 | 7.5 | 3.0 | 4.5 | 6.5 | 1.0 |
-| Cluster-wide hygiene and misconfiguration checks | 5.5 | 8.5 | 6.5 | 8.5 | 9.5 | 7.5 | 5.5 | 1.0 |
-| Interactive resource navigation / UI | 3.0 | 8.5 | 9.5 | 7.0 | 3.0 | 9.5 | 4.0 | 3.0 |
+| Workload health and troubleshooting | 7.5 | 9.5 | 8.5 | 9.0 | 8.5 | 7.5 | 7.5 | 5.5 |
+| Evidence-based root-cause investigation | 7.5 | 9.5 | 6.5 | 9.0 | 7.5 | 6.5 | 6.5 | 4.5 |
+| Change history and rollout correlation | 7.0 | 9.5 | 6.5 | 8.0 | 5.5 | 6.0 | 5.5 | 2.0 |
+| Events and log investigation | 7.5 | 9.0 | 8.5 | 9.0 | 6.5 | 7.0 | 8.0 | 9.0 |
+| Service, Ingress and request-path tracing | 7.5 | 8.5 | 6.0 | 7.0 | 5.5 | 7.0 | 6.5 | 2.0 |
+| Runtime network checks | 7.0 | 7.5 | 6.5 | 7.5 | 3.0 | 4.5 | 6.5 | 1.0 |
+| Cluster-wide hygiene and misconfiguration checks | 4.5 | 8.5 | 6.5 | 8.5 | 9.5 | 7.5 | 5.5 | 1.0 |
+| Interactive resource navigation / UI | 2.5 | 8.5 | 9.5 | 7.0 | 3.0 | 9.5 | 4.0 | 3.0 |
 | AI-assisted analysis and remediation | 1.0 | 9.5 | 2.0 | 9.0 | 1.0 | 2.0 | 1.0 | 1.0 |
 | Scriptable output and CI integration | 9.0 | 7.5 | 6.5 | 8.0 | 7.0 | 5.5 | 9.5 | 8.0 |
-| **Overall average (10 categories)** | **6.9** | **8.8** | **6.7** | **8.2** | **5.7** | **6.3** | **6.1** | **3.7** |
+| **Overall average (10 categories)** | **6.1** | **8.8** | **6.7** | **8.2** | **5.7** | **6.3** | **6.1** | **3.7** |
 | **Pricing / availability** | **Free · Open source** | **Commercial · Paid plans** | **Free · Open source** | **Mixed · Free OSS + paid SaaS tiers** | **Free · Open source** | **Free · Open source** | **Free · Open source** | **Free · Open source** |
 
 **Pricing and licensing notes (checked November 2026)**
@@ -147,42 +147,6 @@ bash scripts/build-release.sh v0.1.0
 ```
 
 Artifacts are written to `dist/`. Upload the generated archives and `checksums.txt` as assets when creating a GitHub Release. This script builds binaries only; it does not create a GitHub Release or upload files.
-
-## Run KTRX as a container (GHCR)
-
-Pull the public image:
-
-```bash
-docker pull ghcr.io/harry10799/ktrx:latest
-```
-
-Pass your kubeconfig into the container. For example, inspect a Deployment:
-
-```bash
-docker run --rm \
-  -v "$HOME/.kube:/home/ktrx/.kube:ro" \
-  -e KUBECONFIG=/home/ktrx/.kube/config \
-  ghcr.io/harry10799/ktrx:latest deploy/api -n production
-```
-
-For a different kubeconfig path, mount the file and set `KUBECONFIG` accordingly. The container uses the kubeconfig and credentials you provide; it does not include cluster credentials. For AWS target health, pass AWS credentials using your normal secure runtime method and use the explicit `--aws` flag. Avoid baking kubeconfig files, tokens or AWS credentials into the image.
-
-### Build and publish the multi-architecture image manually
-
-Authenticate to GHCR with a GitHub Personal Access Token (classic) that has `write:packages` permission:
-
-```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-docker buildx create --use --name ktrx-builder 2>/dev/null || docker buildx use ktrx-builder
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/harry10799/ktrx:v0.1.0 \
-  -t ghcr.io/harry10799/ktrx:latest \
-  --push .
-```
-
-After publishing, set the package visibility to **Public** in GitHub → Packages → ktrx if you want anyone to pull it without authenticating. Public package pulls are free under GitHub's published package policy; review current [GitHub Packages billing](https://docs.github.com/en/billing/concepts/product-billing/github-packages).
-
-These release and image publishing steps are manual by design; KTRX does not require a GitHub Actions workflow.
 
 ## Usage
 
