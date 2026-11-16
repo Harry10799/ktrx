@@ -124,6 +124,9 @@ ktrx_step() {
 # separately. A merged stdout/stderr stream is not safe for jq or other consumers.
 ktrx_json_step() {
   local title="$1" want_rc="$2"; shift 2
+  # Match ktrx_step's call convention: "--" separates helper arguments from
+  # the actual KTRX command, but must not be passed to the ktrx binary.
+  [[ "${1:-}" == "--" ]] && shift
   local stdout="$TMP/json.stdout" stderr="$TMP/json.stderr" clean="$TMP/json.clean" rc status="PASS" detail=""
   if "$BINARY" "$@" >"$stdout" 2>"$stderr"; then rc=0; else rc=$?; fi
   strip_ansi <"$stdout" >"$clean"
