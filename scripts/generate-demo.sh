@@ -3,7 +3,7 @@
 # one with KTRX, ASSERT the result, and write a curated demo.md.
 #
 # Requirements: bash, go (or KTRX_BINARY), kubectl, a reachable cluster. minikube optional.
-# Usage:   bash scripts/generate-scenarios-demo.sh
+# Usage:   bash scripts/generate-demo.sh
 # Options (env): KTRX_BINARY, KTRX_DEMO_DOC (default ./demo.md), KTRX_DEMO_NAMESPACE,
 #                KEEP_DEMO=1 (keep namespace), MAX_LINES (default 40 lines per output),
 #                KTRX_DEMO_GATEWAY=0 (skip Gateway API CRDs + HTTPRoute scenarios),
@@ -14,7 +14,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 BINARY="${KTRX_BINARY:-$ROOT_DIR/ktrx}"
-DOC="${KTRX_DEMO_DOC:-$ROOT_DIR/demo.md}"
+DOC="${KTRX_DEMO_DOC:-$ROOT_DIR/docs/demo.md}"
 NS="${KTRX_DEMO_NAMESPACE:-ktrx-scenarios}"
 MAX_LINES="${MAX_LINES:-40}"
 TMP="$(mktemp -d)"
@@ -118,6 +118,34 @@ ktrx_step() {
   [[ "$status" == "FAIL" && -n "$HINT" ]] && detail="$detail. Note: $HINT"
   R_TITLE+=("$title"); R_STATUS+=("$status"); R_DETAIL+=("${detail:-exit $rc as expected}")
   say "$status  $title  (${detail:-exit $rc})"
+}
+
+# JSON-specific runner: keep stdout as a valid JSON document and capture diagnostics
+# separately. A merged stdout/stderr stream is not safe for jq or other consumers.
+ktrx_json_step() {
+  local title="$1" want_rc="$2"; shift 2
+  local stdout="$TMP/json.stdout" stderr="$TMP/json.stderr" clean="$TMP/json.clean" rc status="PASS" detail=""
+  if "$BINARY" "$@" >"$stdout" 2>"$stderr"; then rc=0; else rc=$?; fi
+  strip_ansi <"$stdout" >"$clean"
+  if [[ ! "$rc" =~ ^($want_rc)$ ]]; then
+    status="FAIL"; detail="exit $rc, expected $want_rc"
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    jq -e . "$clean" >/dev/null 2>&1 || { status="FAIL"; detail="${detail:+$detail; }stdout is not valid JSON"; }
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -m json.tool "$clean" >/dev/null 2>&1 || { status="FAIL"; detail="${detail:+$detail; }stdout is not valid JSON"; }
+  else
+    status="FAIL"; detail="${detail:+$detail; }jq or python3 is required to validate JSON"
+  fi
+  grep -Eq '"(namespace|name|verdict)"[[:space:]]*:' "$clean" || {
+    status="FAIL"; detail="${detail:+$detail; }expected JSON fields were not found"
+  }
+  print_block "ktrx $(printf '%q ' "$@" | sed 's/ $//')" "$clean" "${STEP_MAX:-$MAX_LINES}" "$rc"
+  if [[ -s "$stderr" ]]; then
+    narrate "The command also wrote diagnostic text to stderr; it is intentionally kept separate from the JSON stdout stream."
+  fi
+  R_TITLE+=("$title"); R_STATUS+=("$status"); R_DETAIL+=("${detail:-valid JSON stdout; exit $rc as expected}")
+  say "$status  $title  (${detail:-valid JSON stdout; exit $rc})"
 }
 
 # ---------------------------------------------------------------- preflight
@@ -258,7 +286,12 @@ spec:
   template:
     metadata: {labels: {app: api}}
     spec:
-      containers: [{name: nginx, image: "nginx:1.27", ports: [{name: http, containerPort: 80}]}]
+      containers:
+    - name: nginx
+      image: "nginx:1.27"
+      ports: [{name: http, containerPort: 80}]
+      env:
+        - {name: UPSTREAM_URL, value: "http://web.${NS}.svc.cluster.local"}
 ---
 apiVersion: v1
 kind: Service
@@ -794,12 +827,12 @@ ktrx_step "Timeline with correlations" "0|2|3" "ROLLOUT|ConfigMap|revision" -- t
 ktrx_step "Timeline with explicit failure time" "0|2|3" "ROLLOUT|ConfigMap|revision|failure" -- timeline deploy/cfg-app -n "$NS" --since 1h --failure-at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --no-color
 
 scenario "URL trace extras: DNS and TLS checks"
-narrate "\`trace-url\` can also check, on request, that the hostname resolves and that the TLS handshake and certificate are valid. These run from the machine running KTRX, so on Minikube the \`*.ktrx.local\` names normally do **not** resolve; that is expected and is reported rather than hidden."
+narrate "\`trace-url\` can check DNS and TLS from the machine running KTRX. The demo only runs the TLS probe when \`tls.ktrx.local\` resolves on that machine; otherwise it records the check as skipped instead of treating an unverified TLS connection as healthy."
 ktrx_step "trace-url --check-dns" "0|2|3" "DNS" -- trace-url http://web.ktrx.local/ -n "$NS" --check-dns
-if [[ "$TLS_OK" -eq 1 ]]; then
+if [[ "$TLS_OK" -eq 1 ]] && command -v getent >/dev/null 2>&1 && getent ahosts tls.ktrx.local >/dev/null 2>&1; then
   ktrx_step "trace-url --check-tls" "0|2|3" "TLS|tls|certificate|handshake|SNI" -- trace-url https://tls.ktrx.local/ -n "$NS" --check-tls
 else
-  skip_step "trace-url --check-tls" "openssl is missing or the TLS Ingress could not be created."
+  skip_step "trace-url --check-tls" "TLS Ingress was created, but tls.ktrx.local does not resolve from the machine running KTRX (or openssl/getent is unavailable); TLS cannot be verified from this host."
 fi
 
 scenario "Limited RBAC: missing permissions are UNKNOWN, not green"
@@ -845,7 +878,7 @@ scenario "Share it, or gate CI on it"
 narrate "Markdown output pastes straight into an incident ticket. The exit code is stable (0 healthy, 2 failed or warn, 3 unknown, 1 error), so a pipeline can gate on it."
 ktrx_step "Markdown report" "2" "ErrImagePull|ImagePullBackOff|FAILED" -- bad-image -n "$NS" --output markdown
 ktrx_step "Namespace DNS topology" "0" "TOPOLOGY" -- topology dns -n "$NS" --no-color
-ktrx_step "JSON output for scripts" "2" "verdict|Verdict" -- deploy/crashy -n "$NS" --output json
+ktrx_json_step "JSON output for scripts" "2" -- deploy/crashy -n "$NS" --output json
 
 scenario "Gate a pipeline on the exit code"
 narrate "Use the exit code directly. \`ktrx deploy/api -n prod --no-color || { echo \"gate failed (exit \$?)\"; exit 1; }\`. The table is the real exit code KTRX returned for each Deployment above."
@@ -876,7 +909,7 @@ done
 {
   echo "# KTRX demo: real failures, diagnosed"
   echo
-  echo "> Generated by \`scripts/generate-scenarios-demo.sh\` on a live cluster. Every output below was captured from that run, not written by hand."
+  echo "> Generated by \`scripts/generate-demo.sh\` on a live cluster. Every output below was captured from that run, not written by hand."
   echo
   echo "| | |"; echo "|---|---|"
   echo "| Generated | $(date -u '+%Y-%m-%d %H:%M UTC') |"
@@ -893,13 +926,15 @@ done
   done
   echo
   echo "Output is trimmed to $MAX_LINES lines per command and the generic LIMITATIONS footer is omitted. Run any command yourself to see the full report."
+  echo
+  echo "> **Assertion meaning:** PASS means the observed KTRX output and exit code matched the expected result for that scenario; it does not mean the workload itself was healthy."
   cat "$BODY"
   echo
   echo "## Reproduce"
   echo
   echo '```bash'
   echo 'minikube start && minikube addons enable ingress'
-  echo 'bash scripts/generate-scenarios-demo.sh   # KEEP_DEMO=1 keeps the namespace for poking around'
+  echo 'bash scripts/generate-demo.sh   # KEEP_DEMO=1 keeps the namespace for poking around'
   echo '```'
 } > "$DOC"
 
