@@ -4,11 +4,11 @@
 
 | | |
 |---|---|
-| Generated | 2026-11-16 10:26 UTC |
+| Generated | 2026-11-16 10:33 UTC |
 | Kubernetes context | `minikube` |
 | Kubernetes version | `v1.37.0` |
 | Namespace | `ktrx-scenarios` (removed after the run) |
-| Assertions | 42 passed, 1 failed, 1 skipped |
+| Assertions | 43 passed, 0 failed, 1 skipped |
 
 ## Results at a glance
 
@@ -56,7 +56,7 @@
 | 40 | GitOps deploy history | PASS | exit 0 as expected |
 | 41 | Markdown report | PASS | exit 2 as expected |
 | 42 | Namespace DNS topology | PASS | exit 0 as expected |
-| 43 | JSON output for scripts | FAIL | exit 1, expected 2; stdout is not valid JSON; expected JSON fields were not found |
+| 43 | JSON output for scripts | PASS | valid JSON stdout; exit 2 as expected |
 | 44 | CI gate exit codes | PASS | web=0, crashy=2 |
 
 Output is trimmed to 40 lines per command and the generic LIMITATIONS footer is omitted. Run any command yourself to see the full report.
@@ -120,10 +120,6 @@ SHARED FINDINGS
   ℹ [INFO]  dependency-discovery: No same-namespace Service dependencies found in literal container environment values or commands
       ↳ Expose dependency hostnames through explicit variables such as DB_HOST or API_URL. Values stored only in Secrets/ConfigMaps are intentionally not read.
   ℹ [INFO]  ingress-namespace-note: Unrelated Ingress resources reference missing backend Services; they were not counted against this Pod
-  ? [UNKNOWN]  ingress-address/web-tls: Ingress has no load-balancer address assigned
-      ↳ Check the Ingress controller and its Service; some local controllers do not publish an address.
-  ? [UNKNOWN]  ingress-address/web-wrongport: Ingress has no load-balancer address assigned
-      ↳ Check the Ingress controller and its Service; some local controllers do not publish an address.
   ℹ [INFO]  probes-optional/nginx: No liveness/startup probe configured; add only when required by the application
   ℹ [INFO]  dns-config: Pod DNS policy is ClusterFirst; runtime name resolution has not been tested
       ↳ Use an in-container DNS probe to verify service and external name resolution.
@@ -133,21 +129,21 @@ SHARED FINDINGS
       ↳ Use `ktrx netcheck` to test DNS, TCP and HTTP to an explicitly selected destination from this Pod.
 
 RECENT DEPLOYMENT CHANGES
-  • 2026-11-16T10:25:21Z [ROLLOUT] ReplicaSet/web-588cb798c7 — Deployment revision observed
-  • 2026-11-16T10:25:21Z [KUBERNETES] ReplicaSet/web-588cb798c7 — SuccessfulCreate
-  • 2026-11-16T10:25:21Z [KUBERNETES] ReplicaSet/web-588cb798c7 — SuccessfulCreate
-  • 2026-11-16T10:25:21Z [KUBERNETES] Deployment/web — ScalingReplicaSet
+  • 2026-11-16T10:29:13Z [ROLLOUT] ReplicaSet/web-588cb798c7 — Deployment revision observed
+  • 2026-11-16T10:29:13Z [KUBERNETES] ReplicaSet/web-588cb798c7 — SuccessfulCreate
+  • 2026-11-16T10:29:13Z [KUBERNETES] ReplicaSet/web-588cb798c7 — SuccessfulCreate
+  • 2026-11-16T10:29:13Z [KUBERNETES] Deployment/web — ScalingReplicaSet
   Note: Timeline window: last 24h. Only ReplicaSets still present in the Kubernetes API can be compared; deleted revision history is unavailable. ReplicaSet creation timestamps indicate rollout object creation, not the exact time each field was applied.
 
-POD web-588cb798c7-…-4v5xn
+POD web-588cb798c7-…-4p5bf
   • No pod-specific differences
   ✓ [HEALTHY] READY  phase=Running  restarts=0
-  Node: minikube  IP: 10.244.0.18
+  Node: minikube  IP: 10.244.0.44
 
-POD web-588cb798c7-…-htbxw
+POD web-588cb798c7-…-krqdt
   • No pod-specific differences
   ✓ [HEALTHY] READY  phase=Running  restarts=0
-  Node: minikube  IP: 10.244.0.15
+  Node: minikube  IP: 10.244.0.43
 
 Tip: ktrx POD_NAME -n NAMESPACE --logs shows full per-Pod logs.
 [exit status: 0]
@@ -162,8 +158,8 @@ Ingress ktrx-scenarios/web  host=web.ktrx.local path=/ (Prefix) class=nginx
   Route selection: selected
   LoadBalancer hostname: 192.168.49.2
   → Service ktrx-scenarios/web port=80 status=READY endpoints=2 ready=2 notReady=0
-      → Pod web-588cb798c7-4v5xn phase=Running ready=true endpointReady=true restarts=0
-      → Pod web-588cb798c7-htbxw phase=Running ready=true endpointReady=true restarts=0
+      → Pod web-588cb798c7-4p5bf phase=Running ready=true endpointReady=true restarts=0
+      → Pod web-588cb798c7-krqdt phase=Running ready=true endpointReady=true restarts=0
 
 Note: DNS, TLS and AWS target-health checks are opt-in. AWS inspection is read-only; route discovery alone does not test external HTTP reachability.
 [exit status: 0]
@@ -176,7 +172,7 @@ Note: DNS, TLS and AWS target-health checks are opt-in. AWS inspection is read-o
 ```text
 $ kubectl get pod bad-image -n ktrx-scenarios
 NAME        READY   STATUS             RESTARTS   AGE
-bad-image   0/1     ImagePullBackOff   0          40s
+bad-image   0/1     ImagePullBackOff   0          3m14s
 ```
 
 ```text
@@ -210,7 +206,7 @@ Not checked:
 
 Details:
   Phase: Pending  Ready: false  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.19  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.50  QoS: BestEffort  Age: 3m ago
 
 Containers:
   • nginx image=nginx:ktrx-missing-tag state=Waiting ready=false restarts=0
@@ -232,13 +228,13 @@ Dependencies:
 ```text
 $ kubectl get pods -n ktrx-scenarios -l app=crashy
 NAME                      READY   STATUS   RESTARTS      AGE
-crashy-744bd56559-hcbc4   0/1     Error    2 (33s ago)   40s
+crashy-744bd56559-cqxsm   0/1     Error    5 (87s ago)   3m14s
 ```
 
 ```text
 $ ktrx deploy/crashy -n ktrx-scenarios --no-color --logs
 Resolved deploy/crashy to 1 of 1 Pod(s); prioritizing not-ready Pods and higher restart counts
-ktrx  ktrx-scenarios/crashy-744bd56559-hcbc4
+ktrx  ktrx-scenarios/crashy-744bd56559-cqxsm
 Verdict: FAILED (4 warnings, 1 not checked, 2 failed)
 
 Issues:
@@ -248,7 +244,7 @@ Issues:
       Suggestion: Inspect previous container logs and application memory/runtime configuration.
   • [FAILED] pod-readiness: Pod Ready condition is not True
       Suggestion: Inspect readiness probe configuration and container logs.
-  • [WARN] container-restarts: Containers have restarted 2 time(s)
+  • [WARN] container-restarts: Containers have restarted 5 time(s)
       Suggestion: Inspect previous container logs and pod events for OOMKilled, probe failures or process exits.
   • [WARN] probes/worker: No readiness probe configured
       Suggestion: Configure readiness checks so Services only send traffic when the application is ready.
@@ -268,12 +264,12 @@ Not checked:
   • outbound-connectivity: Live outbound connections have not been tested
 
 Details:
-  Phase: Running  Ready: false  Restarts: 2
-  Node: minikube  Pod IP: 10.244.0.20  QoS: BestEffort  Age: just now
+  Phase: Running  Ready: false  Restarts: 5
+  Node: minikube  Pod IP: 10.244.0.47  QoS: BestEffort  Age: 3m ago
   Owner: ReplicaSet/crashy-744bd56559 → Deployment/crashy
 
 Containers:
-  • worker image=busybox:1.36 state=Terminated ready=false restarts=2
+  • worker image=busybox:1.36 state=Terminated ready=false restarts=5
 
 Inbound Services:
   • No matching Services
@@ -287,14 +283,14 @@ Inbound Services:
 
 ```text
 $ kubectl get pods -n ktrx-scenarios -l app=hungry
-NAME                      READY   STATUS      RESTARTS      AGE
-hungry-54ff978b5d-ctcqp   0/1     OOMKilled   2 (34s ago)   41s
+NAME                      READY   STATUS      RESTARTS       AGE
+hungry-54ff978b5d-4zl5b   0/1     OOMKilled   5 (100s ago)   3m14s
 ```
 
 ```text
 $ ktrx deploy/hungry -n ktrx-scenarios --no-color
 Resolved deploy/hungry to 1 of 1 Pod(s); prioritizing not-ready Pods and higher restart counts
-ktrx  ktrx-scenarios/hungry-54ff978b5d-ctcqp
+ktrx  ktrx-scenarios/hungry-54ff978b5d-4zl5b
 Verdict: FAILED (2 warnings, 1 not checked, 2 failed)
 
 Issues:
@@ -302,7 +298,7 @@ Issues:
       Suggestion: Inspect previous container logs and application memory/runtime configuration.
   • [FAILED] pod-readiness: Pod Ready condition is not True
       Suggestion: Inspect readiness probe configuration and container logs.
-  • [WARN] container-restarts: Containers have restarted 2 time(s)
+  • [WARN] container-restarts: Containers have restarted 5 time(s)
       Suggestion: Inspect previous container logs and pod events for OOMKilled, probe failures or process exits.
   • [WARN] probes/worker: No readiness probe configured
       Suggestion: Configure readiness checks so Services only send traffic when the application is ready.
@@ -320,12 +316,12 @@ Not checked:
   • outbound-connectivity: Live outbound connections have not been tested
 
 Details:
-  Phase: Running  Ready: false  Restarts: 2
-  Node: minikube  Pod IP: 10.244.0.21  QoS: Burstable  Age: just now
+  Phase: Running  Ready: false  Restarts: 5
+  Node: minikube  Pod IP: 10.244.0.48  QoS: Burstable  Age: 3m ago
   Owner: ReplicaSet/hungry-54ff978b5d → Deployment/hungry
 
 Containers:
-  • worker image=busybox:1.36 state=Terminated ready=false restarts=2
+  • worker image=busybox:1.36 state=Terminated ready=false restarts=5
 
 Inbound Services:
   • No matching Services
@@ -345,20 +341,20 @@ Dependencies:
 $ kubectl get pods\,endpoints -n ktrx-scenarios -l app=slow-ready
 Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
 NAME                              READY   STATUS    RESTARTS   AGE
-pod/slow-ready-77cdfd889b-d7fvs   0/1     Running   0          41s
-pod/slow-ready-77cdfd889b-gl6jc   0/1     Running   0          41s
+pod/slow-ready-77cdfd889b-2hrxj   0/1     Running   0          3m15s
+pod/slow-ready-77cdfd889b-d56gq   0/1     Running   0          3m15s
 ```
 
 ```text
 $ ktrx deploy/slow-ready -n ktrx-scenarios --no-color
 Resolved deploy/slow-ready to 1 of 2 Pod(s); prioritizing not-ready Pods and higher restart counts
-ktrx  ktrx-scenarios/slow-ready-77cdfd889b-d7fvs
-Verdict: FAILED (2 warnings, 2 not checked, 3 failed)
+ktrx  ktrx-scenarios/slow-ready-77cdfd889b-2hrxj
+Verdict: FAILED (2 warnings, 1 not checked, 3 failed)
 
 Issues:
   • [FAILED] inbound-endpoint/slow-ready: Pod is registered in Service slow-ready endpoints but is not ready
       Suggestion: Inspect pod readiness conditions and readiness probes.
-  • [WARN] log-analysis/nginx: Detected 12 suspicious log line(s)
+  • [WARN] log-analysis/nginx: Detected 74 suspicious log line(s)
       Suggestion: Inspect the application error context and correlate timestamps with Kubernetes Events and dependency health.
   • [FAILED] pod-readiness: Pod Ready condition is not True
       Suggestion: Inspect readiness probe configuration and container logs.
@@ -375,12 +371,11 @@ Info:
   • outbound-network-policy: No NetworkPolicy in this namespace selects the Pod
 
 Not checked:
-  • ingress-address/slow-ready: Ingress has no load-balancer address assigned
   • outbound-connectivity: Live outbound connections have not been tested
 
 Details:
   Phase: Running  Ready: false  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.22  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.52  QoS: BestEffort  Age: 3m ago
   Owner: ReplicaSet/slow-ready-77cdfd889b → Deployment/slow-ready
 
 Containers:
@@ -391,7 +386,8 @@ Inbound Services:
 
 Dependencies:
   • No explicit same-namespace Service dependencies discovered
-... (42 more lines trimmed)
+
+... (103 more lines trimmed)
 [exit status: 2]
 ```
 
@@ -402,17 +398,18 @@ Verdict: FAILED  Namespace: ktrx-scenarios
 
 Ingress ktrx-scenarios/slow-ready  host=slow-ready.ktrx.local path=/ (Prefix) class=nginx
   Route selection: selected
+  LoadBalancer hostname: 192.168.49.2
   → Service ktrx-scenarios/slow-ready port=80 status=NO_READY_ENDPOINTS endpoints=2 ready=0 notReady=2
-      → Pod slow-ready-77cdfd889b-d7fvs phase=Running ready=false endpointReady=false restarts=0
+      → Pod slow-ready-77cdfd889b-2hrxj phase=Running ready=false endpointReady=false restarts=0
           ! FAILED: inbound-endpoint/slow-ready — Pod is registered in Service slow-ready endpoints but is not ready
-          ! UNKNOWN: ingress-address/slow-ready — Ingress has no load-balancer address assigned
-          ! WARN: log-analysis/nginx — Detected 12 suspicious log line(s)
-          Next: ktrx slow-ready-77cdfd889b-d7fvs -n ktrx-scenarios
-      → Pod slow-ready-77cdfd889b-gl6jc phase=Running ready=false endpointReady=false restarts=0
+          ! WARN: log-analysis/nginx — Detected 74 suspicious log line(s)
+          ! FAILED: pod-readiness — Pod Ready condition is not True
+          Next: ktrx slow-ready-77cdfd889b-2hrxj -n ktrx-scenarios
+      → Pod slow-ready-77cdfd889b-d56gq phase=Running ready=false endpointReady=false restarts=0
           ! FAILED: inbound-endpoint/slow-ready — Pod is registered in Service slow-ready endpoints but is not ready
-          ! UNKNOWN: ingress-address/slow-ready — Ingress has no load-balancer address assigned
-          ! WARN: log-analysis/nginx — Detected 14 suspicious log line(s)
-          Next: ktrx slow-ready-77cdfd889b-gl6jc -n ktrx-scenarios
+          ! WARN: log-analysis/nginx — Detected 78 suspicious log line(s)
+          ! FAILED: pod-readiness — Pod Ready condition is not True
+          Next: ktrx slow-ready-77cdfd889b-d56gq -n ktrx-scenarios
       ! Service has no ready EndpointSlice endpoints.
 
 Note: DNS, TLS and AWS target-health checks are opt-in. AWS inspection is read-only; route discovery alone does not test external HTTP reachability.
@@ -428,7 +425,7 @@ Error: diagnostic completed with FAILED findings
 $ kubectl get endpoints api -n ktrx-scenarios
 Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
 NAME   ENDPOINTS   AGE
-api    <none>      43s
+api    <none>      3m16s
 ```
 
 ```text
@@ -438,6 +435,7 @@ Verdict: FAILED  Namespace: ktrx-scenarios
 
 Ingress ktrx-scenarios/api  host=api.ktrx.local path=/ (Prefix) class=nginx
   Route selection: selected
+  LoadBalancer hostname: 192.168.49.2
   → Service ktrx-scenarios/api port=80 status=NO_READY_ENDPOINTS endpoints=0 ready=0 notReady=0
       ! Service has no ready EndpointSlice endpoints.
 
@@ -453,7 +451,7 @@ Error: diagnostic completed with FAILED findings
 ```text
 $ kubectl get pod too-big -n ktrx-scenarios
 NAME      READY   STATUS    RESTARTS   AGE
-too-big   0/1     Pending   0          43s
+too-big   0/1     Pending   0          3m16s
 ```
 
 ```text
@@ -482,7 +480,7 @@ Not checked:
 
 Details:
   Phase: Pending  Ready: false  Restarts: 0
-  Node: —  Pod IP: —  QoS: Burstable  Age: just now
+  Node: —  Pod IP: —  QoS: Burstable  Age: 3m ago
 
 Containers:
   • nginx image=nginx:1.27 state=Unknown ready=false restarts=0
@@ -509,7 +507,7 @@ Outbound / DNS:
 ```text
 $ kubectl get pod needs-config -n ktrx-scenarios
 NAME           READY   STATUS                       RESTARTS   AGE
-needs-config   0/1     CreateContainerConfigError   0          43s
+needs-config   0/1     CreateContainerConfigError   0          3m16s
 ```
 
 ```text
@@ -543,7 +541,7 @@ Not checked:
 
 Details:
   Phase: Pending  Ready: false  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.25  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.51  QoS: BestEffort  Age: 3m ago
 
 Containers:
   • app image=busybox:1.36 state=Waiting ready=false restarts=0
@@ -565,62 +563,62 @@ Dependencies:
 ```text
 $ kubectl get pods -n ktrx-scenarios -l app=shop
 NAME                   READY   STATUS             RESTARTS   AGE
-shop-cd6fb477f-bvchg   0/1     ImagePullBackOff   0          24s
-shop-fff6d6c85-85r6z   1/1     Running            0          44s
-shop-fff6d6c85-rvtr5   1/1     Running            0          44s
+shop-cd6fb477f-jlm6r   0/1     ImagePullBackOff   0          3m1s
+shop-fff6d6c85-9wwls   1/1     Running            0          3m17s
+shop-fff6d6c85-wm5qs   1/1     Running            0          3m17s
 ```
 
 ```text
 $ ktrx timeline deploy/shop -n ktrx-scenarios --since 1h --no-color
 ◆ KTRX CHANGE TIMELINE  ktrx-scenarios/Deployment/shop
-Generated: 2026-11-16 10:26:12Z
-Window start: 2026-11-16 09:26:12Z
+Generated: 2026-11-16 10:32:38Z
+Window start: 2026-11-16 09:32:38Z
 
-Failure started: 2026-11-16 10:25:48Z (earliest retained failure evidence)
+Failure started: 2026-11-16 10:29:37Z (earliest retained failure evidence)
 
-2026-11-16 10:25:28Z  ROLLOUT  ReplicaSet/shop-fff6d6c85  revision=1
+2026-11-16 10:29:21Z  ROLLOUT  ReplicaSet/shop-fff6d6c85  revision=1
        Deployment revision observed
        Earliest retained ReplicaSet; no earlier retained revision is available for comparison.
-2026-11-16 10:25:28Z  KUBERNETES  ReplicaSet/shop-fff6d6c85
+2026-11-16 10:29:21Z  KUBERNETES  ReplicaSet/shop-fff6d6c85
        SuccessfulCreate
-       Normal (count=1): Created pod: shop-fff6d6c85-85r6z
-2026-11-16 10:25:28Z  KUBERNETES  Deployment/shop
+       Normal (count=1): Created pod: shop-fff6d6c85-9wwls
+2026-11-16 10:29:21Z  KUBERNETES  ReplicaSet/shop-fff6d6c85
+       SuccessfulCreate
+       Normal (count=1): Created pod: shop-fff6d6c85-wm5qs
+2026-11-16 10:29:21Z  KUBERNETES  Deployment/shop
        ScalingReplicaSet
        Normal (count=1): Scaled up replica set shop-fff6d6c85 from 0 to 2
-2026-11-16 10:25:29Z  KUBERNETES  ReplicaSet/shop-fff6d6c85
-       SuccessfulCreate
-       Normal (count=1): Created pod: shop-fff6d6c85-rvtr5
-2026-11-16 10:25:34Z  FAILURE  Pod/shop-fff6d6c85-rvtr5
+2026-11-16 10:29:30Z  FAILURE  Pod/shop-fff6d6c85-9wwls
        Warning event: Unhealthy
-       Warning (count=2): Readiness probe failed: Get "http://10.244.0.27:80/": dial tcp 10.244.0.27:80: connect: connection refused
-2026-11-16 10:25:36Z  FAILURE  Pod/shop-fff6d6c85-85r6z
+       Warning (count=2): Readiness probe failed: Get "http://10.244.0.54:80/": dial tcp 10.244.0.54:80: connect: connection refused
+2026-11-16 10:29:30Z  FAILURE  Pod/shop-fff6d6c85-wm5qs
        Warning event: Unhealthy
-       Warning (count=2): Readiness probe failed: Get "http://10.244.0.26:80/": dial tcp 10.244.0.26:80: connect: connection refused
-2026-11-16 10:25:48Z  ROLLOUT  ReplicaSet/shop-cd6fb477f  revision=2 ◀ current
+       Warning (count=2): Readiness probe failed: Get "http://10.244.0.56:80/": dial tcp 10.244.0.56:80: connect: connection refused
+2026-11-16 10:29:37Z  ROLLOUT  ReplicaSet/shop-cd6fb477f  revision=2 ◀ current
        1 template change(s) from previous retained revision
        • containers.nginx.image: nginx:1.27 → nginx:1.99.99-ktrx-missing
-2026-11-16 10:25:48Z  FAILURE  Pod/shop-cd6fb477f-bvchg
+2026-11-16 10:29:37Z  FAILURE  Pod/shop-cd6fb477f-jlm6r
        Pod failure or degradation start observed
        phase=Pending ready=false restarts=0
-2026-11-16 10:25:48Z  KUBERNETES  ReplicaSet/shop-cd6fb477f
+2026-11-16 10:29:37Z  KUBERNETES  ReplicaSet/shop-cd6fb477f
        SuccessfulCreate
-       Normal (count=1): Created pod: shop-cd6fb477f-bvchg
-2026-11-16 10:25:48Z  KUBERNETES  Deployment/shop
+       Normal (count=1): Created pod: shop-cd6fb477f-jlm6r
+2026-11-16 10:29:37Z  KUBERNETES  Deployment/shop
        ScalingReplicaSet
        Normal (count=1): Scaled up replica set shop-cd6fb477f from 0 to 1
-2026-11-16 10:25:56Z  FAILURE  Pod/shop-cd6fb477f-bvchg
+2026-11-16 10:31:11Z  FAILURE  Pod/shop-cd6fb477f-jlm6r
        Warning event: Failed
-       Warning (count=1): Error: ImagePullBackOff
-2026-11-16 10:26:09Z  FAILURE  Pod/shop-cd6fb477f-bvchg
+       Warning (count=4): Failed to pull image "nginx:1.99.99-ktrx-missing": rpc error: code = NotFound desc = failed to pull and unpack image "docker.io/library/nginx:1.99.99-ktrx-missing": failed to resolve reference "docker.io/library/nginx:1.99.99-ktrx-missing": docker.io/library/nginx:1.99.99-ktrx-missing: not found
+2026-11-16 10:31:11Z  FAILURE  Pod/shop-cd6fb477f-jlm6r
 ... (8 more lines trimmed)
 [exit status: 0]
 ```
 
 ```text
-$ ktrx compare shop-fff6d6c85-85r6z shop-cd6fb477f-bvchg -n ktrx-scenarios --no-color
-◆ KTRX COMPARE  ktrx-scenarios/shop-cd6fb477f-bvchg
-Reference: shop-fff6d6c85-85r6z
-Candidate: shop-cd6fb477f-bvchg
+$ ktrx compare shop-fff6d6c85-9wwls shop-cd6fb477f-jlm6r -n ktrx-scenarios --no-color
+◆ KTRX COMPARE  ktrx-scenarios/shop-cd6fb477f-jlm6r
+Reference: shop-fff6d6c85-9wwls
+Candidate: shop-cd6fb477f-jlm6r
 
 DIFFERENCES
   Δ Health / phase
@@ -667,20 +665,20 @@ KTRX runs DNS, TCP and HTTP probes inside an existing Pod, so you see the cluste
 ```text
 $ ktrx netcheck toolbox -n ktrx-scenarios --dns web --tcp web:80 --no-color
 KTRX NETCHECK  ktrx-scenarios/toolbox (tools)
-  ✓ PASS [DNS] web (154ms)
+  ✓ PASS [DNS] web (69ms)
       Server:		10.96.0.10
       Address:	10.96.0.10:53
 
       Name:	web.ktrx-scenarios.svc.cluster.local
-      Address: 10.102.144.233
-  ✓ PASS [TCP] web:80 (82ms)
+      Address: 10.109.81.26
+  ✓ PASS [TCP] web:80 (77ms)
 [exit status: 0]
 ```
 
 ```text
 $ ktrx netcheck toolbox -n ktrx-scenarios --dns no-such-service --tcp web:81 --timeout 4s --no-color
 KTRX NETCHECK  ktrx-scenarios/toolbox (tools)
-  ✖ FAIL [DNS] no-such-service (49ms)
+  ✖ FAIL [DNS] no-such-service (102ms)
       Server:		10.96.0.10
       Address:	10.96.0.10:53
 
@@ -688,7 +686,7 @@ KTRX NETCHECK  ktrx-scenarios/toolbox (tools)
 
       ** server can't find no-such-service.ktrx-scenarios.svc.cluster.local.: NXDOMAIN
       command terminated with exit code 1
-  ✖ FAIL [TCP] web:81 (4.003s)
+  ✖ FAIL [TCP] web:81 (4.004s)
       context deadline exceeded
 Error: one or more network checks failed
 [exit status: 2]
@@ -697,7 +695,7 @@ Error: one or more network checks failed
 ```text
 $ ktrx netcheck toolbox-curl -n ktrx-scenarios --http http://web/ --no-color
 KTRX NETCHECK  ktrx-scenarios/toolbox-curl (curl)
-  ✓ PASS [HTTP] http://web/ (122ms)
+  ✓ PASS [HTTP] http://web/ (195ms)
       HTTP_STATUS=200
 [exit status: 0]
 ```
@@ -709,12 +707,12 @@ A Job Pod that ran to completion is **Succeeded**, not broken. Its Ready conditi
 ```text
 $ kubectl get pods -n ktrx-scenarios -l job-name=report-job
 NAME               READY   STATUS      RESTARTS   AGE
-report-job-jhtbb   0/1     Completed   0          47s
+report-job-6sdzk   0/1     Completed   0          3m20s
 ```
 
 ```text
-$ ktrx report-job-jhtbb -n ktrx-scenarios --no-color
-ktrx  ktrx-scenarios/report-job-jhtbb
+$ ktrx report-job-6sdzk -n ktrx-scenarios --no-color
+ktrx  ktrx-scenarios/report-job-6sdzk
 Verdict: HEALTHY (0 warnings, 1 not checked, 0 failed)
 
 Issues:
@@ -734,7 +732,7 @@ Not checked:
 
 Details:
   Phase: Succeeded  Ready: false  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.29  QoS: Burstable  Age: just now
+  Node: minikube  Pod IP: 10.244.0.57  QoS: Burstable  Age: 3m ago
   Owner: Job/report-job
 
 Containers:
@@ -769,6 +767,7 @@ Verdict: FAILED  Namespace: ktrx-scenarios
 
 Ingress ktrx-scenarios/web-wrongport  host=wrongport.ktrx.local path=/ (Prefix) class=nginx
   Route selection: selected
+  LoadBalancer hostname: 192.168.49.2
   → Service ktrx-scenarios/web port=8080 status=MISSING_PORT endpoints=0 ready=0 notReady=0
       ! Route backend port does not match a declared Service port.
 
@@ -788,6 +787,7 @@ Verdict: FAILED  Namespace: ktrx-scenarios
 
 Ingress ktrx-scenarios/ghost  host=ghost.ktrx.local path=/ (Prefix) class=nginx
   Route selection: selected
+  LoadBalancer hostname: 192.168.49.2
   → Service ktrx-scenarios/ghost-svc port=80 status=MISSING endpoints=0 ready=0 notReady=0
       ! Backend Service does not exist.
 
@@ -802,21 +802,21 @@ The Service targets port 9090 but nginx listens on 80. Endpoints look fine, so `
 
 ```text
 $ kubectl get svc badport -n ktrx-scenarios
-NAME      TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
-badport   ClusterIP   10.103.202.183   <none>        80/TCP    47s
+NAME      TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+badport   ClusterIP   10.109.229.20   <none>        80/TCP    3m20s
 ```
 
 ```text
 $ kubectl get endpoints badport -n ktrx-scenarios
 Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
 NAME      ENDPOINTS          AGE
-badport   10.244.0.30:9090   47s
+badport   10.244.0.58:9090   3m20s
 ```
 
 ```text
 $ ktrx netcheck toolbox -n ktrx-scenarios --tcp badport:80 --timeout 4s --no-color
 KTRX NETCHECK  ktrx-scenarios/toolbox (tools)
-  ✖ FAIL [TCP] badport:80 (49ms)
+  ✖ FAIL [TCP] badport:80 (93ms)
       command terminated with exit code 1
 Error: one or more network checks failed
 [exit status: 2]
@@ -829,13 +829,13 @@ A default-deny ingress policy selects the `locked` Pods. KTRX reports that a pol
 ```text
 $ kubectl get networkpolicy -n ktrx-scenarios
 NAME               POD-SELECTOR   AGE
-deny-all-ingress   app=locked     47s
+deny-all-ingress   app=locked     3m21s
 ```
 
 ```text
 $ ktrx deploy/locked -n ktrx-scenarios --no-color
 Resolved deploy/locked to 1 of 1 Pod(s); prioritizing not-ready Pods and higher restart counts
-ktrx  ktrx-scenarios/locked-6f9bc55c5f-5qxcj
+ktrx  ktrx-scenarios/locked-6f9bc55c5f-msfqr
 Verdict: WARN (1 warnings, 1 not checked, 0 failed)
 
 Issues:
@@ -856,7 +856,7 @@ Not checked:
 
 Details:
   Phase: Running  Ready: true  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.31  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.59  QoS: BestEffort  Age: 3m ago
   Owner: ReplicaSet/locked-6f9bc55c5f → Deployment/locked
 
 Containers:
@@ -881,7 +881,7 @@ Outbound / DNS:
 ```text
 $ ktrx netcheck toolbox -n ktrx-scenarios --tcp locked:80 --timeout 4s --no-color
 KTRX NETCHECK  ktrx-scenarios/toolbox (tools)
-  ✖ FAIL [TCP] locked:80 (4.001s)
+  ✖ FAIL [TCP] locked:80 (4.004s)
       context deadline exceeded
 Error: one or more network checks failed
 [exit status: 2]
@@ -893,14 +893,14 @@ The Pod shows Running but keeps restarting: the liveness probe checks a path tha
 
 ```text
 $ kubectl get pods -n ktrx-scenarios -l app=liveness-fail
-NAME                             READY   STATUS             RESTARTS      AGE
-liveness-fail-57db888f7b-wwl7h   0/1     CrashLoopBackOff   3 (20s ago)   54s
+NAME                             READY   STATUS             RESTARTS     AGE
+liveness-fail-57db888f7b-9nsg8   0/1     CrashLoopBackOff   6 (4s ago)   3m29s
 ```
 
 ```text
 $ ktrx deploy/liveness-fail -n ktrx-scenarios --no-color
 Resolved deploy/liveness-fail to 1 of 1 Pod(s); prioritizing not-ready Pods and higher restart counts
-ktrx  ktrx-scenarios/liveness-fail-57db888f7b-wwl7h
+ktrx  ktrx-scenarios/liveness-fail-57db888f7b-9nsg8
 Verdict: FAILED (5 warnings, 2 not checked, 2 failed)
 
 Issues:
@@ -912,7 +912,7 @@ Issues:
       Suggestion: Inspect pod events, image reference, pull credentials and container configuration.
   • [FAILED] pod-readiness: Pod Ready condition is not True
       Suggestion: Inspect readiness probe configuration and container logs.
-  • [WARN] container-restarts: Containers have restarted 3 time(s)
+  • [WARN] container-restarts: Containers have restarted 6 time(s)
       Suggestion: Inspect previous container logs and pod events for OOMKilled, probe failures or process exits.
   • [WARN] probes/nginx: No readiness probe configured
       Suggestion: Configure readiness checks so Services only send traffic when the application is ready.
@@ -933,12 +933,12 @@ Not checked:
   • outbound-connectivity: Live outbound connections have not been tested
 
 Details:
-  Phase: Running  Ready: false  Restarts: 3
-  Node: minikube  Pod IP: 10.244.0.33  QoS: BestEffort  Age: just now
+  Phase: Running  Ready: false  Restarts: 6
+  Node: minikube  Pod IP: 10.244.0.60  QoS: BestEffort  Age: 3m ago
   Owner: ReplicaSet/liveness-fail-57db888f7b → Deployment/liveness-fail
 
 Containers:
-  • nginx image=nginx:1.27 state=Waiting ready=false restarts=3
+  • nginx image=nginx:1.27 state=Waiting ready=false restarts=6
 ... (39 more lines trimmed)
 [exit status: 2]
 ```
@@ -949,8 +949,8 @@ The Pod is stuck in `Init:Error` or `Init:CrashLoopBackOff`. The main container 
 
 ```text
 $ kubectl get pod init-fail -n ktrx-scenarios
-NAME        READY   STATUS       RESTARTS      AGE
-init-fail   0/1     Init:Error   3 (34s ago)   55s
+NAME        READY   STATUS       RESTARTS       AGE
+init-fail   0/1     Init:Error   5 (108s ago)   3m29s
 ```
 
 ```text
@@ -982,7 +982,7 @@ Not checked:
 
 Details:
   Phase: Pending  Ready: false  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.32  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.61  QoS: BestEffort  Age: 3m ago
 
 Containers:
   • app image=nginx:1.27 state=Waiting ready=false restarts=0
@@ -1001,7 +1001,7 @@ Outbound / DNS:
   • No matching NetworkPolicies
 
 Events:
-  • Warning just now count=4 BackOff Back-off restarting failed container wait-for-db in pod init-fail_ktrx-scenarios(c792529d-f688-48b1-b767-b526b5d82159)
+  • Warning just now count=7 BackOff Back-off restarting failed container wait-for-db in pod init-fail_ktrx-scenarios(4585a11d-c6d1-4995-b875-0fcfb5d3339b)
 
 Recent Deployment Changes:
   • No recent changes found
@@ -1026,14 +1026,14 @@ Error: Pod has 2 containers; specify --container to choose the probe container
 ```text
 $ ktrx netcheck multi -n ktrx-scenarios --container sidecar --dns web --tcp web:80 --no-color
 KTRX NETCHECK  ktrx-scenarios/multi (sidecar)
-  ✓ PASS [DNS] web (91ms)
+  ✓ PASS [DNS] web (64ms)
       Server:		10.96.0.10
       Address:	10.96.0.10:53
 
 
       Name:	web.ktrx-scenarios.svc.cluster.local
-      Address: 10.102.144.233
-  ✓ PASS [TCP] web:80 (50ms)
+      Address: 10.109.81.26
+  ✓ PASS [TCP] web:80 (183ms)
 [exit status: 0]
 ```
 
@@ -1044,7 +1044,7 @@ A finalizer blocks deletion, so the Pod sits in Terminating. (The script removes
 ```text
 $ kubectl get pod stuck-term -n ktrx-scenarios
 NAME         READY   STATUS   RESTARTS   AGE
-stuck-term   0/1     Error    0          55s
+stuck-term   0/1     Error    0          3m29s
 ```
 
 ```text
@@ -1073,7 +1073,7 @@ Not checked:
 
 Details:
   Phase: Failed  Ready: false  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.34  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.63  QoS: BestEffort  Age: 3m ago
 
 Containers:
   • app image=busybox:1.36 state=Terminated ready=false restarts=0
@@ -1112,13 +1112,13 @@ The Pod waits for a PersistentVolumeClaim whose StorageClass does not exist, so 
 ```text
 $ kubectl get pvc data-missing-class -n ktrx-scenarios
 NAME                 STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS         VOLUMEATTRIBUTESCLASS   AGE
-data-missing-class   Pending                                      ktrx-no-such-class   <unset>                 56s
+data-missing-class   Pending                                      ktrx-no-such-class   <unset>                 3m29s
 ```
 
 ```text
 $ kubectl get pod pvc-pod -n ktrx-scenarios
 NAME      READY   STATUS    RESTARTS   AGE
-pvc-pod   0/1     Pending   0          56s
+pvc-pod   0/1     Pending   0          3m29s
 ```
 
 ```text
@@ -1149,7 +1149,7 @@ Not checked:
 
 Details:
   Phase: Pending  Ready: false  Restarts: 0
-  Node: —  Pod IP: —  QoS: BestEffort  Age: just now
+  Node: —  Pod IP: —  QoS: BestEffort  Age: 3m ago
 
 Containers:
   • app image=nginx:1.27 state=Unknown ready=false restarts=0
@@ -1168,7 +1168,7 @@ Outbound / DNS:
   • No matching NetworkPolicies
 
 Events:
-  • Warning just now count=1 FailedScheduling 0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims. not found
+  • Warning 3m ago count=1 FailedScheduling 0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims. not found
 
 Recent Deployment Changes:
   • No recent changes found
@@ -1187,8 +1187,8 @@ Same symptom as a missing tag, different cause: the registry rejects the pull (o
 
 ```text
 $ kubectl get pod private-image -n ktrx-scenarios
-NAME            READY   STATUS         RESTARTS   AGE
-private-image   0/1     ErrImagePull   0          56s
+NAME            READY   STATUS             RESTARTS   AGE
+private-image   0/1     ImagePullBackOff   0          3m29s
 ```
 
 ```text
@@ -1197,7 +1197,7 @@ ktrx  ktrx-scenarios/private-image
 Verdict: FAILED (2 warnings, 3 not checked, 2 failed)
 
 Issues:
-  • [FAILED] container-state/app: Container app is waiting: ErrImagePull
+  • [FAILED] container-state/app: Container app is waiting: ImagePullBackOff
       Suggestion: Inspect pod events, image reference, pull credentials and container configuration.
   • [FAILED] pod-readiness: Pod Ready condition is not True
       Suggestion: Inspect readiness probe configuration and container logs.
@@ -1222,7 +1222,7 @@ Not checked:
 
 Details:
   Phase: Pending  Ready: false  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.36  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.64  QoS: BestEffort  Age: 3m ago
 
 Containers:
   • app image=ghcr.io/ktrx-demo-nonexistent/private-app:1.0 state=Waiting ready=false restarts=0
@@ -1244,7 +1244,7 @@ Dependencies:
 ```text
 $ ktrx deploy/hygiene -n ktrx-scenarios --no-color
 Resolved deploy/hygiene to 1 of 1 Pod(s); prioritizing not-ready Pods and higher restart counts
-ktrx  ktrx-scenarios/hygiene-869cd489b8-nrwjb
+ktrx  ktrx-scenarios/hygiene-869cd489b8-slrqv
 Verdict: WARN (3 warnings, 1 not checked, 0 failed)
 
 Issues:
@@ -1269,7 +1269,7 @@ Not checked:
 
 Details:
   Phase: Running  Ready: true  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.37  QoS: BestEffort  Age: just now
+  Node: minikube  Pod IP: 10.244.0.66  QoS: BestEffort  Age: 3m ago
   Owner: ReplicaSet/hygiene-869cd489b8 → Deployment/hygiene
 
 Containers:
@@ -1294,98 +1294,98 @@ Ingress Routes:
 ```text
 $ kubectl get pods -n ktrx-scenarios -l app=cfg-app
 NAME                       READY   STATUS   RESTARTS      AGE
-cfg-app-5d46bf7fd-dhpbd    0/1     Error    0             55s
-cfg-app-6cc64b4d8c-576n7   0/1     Error    2 (30s ago)   32s
+cfg-app-5946b68f48-rrn6x   0/1     Error    2 (30s ago)   32s
+cfg-app-5d46bf7fd-p6g5n    0/1     Error    0             3m29s
 ```
 
 ```text
 $ ktrx timeline deploy/cfg-app -n ktrx-scenarios --since 1h --top 3 --no-color
 ◆ KTRX CHANGE TIMELINE  ktrx-scenarios/Deployment/cfg-app
-Generated: 2026-11-16 10:26:28Z
-Window start: 2026-11-16 09:26:28Z
+Generated: 2026-11-16 10:32:54Z
+Window start: 2026-11-16 09:32:54Z
 
-Failure started: 2026-11-16 10:25:58Z (earliest retained failure evidence)
+Failure started: 2026-11-16 10:32:24Z (earliest retained failure evidence)
 
-2026-11-16 10:25:33Z  ROLLOUT  ReplicaSet/cfg-app-5d46bf7fd  revision=1
+2026-11-16 10:29:25Z  ROLLOUT  ReplicaSet/cfg-app-5d46bf7fd  revision=1
        Deployment revision observed
        Earliest retained ReplicaSet; no earlier retained revision is available for comparison.
-2026-11-16 10:25:33Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
+2026-11-16 10:29:25Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
        SuccessfulCreate
-       Normal (count=1): Created pod: cfg-app-5d46bf7fd-dhpbd
-2026-11-16 10:25:33Z  KUBERNETES  Deployment/cfg-app
+       Normal (count=1): Created pod: cfg-app-5d46bf7fd-p6g5n
+2026-11-16 10:29:25Z  KUBERNETES  Deployment/cfg-app
        ScalingReplicaSet
        Normal (count=1): Scaled up replica set cfg-app-5d46bf7fd from 0 to 1
-2026-11-16 10:25:56Z  ROLLOUT  ReplicaSet/cfg-app-6cc64b4d8c  revision=2 ◀ current
+2026-11-16 10:32:22Z  ROLLOUT  ReplicaSet/cfg-app-5946b68f48  revision=2 ◀ current
        1 template change(s) from previous retained revision
-       • pod.annotations.kubectl.kubernetes.io/restartedAt: <absent> → 2026-11-16T10:25:56Z
-2026-11-16 10:25:56Z  CONFIG  ConfigMap/cfg-app-settings
+       • pod.annotations.kubectl.kubernetes.io/restartedAt: <absent> → 2026-11-16T10:32:22Z
+2026-11-16 10:32:22Z  CONFIG  ConfigMap/cfg-app-settings
        Referenced configuration metadata changed within the selected time window
-       resourceVersion=1728 managers=kubectl-client-side-apply,kubectl-patch latestManagedFieldsTime=2026-11-16T10:25:56Z (resource values are never requested or displayed)
-2026-11-16 10:25:56Z  KUBERNETES  ReplicaSet/cfg-app-6cc64b4d8c
+       resourceVersion=3862 managers=kubectl-client-side-apply,kubectl-patch latestManagedFieldsTime=2026-11-16T10:32:22Z (resource values are never requested or displayed)
+2026-11-16 10:32:22Z  KUBERNETES  ReplicaSet/cfg-app-5946b68f48
        SuccessfulCreate
-       Normal (count=1): Created pod: cfg-app-6cc64b4d8c-576n7
-2026-11-16 10:25:56Z  KUBERNETES  Deployment/cfg-app
+       Normal (count=1): Created pod: cfg-app-5946b68f48-rrn6x
+2026-11-16 10:32:22Z  KUBERNETES  Deployment/cfg-app
        ScalingReplicaSet
-       Normal (count=1): Scaled up replica set cfg-app-6cc64b4d8c from 0 to 1
-2026-11-16 10:25:57Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
+       Normal (count=1): Scaled up replica set cfg-app-5946b68f48 from 0 to 1
+2026-11-16 10:32:23Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
        SuccessfulDelete
-       Normal (count=1): Deleted pod: cfg-app-5d46bf7fd-dhpbd
-2026-11-16 10:25:57Z  KUBERNETES  Deployment/cfg-app
+       Normal (count=1): Deleted pod: cfg-app-5d46bf7fd-p6g5n
+2026-11-16 10:32:23Z  KUBERNETES  Deployment/cfg-app
        ScalingReplicaSet
        Normal (count=1): Scaled down replica set cfg-app-5d46bf7fd from 1 to 0
-2026-11-16 10:25:58Z  RESTART  Pod/cfg-app-6cc64b4d8c-576n7
+2026-11-16 10:32:24Z  RESTART  Pod/cfg-app-5946b68f48-rrn6x
        2 container restart(s) observed
        RestartCount is cumulative for the current Pod; timestamp is the latest retained previous termination time when available.
-2026-11-16 10:25:58Z  FAILURE  Pod/cfg-app-6cc64b4d8c-576n7
+2026-11-16 10:32:24Z  FAILURE  Pod/cfg-app-5946b68f48-rrn6x
        Pod failure or degradation start observed
        phase=Running ready=false restarts=2
-2026-11-16 10:26:12Z  FAILURE  Pod/cfg-app-6cc64b4d8c-576n7
+2026-11-16 10:32:40Z  FAILURE  Pod/cfg-app-5946b68f48-rrn6x
 ... (7 more lines trimmed)
 [exit status: 0]
 ```
 
 ```text
-$ ktrx timeline deploy/cfg-app -n ktrx-scenarios --since 1h --failure-at 2026-11-16T10:26:28Z --no-color
+$ ktrx timeline deploy/cfg-app -n ktrx-scenarios --since 1h --failure-at 2026-11-16T10:32:54Z --no-color
 ◆ KTRX CHANGE TIMELINE  ktrx-scenarios/Deployment/cfg-app
-Generated: 2026-11-16 10:26:29Z
-Window start: 2026-11-16 09:26:29Z
+Generated: 2026-11-16 10:32:54Z
+Window start: 2026-11-16 09:32:54Z
 
-Failure started: 2026-11-16 10:26:28Z (earliest retained failure evidence)
+Failure started: 2026-11-16 10:32:54Z (earliest retained failure evidence)
 
-2026-11-16 10:25:33Z  ROLLOUT  ReplicaSet/cfg-app-5d46bf7fd  revision=1
+2026-11-16 10:29:25Z  ROLLOUT  ReplicaSet/cfg-app-5d46bf7fd  revision=1
        Deployment revision observed
        Earliest retained ReplicaSet; no earlier retained revision is available for comparison.
-2026-11-16 10:25:33Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
+2026-11-16 10:29:25Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
        SuccessfulCreate
-       Normal (count=1): Created pod: cfg-app-5d46bf7fd-dhpbd
-2026-11-16 10:25:33Z  KUBERNETES  Deployment/cfg-app
+       Normal (count=1): Created pod: cfg-app-5d46bf7fd-p6g5n
+2026-11-16 10:29:25Z  KUBERNETES  Deployment/cfg-app
        ScalingReplicaSet
        Normal (count=1): Scaled up replica set cfg-app-5d46bf7fd from 0 to 1
-2026-11-16 10:25:56Z  ROLLOUT  ReplicaSet/cfg-app-6cc64b4d8c  revision=2 ◀ current
+2026-11-16 10:32:22Z  ROLLOUT  ReplicaSet/cfg-app-5946b68f48  revision=2 ◀ current
        1 template change(s) from previous retained revision
-       • pod.annotations.kubectl.kubernetes.io/restartedAt: <absent> → 2026-11-16T10:25:56Z
-2026-11-16 10:25:56Z  CONFIG  ConfigMap/cfg-app-settings
+       • pod.annotations.kubectl.kubernetes.io/restartedAt: <absent> → 2026-11-16T10:32:22Z
+2026-11-16 10:32:22Z  CONFIG  ConfigMap/cfg-app-settings
        Referenced configuration metadata changed within the selected time window
-       resourceVersion=1728 managers=kubectl-client-side-apply,kubectl-patch latestManagedFieldsTime=2026-11-16T10:25:56Z (resource values are never requested or displayed)
-2026-11-16 10:25:56Z  KUBERNETES  ReplicaSet/cfg-app-6cc64b4d8c
+       resourceVersion=3862 managers=kubectl-client-side-apply,kubectl-patch latestManagedFieldsTime=2026-11-16T10:32:22Z (resource values are never requested or displayed)
+2026-11-16 10:32:22Z  KUBERNETES  ReplicaSet/cfg-app-5946b68f48
        SuccessfulCreate
-       Normal (count=1): Created pod: cfg-app-6cc64b4d8c-576n7
-2026-11-16 10:25:56Z  KUBERNETES  Deployment/cfg-app
+       Normal (count=1): Created pod: cfg-app-5946b68f48-rrn6x
+2026-11-16 10:32:22Z  KUBERNETES  Deployment/cfg-app
        ScalingReplicaSet
-       Normal (count=1): Scaled up replica set cfg-app-6cc64b4d8c from 0 to 1
-2026-11-16 10:25:57Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
+       Normal (count=1): Scaled up replica set cfg-app-5946b68f48 from 0 to 1
+2026-11-16 10:32:23Z  KUBERNETES  ReplicaSet/cfg-app-5d46bf7fd
        SuccessfulDelete
-       Normal (count=1): Deleted pod: cfg-app-5d46bf7fd-dhpbd
-2026-11-16 10:25:57Z  KUBERNETES  Deployment/cfg-app
+       Normal (count=1): Deleted pod: cfg-app-5d46bf7fd-p6g5n
+2026-11-16 10:32:23Z  KUBERNETES  Deployment/cfg-app
        ScalingReplicaSet
        Normal (count=1): Scaled down replica set cfg-app-5d46bf7fd from 1 to 0
-2026-11-16 10:25:58Z  RESTART  Pod/cfg-app-6cc64b4d8c-576n7
+2026-11-16 10:32:24Z  RESTART  Pod/cfg-app-5946b68f48-rrn6x
        2 container restart(s) observed
        RestartCount is cumulative for the current Pod; timestamp is the latest retained previous termination time when available.
-2026-11-16 10:25:58Z  FAILURE  Pod/cfg-app-6cc64b4d8c-576n7
+2026-11-16 10:32:24Z  FAILURE  Pod/cfg-app-5946b68f48-rrn6x
        Pod failure or degradation start observed
        phase=Running ready=false restarts=2
-2026-11-16 10:26:12Z  FAILURE  Pod/cfg-app-6cc64b4d8c-576n7
+2026-11-16 10:32:40Z  FAILURE  Pod/cfg-app-5946b68f48-rrn6x
 ... (7 more lines trimmed)
 [exit status: 0]
 ```
@@ -1407,8 +1407,8 @@ Ingress ktrx-scenarios/web  host=web.ktrx.local path=/ (Prefix) class=nginx
   Route selection: selected
   LoadBalancer hostname: 192.168.49.2
   → Service ktrx-scenarios/web port=80 status=READY endpoints=2 ready=2 notReady=0
-      → Pod web-588cb798c7-4v5xn phase=Running ready=true endpointReady=true restarts=0
-      → Pod web-588cb798c7-htbxw phase=Running ready=true endpointReady=true restarts=0
+      → Pod web-588cb798c7-4p5bf phase=Running ready=true endpointReady=true restarts=0
+      → Pod web-588cb798c7-krqdt phase=Running ready=true endpointReady=true restarts=0
 
 Note: DNS, TLS and AWS target-health checks are opt-in. AWS inspection is read-only; route discovery alone does not test external HTTP reachability.
 Error: diagnostic completed with FAILED findings
@@ -1422,7 +1422,7 @@ Error: diagnostic completed with FAILED findings
 A ServiceAccount that can only read Pods runs KTRX. It cannot list Services, Ingresses or Events, so KTRX must say what it could not check instead of reporting a clean bill of health.
 
 ```text
-$ ktrx doctor -n ktrx-scenarios --kubeconfig /tmp/tmp.oHkxEZDs1f/limited.kubeconfig --no-color
+$ ktrx doctor -n ktrx-scenarios --kubeconfig /tmp/tmp.TwRQ84BHdt/limited.kubeconfig --no-color
 KTRX DOCTOR  namespace=ktrx-scenarios  Kubernetes=v1.37.0
   ✓ PASS     Kubernetes API connectivity                      discovery
       Connected to Kubernetes v1.37.0
@@ -1468,8 +1468,8 @@ KTRX DOCTOR  namespace=ktrx-scenarios  Kubernetes=v1.37.0
 ```
 
 ```text
-$ ktrx web-588cb798c7-4v5xn -n ktrx-scenarios --kubeconfig /tmp/tmp.oHkxEZDs1f/limited.kubeconfig --no-color
-ktrx  ktrx-scenarios/web-588cb798c7-4v5xn
+$ ktrx web-588cb798c7-4p5bf -n ktrx-scenarios --kubeconfig /tmp/tmp.TwRQ84BHdt/limited.kubeconfig --no-color
+ktrx  ktrx-scenarios/web-588cb798c7-4p5bf
 Verdict: UNKNOWN (0 warnings, 7 not checked, 0 failed)
 
 Issues:
@@ -1490,7 +1490,7 @@ Not checked:
 
 Details:
   Phase: Running  Ready: true  Restarts: 0
-  Node: minikube  Pod IP: 10.244.0.18  QoS: Burstable  Age: 1m ago
+  Node: minikube  Pod IP: 10.244.0.44  QoS: Burstable  Age: 3m ago
   Owner: ReplicaSet/web-588cb798c7
 
 Containers:
@@ -1526,8 +1526,8 @@ HTTPRoute ktrx-scenarios/web-route  host=gw.ktrx.local path=/ (PathPrefix) class
   Route selection: selected
   ! HTTPRoute has no status.parents entry; Gateway attachment is not confirmed.
   → Service ktrx-scenarios/web port=80 status=READY endpoints=2 ready=2 notReady=0
-      → Pod web-588cb798c7-4v5xn phase=Running ready=true endpointReady=true restarts=0
-      → Pod web-588cb798c7-htbxw phase=Running ready=true endpointReady=true restarts=0
+      → Pod web-588cb798c7-4p5bf phase=Running ready=true endpointReady=true restarts=0
+      → Pod web-588cb798c7-krqdt phase=Running ready=true endpointReady=true restarts=0
 
 Note: DNS, TLS and AWS target-health checks are opt-in. AWS inspection is read-only; route discovery alone does not test external HTTP reachability.
 Error: diagnostic completed with an UNKNOWN verdict
@@ -1561,7 +1561,7 @@ HTTPRoute ktrx-scenarios/cross-route  host=cross.ktrx.local path=/ (PathPrefix) 
   Route selection: selected
   ! HTTPRoute has no status.parents entry; Gateway attachment is not confirmed.
   → Service ktrx-scenarios-backend/shared port=80 status=READY endpoints=1 ready=1 notReady=0
-      → Pod shared-6496879d6b-2ccnj phase=Running ready=true endpointReady=true restarts=0
+      → Pod shared-6496879d6b-46fc7 phase=Running ready=true endpointReady=true restarts=0
 
 Note: DNS, TLS and AWS target-health checks are opt-in. AWS inspection is read-only; route discovery alone does not test external HTTP reachability.
 Error: diagnostic completed with an UNKNOWN verdict
@@ -1575,28 +1575,28 @@ Error: diagnostic completed with an UNKNOWN verdict
 ```text
 $ ktrx timeline deploy/gitops-app -n ktrx-scenarios --since 3h --no-color
 ◆ KTRX CHANGE TIMELINE  ktrx-scenarios/Deployment/gitops-app
-Generated: 2026-11-16 10:26:34Z
-Window start: 2026-11-16 07:26:34Z
+Generated: 2026-11-16 10:32:59Z
+Window start: 2026-11-16 07:32:59Z
 
-2026-11-16 08:55:45Z  GITOPS  HelmRelease/gitops-app
+2026-11-16 08:59:35Z  GITOPS  HelmRelease/gitops-app
        Helm release history entry
        chart=demo chartVersion=1.0.0 appVersion=1.0.0 status=superseded
-2026-11-16 08:55:45Z  GITOPS  ArgoCD Application/ktrx-scenarios/gitops-app  revision=9e107d9d372bb6826bd81d3542a419d6a1b2c3d4
+2026-11-16 08:59:35Z  GITOPS  ArgoCD Application/ktrx-scenarios/gitops-app  revision=9e107d9d372bb6826bd81d3542a419d6a1b2c3d4
        Argo CD deployment history observed
        historyID=1 targetRevision=main revision=9e107d9d372bb6826bd81d3542a419d6a1b2c3d4 commit=9e107d9d372bb6826bd81d3542a419d6a1b2c3d4 commitURL=https://github.com/example/demo-repo/commit/9e107d9d372bb6826bd81d3542a419d6a1b2c3d4
-2026-11-16 10:05:45Z  GITOPS  HelmRelease/gitops-app
+2026-11-16 10:09:35Z  GITOPS  HelmRelease/gitops-app
        Helm release history entry
        chart=demo chartVersion=1.1.0 appVersion=1.1.0 status=deployed
-2026-11-16 10:05:45Z  GITOPS  ArgoCD Application/ktrx-scenarios/gitops-app  revision=5d41402abc4b2a76b9719d911017c592ae3a0f1c
+2026-11-16 10:09:35Z  GITOPS  ArgoCD Application/ktrx-scenarios/gitops-app  revision=5d41402abc4b2a76b9719d911017c592ae3a0f1c
        Argo CD deployment history observed
        historyID=2 targetRevision=main revision=5d41402abc4b2a76b9719d911017c592ae3a0f1c commit=5d41402abc4b2a76b9719d911017c592ae3a0f1c commitURL=https://github.com/example/demo-repo/commit/5d41402abc4b2a76b9719d911017c592ae3a0f1c
-2026-11-16 10:25:47Z  ROLLOUT  ReplicaSet/gitops-app-74b7ff64f7  revision=1 ◀ current
+2026-11-16 10:29:35Z  ROLLOUT  ReplicaSet/gitops-app-74b7ff64f7  revision=1 ◀ current
        Deployment revision observed
        Earliest retained ReplicaSet; no earlier retained revision is available for comparison.
-2026-11-16 10:25:47Z  KUBERNETES  ReplicaSet/gitops-app-74b7ff64f7
+2026-11-16 10:29:35Z  KUBERNETES  ReplicaSet/gitops-app-74b7ff64f7
        SuccessfulCreate
-       Normal (count=1): Created pod: gitops-app-74b7ff64f7-8ml5c
-2026-11-16 10:25:47Z  KUBERNETES  Deployment/gitops-app
+       Normal (count=1): Created pod: gitops-app-74b7ff64f7-z866f
+2026-11-16 10:29:35Z  KUBERNETES  Deployment/gitops-app
        ScalingReplicaSet
        Normal (count=1): Scaled up replica set gitops-app-74b7ff64f7 from 0 to 1
 [exit status: 0]
@@ -1617,7 +1617,7 @@ $ ktrx bad-image -n ktrx-scenarios --output markdown
 **Verdict:** FAILED (2 warnings, 3 not checked, 2 failed)
 
 ## Issues
-- **FAILED — container-state/nginx:** Container nginx is waiting: ImagePullBackOff
+- **FAILED — container-state/nginx:** Container nginx is waiting: ErrImagePull
   - Suggestion: Inspect pod events, image reference, pull credentials and container configuration.
 - **FAILED — pod-readiness:** Pod Ready condition is not True
   - Suggestion: Inspect readiness probe configuration and container logs.
@@ -1641,7 +1641,7 @@ $ ktrx bad-image -n ktrx-scenarios --output markdown
 - **outbound-connectivity:** Live outbound connections have not been tested
 
 ## Details
-- Phase: Pending; Ready: false; Restarts: 0; Node: minikube; Pod IP: 10.244.0.19; QoS: BestEffort; Age: 1m ago
+- Phase: Pending; Ready: false; Restarts: 0; Node: minikube; Pod IP: 10.244.0.50; QoS: BestEffort; Age: 3m ago
 
 ### Containers
 - **nginx** — nginx:ktrx-missing-tag; state: Waiting; ready: false; restarts: 0
@@ -1659,52 +1659,93 @@ $ ktrx bad-image -n ktrx-scenarios --output markdown
 ```text
 $ ktrx topology dns -n ktrx-scenarios --no-color
 ◆ KTRX DNS TOPOLOGY  namespace/ktrx-scenarios
-Generated: 2026-11-16T10:26:34Z
+Generated: 2026-11-16T10:32:59Z
 
                          DNS TOPOLOGY
-  Pod: api-76f7f9fdf6-zm752  [10.244.0.28]
+  Pod: api-76f7f9fdf6-d4f4d  [10.244.0.55]
     |
     +--> web
           |
-          +--> 10.102.144.233  [ClusterIP]
+          +--> 10.109.81.26  [ClusterIP]
 
-  Pod: bad-image  [10.244.0.19]
+  Pod: bad-image  [10.244.0.50]
     |
     +--> (no declared DNS reference found)
 
-  Pod: badport-bc7b7489-rpdmr  [10.244.0.30]
+  Pod: badport-bc7b7489-c55kl  [10.244.0.58]
     |
     +--> (no declared DNS reference found)
 
-  Pod: cfg-app-6cc64b4d8c-576n7  [10.244.0.42]
+  Pod: cfg-app-5946b68f48-rrn6x  [10.244.0.70]
     |
     +--> (no declared DNS reference found)
 
-  Pod: crashy-744bd56559-hcbc4  [10.244.0.20]
+  Pod: crashy-744bd56559-cqxsm  [10.244.0.47]
     |
     +--> (no declared DNS reference found)
 
-  Pod: gitops-app-74b7ff64f7-8ml5c  [10.244.0.40]
+  Pod: gitops-app-74b7ff64f7-z866f  [10.244.0.68]
     |
     +--> (no declared DNS reference found)
 
-  Pod: hungry-54ff978b5d-ctcqp  [10.244.0.21]
+  Pod: hungry-54ff978b5d-4zl5b  [10.244.0.48]
     |
     +--> (no declared DNS reference found)
 
-  Pod: hygiene-869cd489b8-nrwjb  [10.244.0.37]
+  Pod: hygiene-869cd489b8-slrqv  [10.244.0.66]
     |
     +--> (no declared DNS reference found)
 
-  Pod: init-fail  [10.244.0.32]
+  Pod: init-fail  [10.244.0.61]
     |
 ... (73 more lines trimmed)
 [exit status: 0]
 ```
 
 ```text
-$ ktrx -- deploy/crashy -n ktrx-scenarios --output json
-[exit status: 1]
+$ ktrx deploy/crashy -n ktrx-scenarios --output json
+{
+  "namespace": "ktrx-scenarios",
+  "name": "crashy-744bd56559-cqxsm",
+  "phase": "Running",
+  "ready": false,
+  "restarts": 5,
+  "node": "minikube",
+  "podIP": "10.244.0.47",
+  "qosClass": "BestEffort",
+  "age": "3m ago",
+  "serviceAccount": "default",
+  "ownerChain": [
+    "ReplicaSet/crashy-744bd56559",
+    "Deployment/crashy"
+  ],
+  "labels": {
+    "app": "crashy",
+    "pod-template-hash": "744bd56559"
+  },
+  "containers": [
+    {
+      "name": "worker",
+      "image": "busybox:1.36",
+      "ready": false,
+      "restartCount": 5,
+      "state": "Terminated",
+      "reason": "Error"
+    }
+  ],
+  "outbound": {
+    "dnsPolicy": "ClusterFirst",
+    "hostNetwork": false
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Back-off restarting failed container worker in pod crashy-744bd56559-cqxsm_ktrx-scenarios(839f02e0-ab43-4e73-ab03-6d725efe58c7)",
+      "count": 6,
+      "timestamp": "just now",
+... (168 more lines trimmed)
+[exit status: 2]
 ```
 
 The command also wrote diagnostic text to stderr; it is intentionally kept separate from the JSON stdout stream.
