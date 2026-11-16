@@ -109,7 +109,7 @@ ktrx_step() {
   strip_ansi < "$full" | sed -E 's/[[:space:]]+$//' > "$out"
   # Drop the boilerplate LIMITATIONS footer from the displayed output; assert on the full text.
   awk '/^LIMITATIONS/ {exit} {print}' "$out" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$TMP/shown.out"
-  print_block "ktrx $(printf '%q ' "$@" | sed 's/ $//')" "$TMP/shown.out" "$MAX_LINES" "$rc"
+  print_block "ktrx $(printf '%q ' "$@" | sed 's/ $//')" "$TMP/shown.out" "${STEP_MAX:-$MAX_LINES}" "$rc"
   status="PASS"
   if ! [[ "$rc" =~ ^($want_rc)$ ]]; then status="FAIL"; detail="exit $rc, expected $want_rc"; fi
   if ! grep -Eiq "$want_text" "$out"; then
@@ -315,7 +315,7 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      containers: [{name: job, image: "busybox:1.36", command: ["sh", "-c", "echo report generated; exit 0"]}]
+      containers: [{name: job, image: "busybox:1.36", command: ["sh", "-c", "echo report generated; exit 0"], resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 50m, memory: 32Mi}}}]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -663,8 +663,9 @@ K8S_VER="$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVers
 scenario "Preflight and a healthy baseline"
 narrate "Before debugging, confirm KTRX can read what it needs. Then look at a healthy Deployment so you know what \"good\" looks like."
 ktrx_step "Preflight: doctor" "0" "PASS" -- doctor -n "$NS" --include-netcheck --no-color
-ktrx_step "Healthy Deployment" "0" "HEALTHY" -- deploy/web -n "$NS" --all --no-color
-ktrx_step "Healthy URL trace" "0" "HEALTHY|READY" -- trace-url http://web.ktrx.local/ -n "$NS" --no-color
+HINT="possible KTRX false positive: an unrelated Ingress-routed Service (api, no endpoints) is attributed to healthy web Pods via a port-name match in inbound.go" \
+  ktrx_step "Healthy Deployment" "0" "HEALTHY" -- deploy/web -n "$NS" --all --no-color
+ktrx_step "Healthy URL trace" "0" "HEALTHY|READY" -- trace-url http://web.ktrx.local/ -n "$NS"
 
 scenario "ImagePullBackOff (typo in the image tag)"
 narrate "**Symptom:** the Pod never starts. **Question:** is it the image, the registry, or credentials?"
@@ -685,12 +686,12 @@ scenario "Pods Running but the URL fails (readiness probe)"
 narrate "**Symptom:** pods show Running, yet traffic fails. The readiness probe checks a path that returns 404, so the Service has no ready endpoints. \`trace-url\` follows the request path from the URL down to the Pods."
 kube_show kubectl get pods,endpoints -n "$NS" -l app=slow-ready
 ktrx_step "Readiness failing: Deployment view" "2" "Ready condition|readiness|not Ready" -- deploy/slow-ready -n "$NS" --no-color
-ktrx_step "Readiness failing: URL trace" "2" "FAILED|ready=0|notReady" -- trace-url http://slow-ready.ktrx.local/ -n "$NS" --no-color
+ktrx_step "Readiness failing: URL trace" "2" "FAILED|ready=0|notReady" -- trace-url http://slow-ready.ktrx.local/ -n "$NS"
 
 scenario "Service has no endpoints (selector typo)"
 narrate "**Symptom:** the Pod is healthy but the Service returns nothing. The Service selects \`app=api-v2\`, the Pods are labelled \`app=api\`."
 kube_show kubectl get endpoints api -n "$NS"
-ktrx_step "Selector mismatch: URL trace" "2|3" "FAILED|UNKNOWN|no (ready )?endpoints|endpoints=0|ready=0" -- trace-url http://api.ktrx.local/ -n "$NS" --no-color
+ktrx_step "Selector mismatch: URL trace" "2|3" "FAILED|UNKNOWN|no (ready )?endpoints|endpoints=0|ready=0" -- trace-url http://api.ktrx.local/ -n "$NS"
 
 scenario "Pending (unschedulable request)"
 narrate "**Symptom:** the Pod stays Pending. It asks for 64 CPUs and 512Gi of memory, which no node can offer."
@@ -727,11 +728,11 @@ HINT="possible KTRX bug: Succeeded Pods are reported as not Ready; skip the read
 
 scenario "Ingress points at the wrong Service port"
 narrate "The Ingress sends traffic to \`web:8080\`, but the Service only exposes port 80. Every request through this host fails even though all Pods are healthy."
-ktrx_step "Ingress wrong port" "2|3" "8080|port|FAILED|UNKNOWN" -- trace-url http://wrongport.ktrx.local/ -n "$NS" --no-color
+ktrx_step "Ingress wrong port" "2|3" "8080|port|FAILED|UNKNOWN" -- trace-url http://wrongport.ktrx.local/ -n "$NS"
 
 scenario "Ingress points at a Service that does not exist"
 narrate "A typo or a deleted Service leaves the Ingress with a dangling backend."
-ktrx_step "Ingress missing Service" "2|3" "ghost-svc|not found|FAILED|missing" -- trace-url http://ghost.ktrx.local/ -n "$NS" --no-color
+ktrx_step "Ingress missing Service" "2|3" "ghost-svc|not found|FAILED|missing" -- trace-url http://ghost.ktrx.local/ -n "$NS"
 
 scenario "Service targetPort mismatch (endpoints exist, connection refused)"
 narrate "The Service targets port 9090 but nginx listens on 80. Endpoints look fine, so \`kubectl get endpoints\` is green, yet connections are refused. A live TCP probe from inside the cluster shows it."
@@ -758,7 +759,7 @@ scenario "Init container fails (the app container never starts)"
 narrate "The Pod is stuck in \`Init:Error\` or \`Init:CrashLoopBackOff\`. The main container has no logs because it never ran."
 kube_show kubectl get pod init-fail -n "$NS"
 HINT="KTRX may not inspect initContainerStatuses yet; worth adding" \
-  ktrx_step "Init container failing" "2|3" "init|Init|wait-for-db" -- init-fail -n "$NS" --no-color --logs
+  STEP_MAX=75 ktrx_step "Init container failing" "2|3" "wait-for-db|Init:|initContainer|init container" -- init-fail -n "$NS" --no-color --logs
 
 scenario "Multi-container Pod: pick the container for network probes"
 narrate "In a Pod with a sidecar, \`netcheck\` needs to know which container to run in. KTRX refuses to guess."
@@ -768,14 +769,14 @@ ktrx_step "Multi-container: --container sidecar" "0" "PASS" -- netcheck multi -n
 scenario "Pod stuck in Terminating"
 narrate "A finalizer blocks deletion, so the Pod sits in Terminating. (The script removes the finalizer during cleanup.)"
 kube_show kubectl get pod stuck-term -n "$NS"
-ktrx_step "Stuck Terminating Pod" "2|3" "Terminat|deletion|DeletionTimestamp" -- stuck-term -n "$NS" --no-color
+STEP_MAX=75 ktrx_step "Stuck Terminating Pod" "2|3" "Terminat|deletion|DeletionTimestamp" -- stuck-term -n "$NS" --no-color
 
 scenario "PVC that can never bind"
 narrate "The Pod waits for a PersistentVolumeClaim whose StorageClass does not exist, so it stays Pending."
 kube_show kubectl get pvc data-missing-class -n "$NS"
 kube_show kubectl get pod pvc-pod -n "$NS"
 HINT="KTRX has no PVC-specific check yet; only Events explain this" \
-  ktrx_step "Unbound PVC" "2|3" "PersistentVolumeClaim|persistentvolumeclaim|storageclass|Pending|FailedScheduling" -- pvc-pod -n "$NS" --no-color
+  STEP_MAX=75 ktrx_step "Unbound PVC" "2|3" "PersistentVolumeClaim|persistentvolumeclaim|unbound|storageclass|data-missing-class" -- pvc-pod -n "$NS" --no-color
 
 scenario "Image pull from a private registry without credentials"
 narrate "Same symptom as a missing tag, different cause: the registry rejects the pull (or the repository is not visible). The Events carry the real reason."
@@ -794,9 +795,9 @@ ktrx_step "Timeline with explicit failure time" "0|2|3" "ROLLOUT|ConfigMap|revis
 
 scenario "URL trace extras: DNS and TLS checks"
 narrate "\`trace-url\` can also check, on request, that the hostname resolves and that the TLS handshake and certificate are valid. These run from the machine running KTRX, so on Minikube the \`*.ktrx.local\` names normally do **not** resolve; that is expected and is reported rather than hidden."
-ktrx_step "trace-url --check-dns" "0|2|3" "DNS" -- trace-url http://web.ktrx.local/ -n "$NS" --check-dns --no-color
+ktrx_step "trace-url --check-dns" "0|2|3" "DNS" -- trace-url http://web.ktrx.local/ -n "$NS" --check-dns
 if [[ "$TLS_OK" -eq 1 ]]; then
-  ktrx_step "trace-url --check-tls" "0|2|3" "TLS|tls|certificate|handshake|SNI" -- trace-url https://tls.ktrx.local/ -n "$NS" --check-tls --no-color
+  ktrx_step "trace-url --check-tls" "0|2|3" "TLS|tls|certificate|handshake|SNI" -- trace-url https://tls.ktrx.local/ -n "$NS" --check-tls
 else
   skip_step "trace-url --check-tls" "openssl is missing or the TLS Ingress could not be created."
 fi
@@ -813,8 +814,8 @@ fi
 scenario "Gateway API: HTTPRoute tracing and ReferenceGrant"
 if [[ "$GATEWAY_READY" -eq 1 ]]; then
   narrate "No Gateway controller is installed; KTRX reads the HTTPRoute objects themselves. The first route points to a Service in the same namespace. The second points to a Service in another namespace, which Gateway API only allows with a **ReferenceGrant**."
-  ktrx_step "HTTPRoute to same-namespace Service" "0|2|3" "HTTPRoute|web" -- trace-url http://gw.ktrx.local/ -n "$NS" --no-color
-  ktrx_step "Cross-namespace route without ReferenceGrant" "2|3" "ReferenceGrant|FAILED|not allowed|denied" -- trace-url http://cross.ktrx.local/ -n "$NS" --no-color
+  ktrx_step "HTTPRoute to same-namespace Service" "0|2|3" "HTTPRoute|web" -- trace-url http://gw.ktrx.local/ -n "$NS"
+  ktrx_step "Cross-namespace route without ReferenceGrant" "2|3" "ReferenceGrant|FAILED|not allowed|denied" -- trace-url http://cross.ktrx.local/ -n "$NS"
   kubectl apply -n "$NS2" -f - >/dev/null <<YAML || true
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
@@ -824,7 +825,7 @@ spec:
   to: [{group: "", kind: Service, name: shared}]
 YAML
   narrate "After adding a ReferenceGrant in \`$NS2\` that allows HTTPRoutes from \`$NS\`:"
-  ktrx_step "Cross-namespace route with ReferenceGrant" "0|2|3" "shared" -- trace-url http://cross.ktrx.local/ -n "$NS" --no-color
+  ktrx_step "Cross-namespace route with ReferenceGrant" "0|2|3" "shared" -- trace-url http://cross.ktrx.local/ -n "$NS"
 else
   skip_step "Gateway API HTTPRoute scenarios" "Gateway API CRDs could not be installed (offline?) or KTRX_DEMO_GATEWAY=0."
 fi
@@ -857,7 +858,7 @@ for d in web hygiene crashy hungry slow-ready shop; do
     2) m="FAILED or WARN, stop" ;; 3) m="UNKNOWN, needs a human" ;; *) m="unexpected" ;;
   esac
   echo "| \`$d\` | $rc | $m |" >> "$BODY"
-  if [[ "$d" == web && "$rc" -ne 0 ]]; then gate_fail+=" web=$rc(expected 0)"; fi
+  if [[ "$d" == web && "$rc" -ne 0 ]]; then gate_fail+=" web=$rc(expected 0; see the Healthy Deployment note)"; fi
   if [[ "$d" == crashy && "$rc" -ne 2 ]]; then gate_fail+=" crashy=$rc(expected 2)"; fi
 done
 if [[ -z "$gate_fail" ]]; then
@@ -897,12 +898,11 @@ done
   echo "## Reproduce"
   echo
   echo '```bash'
-  echo 'minikube start'
+  echo 'minikube start && minikube addons enable ingress'
   echo 'bash scripts/generate-scenarios-demo.sh   # KEEP_DEMO=1 keeps the namespace for poking around'
   echo '```'
 } > "$DOC"
 
 say "wrote $DOC  ($pass passed, $fail failed, $skip skipped)"
 [[ "$fail" -eq 0 ]]
-Displaying generate-scenarios-demo.sh.
-To exit full screen, press esc
+Displaying generate-scenarios-demo-1.sh.
